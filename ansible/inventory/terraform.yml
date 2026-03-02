@@ -1,0 +1,9 @@
+plugin: cloud.terraform.terraform_provider
+project_path: ../../terraform
+inventory_hostname:
+  - public_ip
+groups:
+  oci_nodes: "true"
+compose:
+  ansible_host: public_ip
+  ansible_user: "'ubuntu'"

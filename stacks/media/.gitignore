@@ -1,0 +1,11 @@
+# Ignore all data and log directories inside stack folders
+**/data/
+**/logs/
+**/config/databases/
+**/models/
+**/backups/
+
+# Ignore sensitive info
+.env
+*.db
+*.sqlite

@@ -1,0 +1,17 @@
+# /etc/infisical-agent/infisical-agent.yaml
+# Managed by Ansible
+
+infisical:
+  auth:
+    type: "universal-auth"
+    config:
+      client-id: ""
+      client-secret: ""
+
+  templates:
+    - source-path: "/opt/stacks/vaultwarden/vaultwarden.env.tmpl"
+      destination-path: "/opt/stacks/vaultwarden/.env"
+      # Auto-Healing: Agent fetches secrets on interval or webhook
+      exec:
+        command: "cd /opt/stacks/vaultwarden && docker compose up -d"
+        restart-on-error: true

@@ -1,0 +1,26 @@
+version: '3.8'
+services:
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    ports:
+      - "3005:8080"
+    environment:
+      - OLLAMA_BASE_URL=http://${ARCH_PC_IP:-192.168.1.100}:11434
+    volumes:
+      - ./data/open-webui:/app/backend/data
+  openclaw-gateway:
+    image: openclaw/gateway:latest
+    container_name: openclaw-gateway
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./openclaw/config:/app/config
+  openclaw-cli:
+    image: openclaw/cli:latest
+    container_name: openclaw-cli
+    restart: unless-stopped
+    volumes:
+      - ./openclaw/config:/root/.openclaw

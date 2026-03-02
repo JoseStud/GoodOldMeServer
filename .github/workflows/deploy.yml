@@ -1,0 +1,61 @@
+name: Secure Automated Deployment
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'terraform/**'
+      - 'ansible/**'
+      - 'stacks/**'
+
+# Required to allow GitHub to request OIDC JWT tokens for GCP, OCI, and Infisical
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 1. Authenticate to Infisical via OIDC to get short-lived tokens and setup CLI
+      - name: Setup Infisical
+        uses: Infisical/setup-infisical@v1.1
+        with:
+          version: 'latest'
+
+      - name: Infisical OIDC Login
+        run: |
+          infisical login --method=oidc --oidc-client-id=${{ vars.INFISICAL_MACHINE_IDENTITY_ID }} --domain="https://app.infisical.com"
+          infisical export --project-id=${{ vars.INFISICAL_PROJECT_ID }} --env=prod > .env
+
+      # 2. Setup Cloud credentials using Vault/Infisical secrets or Native Cloud OIDC Action.
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Terraform Apply
+        working-directory: terraform
+        run: |
+          source ../.env
+          terraform apply -auto-approve
+        env:
+          INFISICAL_TOKEN: ${{ env.INFISICAL_TOKEN }} # Needed for Terraform provider
+
+      # 3. Issue Ephemeral SSH Certificate via Infisical PKI
+      - name: Generate Ephemeral SSH Certificate
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
+          infisical pki sign ssh --public-key=~/.ssh/id_rsa.pub --project-id=${{ vars.INFISICAL_PROJECT_ID }} --env=prod > ~/.ssh/id_rsa-cert.pub
+
+      # 4. Run Ansible with explicit inventory
+      - name: Run Ansible Playbooks
+        run: |
+          ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml

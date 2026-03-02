@@ -1,0 +1,17 @@
+# Ignore the provider binaries and modules
+.terraform/
+**/.terraform/
+
+# Ignore state files (Sensitive info!)
+*.tfstate
+*.tfstate.*
+
+# Ignore crash logs and backups
+*.backup
+*.log
+
+# Ignore your private API keys
+*.pem
+terraform.tfvars
+*.tfplan
+*.tfstate
