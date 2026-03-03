@@ -26,7 +26,7 @@ flowchart TD
 ```
 
 ### Media Network Isolation
-The `media-arr` tools are deliberately segmented so external outbound traffic occurs via a Gluetun VPN container for privacy.
+The `media-arr` tools are deliberately segmented so external outbound traffic occurs via a Gluetun VPN container for privacy. We have parameterized the PUID and PGID values to `${PUID}` and `${PGID}` respectively, removed exposed ports to rely entirely on the `traefik_proxy` external network, and added a robust healthcheck for the gluetun container. The overall routing involves the added Traefik Gateway and Authelia authentication stacks for centralized, secure access.
 ```mermaid
 flowchart LR
     subgraph Host Network

@@ -1,0 +1,13 @@
+- name: Create media-srv group
+  ansible.builtin.group:
+    name: media-srv
+    gid: 1500
+    state: present
+
+- name: Create media-srv user
+  ansible.builtin.user:
+    name: media-srv
+    uid: 1500
+    group: media-srv
+    state: present
+    create_home: no

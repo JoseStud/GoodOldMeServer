@@ -42,6 +42,7 @@ resource "oci_core_instance" "app_server" {
   create_vnic_details {
     subnet_id        = oci_core_subnet.dmz_subnet.id
     assign_public_ip = true
+    nsg_ids          = [oci_core_network_security_group.gateway_nsg.id, oci_core_network_security_group.bastion_nsg.id]
   }
 
   metadata = {
@@ -58,12 +59,82 @@ resource "oci_core_instance" "app_server" {
   # Note: A real implementation requires a source_details block (image_id). 
   # Using a placeholder variable for valid syntax
   source_details {
-    source_type = "image"
-    source_id   = var.oci_image_ocid
+    source_type             = "image"
+    source_id               = var.oci_image_ocid
+    boot_volume_size_in_gbs = 50
   }
 }
 
 variable "oci_image_ocid" { default = "ocid1.image.oc1..." }
+
+resource "oci_core_network_security_group" "gateway_nsg" {
+  compartment_id = var.oci_compartment_ocid
+  vcn_id         = oci_core_vcn.main_vcn.id
+  display_name   = "gateway-nsg"
+}
+
+resource "oci_core_network_security_group_security_rule" "gateway_http" {
+  network_security_group_id = oci_core_network_security_group.gateway_nsg.id
+  direction                 = "INGRESS"
+  protocol                  = "6" # TCP
+  source                    = "0.0.0.0/0"
+  source_type               = "CIDR_BLOCK"
+  tcp_options {
+    destination_port_range {
+      max = 80
+      min = 80
+    }
+  }
+}
+
+resource "oci_core_network_security_group_security_rule" "gateway_https" {
+  network_security_group_id = oci_core_network_security_group.gateway_nsg.id
+  direction                 = "INGRESS"
+  protocol                  = "6" # TCP
+  source                    = "0.0.0.0/0"
+  source_type               = "CIDR_BLOCK"
+  tcp_options {
+    destination_port_range {
+      max = 443
+      min = 443
+    }
+  }
+}
+
+resource "oci_core_network_security_group" "bastion_nsg" {
+  compartment_id = var.oci_compartment_ocid
+  vcn_id         = oci_core_vcn.main_vcn.id
+  display_name   = "bastion-nsg"
+}
+
+resource "oci_core_network_security_group_security_rule" "bastion_ssh" {
+  network_security_group_id = oci_core_network_security_group.bastion_nsg.id
+  direction                 = "INGRESS"
+  protocol                  = "6" # TCP
+  source                    = "0.0.0.0/0"
+  source_type               = "CIDR_BLOCK"
+  tcp_options {
+    destination_port_range {
+      max = 22
+      min = 22
+    }
+  }
+}
+
+resource "oci_core_volume" "app_volume" {
+  count               = 2
+  availability_domain = data.oci_identity_availability_domains.ads.availability_domains[0].name
+  compartment_id      = var.oci_compartment_ocid
+  display_name        = "app-volume-${count.index}"
+  size_in_gbs         = 50
+}
+
+resource "oci_core_volume_attachment" "app_volume_attachment" {
+  count           = 2
+  attachment_type = "paravirtualized"
+  instance_id     = oci_core_instance.app_server[count.index].id
+  volume_id       = oci_core_volume.app_volume[count.index].id
+}
 
 output "public_ips" {
   value = oci_core_instance.app_server[*].public_ip

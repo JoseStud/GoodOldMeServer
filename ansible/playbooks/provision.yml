@@ -16,6 +16,10 @@
       ansible.builtin.ping:
 
     # Add further provisioning roles and tasks below
-    # - name: Run setup role
-    #   ansible.builtin.include_role:
-    #     name: my_app_role
+    - name: Run system_user role
+      ansible.builtin.include_role:
+        name: system_user
+
+    - name: Run storage role
+      ansible.builtin.include_role:
+        name: storage

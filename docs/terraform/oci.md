@@ -1,3 +1,11 @@
+# OCI Infrastructure
+
+## Architectural Details
+Recent updates to the OCI A1 Instances include:
+- Provisioned with 50GB boot volumes.
+- Attached 2x50GB Block storage volumes for application data.
+- Added Network Security Groups (NSGs) for the Gateway (allowing ports 80 and 443) and Bastion (allowing port 22).
+
 ## Requirements
 
 | Name | Version |

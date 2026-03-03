@@ -22,7 +22,7 @@ sequenceDiagram
 
 ### The Provisioning Lifecycle
 The `ansible/playbooks/provision.yml` playbook establishes the desired end-state for a given node:
-1. **Host Preparation**: Basic packages, user group assignments, and firewall definitions.
+1. **Host Preparation**: Basic packages, user group assignments (e.g., `system_user` role creates the `media-srv` user/group with UID 1500), node storage configuration (e.g., `storage` role formats and mounts block storage to `/mnt/app_data`), and firewall definitions.
 2. **Container Runtime Setup**: Installs Docker and configures the daemon.
 3. **Secret Injection Pre-requisites**: Tools required by Infisical for secure credential passing.
 
