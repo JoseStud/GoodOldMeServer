@@ -1,3 +1,4 @@
 [submodule "stacks"]
 	path = stacks
 	url = https://github.com/JoseStud/stacks
+	branch = main
