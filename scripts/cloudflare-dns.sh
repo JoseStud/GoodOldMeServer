@@ -6,7 +6,7 @@
 set -e
 
 # These variables are injected by Infisical from the /infrastructure path
-ZONE_ID="${CLOUDFLARE_ZONE_ID}"
+ZONE_ID="${ZONE_ID}"
 API_TOKEN="${CLOUDFLARE_API_TOKEN}"
 BASE_DOMAIN="${BASE_DOMAIN}"
 

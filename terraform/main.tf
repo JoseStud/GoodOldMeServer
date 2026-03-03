@@ -27,9 +27,18 @@ provider "infisical" {
   host = "https://app.infisical.com"
 }
 
+provider "oci" {
+  tenancy_ocid = local.secrets.oci_tenancy_ocid
+  user_ocid    = local.secrets.oci_user_ocid
+  fingerprint  = local.secrets.oci_fingerprint
+  private_key  = local.secrets.oci_private_key
+  region       = var.oci_region
+}
+
 provider "google" {
-  project = local.secrets.gcp_project_id
-  region  = "us-central1"
+  credentials = local.secrets.gcp_service_account_key
+  project     = jsondecode(local.secrets.gcp_service_account_key).project_id
+  region      = "us-central1"
 }
 
 # ──────────────────────────────────────────────────
@@ -39,16 +48,47 @@ provider "google" {
 data "infisical_secrets" "infra" {
   env_slug     = "prod"
   workspace_id = var.infisical_project_id
-  folder_path  = "/Infrastructure"
+  folder_path  = "/infrastructure"
+}
+
+data "infisical_secrets" "security" {
+  env_slug     = "prod"
+  workspace_id = var.infisical_project_id
+  folder_path  = "/security"
+}
+
+data "infisical_secrets" "oci" {
+  env_slug     = "prod"
+  workspace_id = var.infisical_project_id
+  folder_path  = "/cloud-provider/oci"
+}
+
+data "infisical_secrets" "gcp" {
+  env_slug     = "prod"
+  workspace_id = var.infisical_project_id
+  folder_path  = "/cloud-provider/gcp"
 }
 
 # Map Infisical secret keys to local names for clarity and typo safety
 locals {
   secrets = {
-    oci_compartment_id = data.infisical_secrets.infra.secrets["OCI_COMPARTMENT_ID"].value
-    ssh_ca_public_key  = data.infisical_secrets.infra.secrets["INSTANCE_SSH_PUBKEY"].value
-    gcp_project_id     = data.infisical_secrets.infra.secrets["GCP_PROJECT_ID"].value
-    oci_image_ocid     = data.infisical_secrets.infra.secrets["OCI_IMAGE_OCID"].value
+    # /infrastructure
+    base_domain = data.infisical_secrets.infra.secrets["BASE_DOMAIN"].value
+    tz          = data.infisical_secrets.infra.secrets["TZ"].value
+
+    # /security
+    ssh_ca_public_key = data.infisical_secrets.security.secrets["SSH_CA_PUBLIC_KEY"].value
+
+    # /cloud-provider/oci
+    oci_tenancy_ocid    = data.infisical_secrets.oci.secrets["OCI_TENANCY_OCID"].value
+    oci_user_ocid       = data.infisical_secrets.oci.secrets["OCI_USER_OCID"].value
+    oci_fingerprint     = data.infisical_secrets.oci.secrets["OCI_FINGERPRINT"].value
+    oci_private_key     = data.infisical_secrets.oci.secrets["OCI_PRIVATE_KEY"].value
+    oci_compartment_id  = data.infisical_secrets.oci.secrets["OCI_COMPARTMENT_OCID"].value
+    oci_image_ocid      = data.infisical_secrets.oci.secrets["OCI_IMAGE_OCID"].value
+
+    # /cloud-provider/gcp
+    gcp_service_account_key = data.infisical_secrets.gcp.secrets["GCP_SERVICE_ACCOUNT_KEY"].value
   }
 }
 
@@ -59,6 +99,12 @@ locals {
 variable "infisical_project_id" {
   description = "Infisical workspace/project ID for secret retrieval"
   type        = string
+}
+
+variable "oci_region" {
+  description = "OCI region for the provider"
+  type        = string
+  default     = "us-ashburn-1"
 }
 
 # ──────────────────────────────────────────────────
@@ -74,7 +120,7 @@ module "oci" {
 
 module "gcp" {
   source      = "./gcp"
-  gcp_project = local.secrets.gcp_project_id
+  gcp_project = jsondecode(local.secrets.gcp_service_account_key).project_id
 }
 
 # ──────────────────────────────────────────────────

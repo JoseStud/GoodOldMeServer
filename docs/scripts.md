@@ -20,7 +20,7 @@ Scripts in this repository perform operational tasks, run CI/CD automations, wra
 - **Parameters**: 
   - `$1`: `<STACK_NAME>`
   - `$2`: `<IP_ADDRESS>`
-  - Environment: `CLOUDFLARE_ZONE_ID`, `CLOUDFLARE_API_TOKEN`, `BASE_DOMAIN`
+  - Environment: `ZONE_ID`, `CLOUDFLARE_API_TOKEN`, `BASE_DOMAIN` (from Infisical `/infrastructure`)
 - **Example**: `./scripts/cloudflare-dns.sh portainer 192.168.1.50`
 
 ### `scripts/portainer-deploy.sh`
@@ -28,7 +28,7 @@ Scripts in this repository perform operational tasks, run CI/CD automations, wra
 - **Parameters**: 
   - `$1`: `<STACK_NAME>`
   - `$2`: `<ENV_FILE_PATH>`
-  - Environment: `PORTAINER_URL`, `PORTAINER_TOKEN`, `ENDPOINT_ID` (optional, defaults to 1)
+  - Environment: `PORTAINER_URL`, `PORTAINER_TOKEN`, `ENDPOINT_ID` (from Infisical `/management`)
 - **Example**: `./scripts/portainer-deploy.sh my_stack .env`
 
 > For deployment commands, see the [Deployment Runbook](deployment-runbook.md). For Ansible operations, see the [Ansible docs](ansible.md#running-ansible).

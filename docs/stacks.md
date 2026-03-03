@@ -100,7 +100,22 @@ Data volumes are bind-mounted to GlusterFS for persistence and replication.
 
 ## Environment Variables
 
-All compose files use `${BASE_DOMAIN}` for domain names. Additional per-stack variables are documented in the Infisical secret paths — see [Infisical Workflow](infisical-workflow.md).
+All compose files use `${BASE_DOMAIN}` for domain names and `${TZ}` for timezone. These globals live in `/infrastructure` and are injected into every stack's `.env` by the Infisical Agent — no duplication needed.
+
+Per-stack secrets are in their own Infisical paths:
+
+| Stack | Template | Infisical Path | Stack-Specific Variables |
+|-------|----------|---------------|--------------------------|
+| gateway | `stacks/gateway/.env.tmpl` | `/stacks/gateway` | `DOCKER_SOCKET_PROXY_URL` |
+| auth | `stacks/auth/.env.tmpl` | `/stacks/identity` | `AUTHELIA_JWT_SECRET`, `AUTHELIA_SESSION_SECRET`, `POSTGRES_PASSWORD` |
+| management | `stacks/management/.env.tmpl` | `/stacks/management` | `HOMARR_SECRET_KEY` |
+| network | `stacks/network/.env.tmpl` | `/stacks/network` | `VW_DB_PASS`, `VW_ADMIN_TOKEN`, `PIHOLE_PASSWORD` |
+| observability | `stacks/observability/.env.tmpl` | `/stacks/observability` | `GF_ADMIN_PASSWORD` |
+| ai-interface | `stacks/media/ai-interface/.env.tmpl` | `/stacks/ai-interface` | *(none yet)* |
+| uptime | `stacks/uptime/.env.tmpl` | — | *(globals only)* |
+| cloud | `stacks/cloud/.env.tmpl` | — | *(globals only)* |
+
+See [Infisical Workflow](infisical-workflow.md) for the full variable reference with generation commands.
 
 ## Adding a New Stack
 
