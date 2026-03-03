@@ -23,30 +23,25 @@ jobs:
 
       # 1. Authenticate to Infisical via OIDC to get short-lived tokens and setup CLI
       - name: Setup Infisical
-        uses: Infisical/setup-infisical@v1.1
-        with:
-          version: 'latest'
+        run: |
+          curl -1sLf 'https://artifacts-infisical-core.infisical.com/setup.deb.sh' | sudo -E bash
+          sudo apt-get update && sudo apt-get install -y infisical-core
 
       - name: Infisical OIDC Login
         run: |
           infisical login --method=oidc --oidc-client-id=${{ vars.INFISICAL_MACHINE_IDENTITY_ID }} --domain="https://app.infisical.com"
-          infisical export --project-id=${{ vars.INFISICAL_PROJECT_ID }} --env=prod > .env
 
-      # 2. Setup Cloud credentials using Vault/Infisical secrets or Native Cloud OIDC Action.
+      # 2. Setup Terraform with TFC OIDC and wait for Terraform Cloud run
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
-      - name: Terraform Init
-        working-directory: terraform
-        run: terraform init
-
-      - name: Terraform Apply
-        working-directory: terraform
-        run: |
-          source ../.env
-          terraform apply -auto-approve
-        env:
-          INFISICAL_TOKEN: ${{ env.INFISICAL_TOKEN }} # Needed for Terraform provider
+      - name: Wait for Terraform Cloud Run
+        uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.0
+        id: tfc-run
+        with:
+          workspace: ${{ vars.TFC_WORKSPACE }}
+          configuration_version: ${{ github.sha }}
+          message: "Triggered from GitHub Actions"
 
       # 3. Issue Ephemeral SSH Certificate via Infisical PKI
       - name: Generate Ephemeral SSH Certificate
@@ -58,4 +53,7 @@ jobs:
       # 4. Run Ansible with explicit inventory
       - name: Run Ansible Playbooks
         run: |
-          ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml
+          infisical run --projectId=${{ vars.INFISICAL_PROJECT_ID }} --env=prod -- ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "False"
+          ANSIBLE_SSH_ARGS: "-o CertificateFile=~/.ssh/id_rsa-cert.pub -i ~/.ssh/id_rsa"

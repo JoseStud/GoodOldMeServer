@@ -1,0 +1,21 @@
+---
+- name: Provision Infrastructure
+  hosts: all
+  gather_facts: false # Disable until connection is verified
+  
+  tasks:
+    - name: Wait for ssh connection to become available
+      ansible.builtin.wait_for_connection:
+        delay: 10
+        timeout: 300
+    
+    - name: Gather facts
+      ansible.builtin.setup:
+
+    - name: Verify connection
+      ansible.builtin.ping:
+
+    # Add further provisioning roles and tasks below
+    # - name: Run setup role
+    #   ansible.builtin.include_role:
+    #     name: my_app_role
