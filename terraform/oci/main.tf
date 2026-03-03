@@ -4,12 +4,79 @@ terraform {
   }
 }
 
-variable "oci_compartment_ocid" {}
+# ──────────────────────────────────────────────
+# Variables
+# ──────────────────────────────────────────────
+
+variable "oci_compartment_ocid" {
+  description = "OCI compartment OCID where all resources will be created"
+  type        = string
+
+  validation {
+    condition     = can(regex("^ocid1\\.compartment\\.oc1\\..*$", var.oci_compartment_ocid))
+    error_message = "Must be a valid OCI compartment OCID (ocid1.compartment.oc1...)."
+  }
+}
+
+variable "ssh_ca_public_key" {
+  description = "SSH CA public key injected into instances via cloud-init for certificate-based auth"
+  type        = string
+  sensitive   = true
+}
+
+variable "oci_image_ocid" {
+  description = "OCI image OCID for the worker instances (Ubuntu aarch64)"
+  type        = string
+  # No default — must be explicitly provided to avoid stale/placeholder values
+
+  validation {
+    condition     = can(regex("^ocid1\\.image\\.oc1\\..*$", var.oci_image_ocid))
+    error_message = "Must be a valid OCI image OCID (ocid1.image.oc1...)."
+  }
+}
+
+variable "ssh_allowed_cidr" {
+  description = "CIDR block allowed to SSH into instances (restrict to your IP or VPN range)"
+  type        = string
+  default     = "0.0.0.0/0"
+}
+
+locals {
+  common_tags = {
+    project    = "goodoldme"
+    managed_by = "terraform"
+  }
+}
+
+# ──────────────────────────────────────────────
+# Networking — VCN, Internet Gateway, Subnet
+# ──────────────────────────────────────────────
 
 resource "oci_core_vcn" "main_vcn" {
   compartment_id = var.oci_compartment_ocid
   display_name   = "production-vcn"
   cidr_block     = "10.0.0.0/16"
+  freeform_tags  = local.common_tags
+}
+
+resource "oci_core_internet_gateway" "igw" {
+  compartment_id = var.oci_compartment_ocid
+  vcn_id         = oci_core_vcn.main_vcn.id
+  display_name   = "production-igw"
+  enabled        = true
+  freeform_tags  = local.common_tags
+}
+
+resource "oci_core_default_route_table" "default_rt" {
+  manage_default_resource_id = oci_core_vcn.main_vcn.default_route_table_id
+  display_name               = "production-default-rt"
+  freeform_tags              = local.common_tags
+
+  route_rules {
+    destination       = "0.0.0.0/0"
+    destination_type  = "CIDR_BLOCK"
+    network_entity_id = oci_core_internet_gateway.igw.id
+  }
 }
 
 resource "oci_core_subnet" "dmz_subnet" {
@@ -17,15 +84,17 @@ resource "oci_core_subnet" "dmz_subnet" {
   vcn_id         = oci_core_vcn.main_vcn.id
   cidr_block     = "10.0.1.0/24"
   display_name   = "dmz-subnet"
-  route_table_id = oci_core_vcn.main_vcn.default_route_table_id
+  route_table_id = oci_core_default_route_table.default_rt.id
+  freeform_tags  = local.common_tags
 }
 
-# Assuming an Ampere A1 (Always Free) or similar Data Source for AD.
+# ──────────────────────────────────────────────
+# Compute — Ampere A1.Flex Workers
+# ──────────────────────────────────────────────
+
 data "oci_identity_availability_domains" "ads" {
   compartment_id = var.oci_compartment_ocid
 }
-
-variable "ssh_ca_public_key" {}
 
 resource "oci_core_instance" "app_worker" {
   count               = 2
@@ -56,6 +125,8 @@ resource "oci_core_instance" "app_worker" {
     )
   }
 
+  freeform_tags = local.common_tags
+
   source_details {
     source_type             = "image"
     source_id               = var.oci_image_ocid
@@ -63,12 +134,15 @@ resource "oci_core_instance" "app_worker" {
   }
 }
 
-variable "oci_image_ocid" { default = "ocid1.image.oc1..." }
+# ──────────────────────────────────────────────
+# Network Security Group + Rules
+# ──────────────────────────────────────────────
 
 resource "oci_core_network_security_group" "gateway_nsg" {
   compartment_id = var.oci_compartment_ocid
   vcn_id         = oci_core_vcn.main_vcn.id
   display_name   = "gateway-nsg"
+  freeform_tags  = local.common_tags
 }
 
 resource "oci_core_network_security_group_security_rule" "gateway_http" {
@@ -99,7 +173,24 @@ resource "oci_core_network_security_group_security_rule" "gateway_https" {
   }
 }
 
+resource "oci_core_network_security_group_security_rule" "ssh" {
+  network_security_group_id = oci_core_network_security_group.gateway_nsg.id
+  direction                 = "INGRESS"
+  protocol                  = "6" # TCP
+  source                    = var.ssh_allowed_cidr
+  source_type               = "CIDR_BLOCK"
+  description               = "SSH access — restrict source CIDR in production"
+  tcp_options {
+    destination_port_range {
+      max = 22
+      min = 22
+    }
+  }
+}
 
+# ──────────────────────────────────────────────
+# Block Storage + Backups
+# ──────────────────────────────────────────────
 
 resource "oci_core_volume" "worker_volume" {
   count               = 2
@@ -107,6 +198,7 @@ resource "oci_core_volume" "worker_volume" {
   compartment_id      = var.oci_compartment_ocid
   display_name        = "worker-volume-${count.index}"
   size_in_gbs         = 50
+  freeform_tags       = local.common_tags
 }
 
 data "oci_core_volume_backup_policies" "silver" {
@@ -130,5 +222,6 @@ resource "oci_core_volume_attachment" "worker_volume_attachment" {
 }
 
 output "public_worker_ips" {
-  value = oci_core_instance.app_worker[*].public_ip
+  description = "List of public IPv4 addresses for both OCI worker instances"
+  value       = oci_core_instance.app_worker[*].public_ip
 }

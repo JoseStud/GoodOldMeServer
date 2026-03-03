@@ -1,6 +1,7 @@
 ---
 - name: Provision Infrastructure
   hosts: all
+  become: true
   gather_facts: false # Disable until connection is verified
   
   tasks:
@@ -19,41 +20,73 @@
     - name: Run system_user role
       ansible.builtin.include_role:
         name: system_user
+      tags: [phase1_base]
 
     - name: Run storage role (OCI block volumes)
       ansible.builtin.include_role:
         name: storage
       when: inventory_hostname in groups['oci_nodes']
+      tags: [phase1_base]
 
     # === Phase 2: Docker Engine ===
     - name: Run docker role
       ansible.builtin.include_role:
         name: docker
+      tags: [phase2_docker]
 
     # === Phase 3: Tailscale mesh networking ===
-    - name: Install Tailscale
-      ansible.builtin.shell: curl -fsSL https://tailscale.com/install.sh | sh
-      args:
-        creates: /usr/bin/tailscale
+    - name: Check if Tailscale is already authenticated
+      ansible.builtin.command: tailscale status --json
+      register: tailscale_status
+      ignore_errors: true
+      changed_when: false
+      tags: [phase3_tailscale]
+
+    - name: Install Tailscale via official APT repo
+      block:
+        - name: Add Tailscale signing key
+          ansible.builtin.apt_key:
+            url: https://pkgs.tailscale.com/stable/{{ ansible_distribution | lower }}/{{ ansible_distribution_release }}.noarmor.gpg
+            state: present
+
+        - name: Add Tailscale APT repository
+          ansible.builtin.apt_repository:
+            repo: "deb https://pkgs.tailscale.com/stable/{{ ansible_distribution | lower }} {{ ansible_distribution_release }} main"
+            state: present
+            filename: tailscale
+
+        - name: Install Tailscale package
+          ansible.builtin.apt:
+            name: tailscale
+            state: present
+            update_cache: true
+      when: tailscale_status.rc != 0 or 'BackendState' not in (tailscale_status.stdout | default(''))
+      tags: [phase3_tailscale]
 
     - name: Authenticate Tailscale (Requires TAILSCALE_AUTHKEY env)
-      ansible.builtin.shell: tailscale up --authkey={{ lookup('env', 'TAILSCALE_AUTHKEY') }} --ssh
+      ansible.builtin.command: tailscale up --authkey={{ lookup('env', 'TAILSCALE_AUTHKEY') }} --ssh
       register: tailscale_result
-      failed_when: tailscale_result.rc != 0
+      when: >
+        tailscale_status.rc != 0 or
+        (tailscale_status.stdout | from_json).BackendState | default('') != 'Running'
+      changed_when: tailscale_result.rc == 0
+      tags: [phase3_tailscale]
 
     - name: Verify Tailscale mesh connectivity
-      ansible.builtin.assert:
-        that:
-          - tailscale_result.rc == 0
-        fail_msg: "Tailscale authentication failed — check TAILSCALE_AUTHKEY validity. stderr: {{ tailscale_result.stderr }}"
-        success_msg: "Node successfully joined Tailscale mesh"
+      ansible.builtin.command: tailscale status
+      register: tailscale_verify
+      changed_when: false
+      failed_when: tailscale_verify.rc != 0
+      tags: [phase3_tailscale]
 
-    # === Phase 4: GlusterFS distributed storage (OCI nodes only) ===
+    # === Phase 4: GlusterFS distributed storage (OCI nodes + GCP arbiter) ===
     - name: Run glusterfs role
       ansible.builtin.include_role:
         name: glusterfs
+      tags: [phase4_glusterfs]
 
     # === Phase 5: Swarm bootstrap over Tailscale (includes overlay network) ===
     - name: Run swarm role
       ansible.builtin.include_role:
         name: swarm
+      tags: [phase5_swarm]

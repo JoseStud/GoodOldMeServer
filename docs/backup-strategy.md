@@ -8,7 +8,7 @@ This document covers data protection across all layers: OCI block volume backups
 flowchart TD
     subgraph Backup Layers
         L1[Layer 1: OCI Block Volume Backups<br/>Silver policy — daily, 5 retention]
-        L2[Layer 2: GlusterFS Replica-2<br/>Real-time redundancy between 2 OCI nodes]
+        L2[Layer 2: GlusterFS Replica-3-Arbiter-1<br/>Real-time redundancy between 2 OCI bricks + GCP arbiter]
         L3[Layer 3: Application-Level<br/>Database dumps, config exports]
     end
 
@@ -81,14 +81,15 @@ Since GlusterFS replicates this data between both nodes, backing up either volum
 
 ## Layer 2: GlusterFS Redundancy
 
-> **Important:** Replica-2 provides **real-time redundancy**, not **point-in-time backup**. If data is deleted or corrupted, the deletion/corruption replicates to both nodes immediately.
+> **Important:** Replica-3-arbiter-1 provides **real-time redundancy**, not **point-in-time backup**. If data is deleted or corrupted, the deletion/corruption replicates immediately. The GCP arbiter participates in quorum and prevents split-brain but does **not** store a full data copy.
 
 ### What It Provides
 
 | Scenario | Protected? |
 |----------|------------|
-| Single node failure (hardware, network) | Yes — other node has full copy |
-| Accidental file deletion | **No** — deletion replicates to both nodes |
+| Single OCI node failure | Yes — other OCI node has full copy, arbiter maintains quorum |
+| Split-brain during network partition | Yes — arbiter provides tie-breaking vote |
+| Accidental file deletion | **No** — deletion replicates to both OCI nodes immediately |
 | Data corruption | **No** — corruption may replicate before detection |
 | Ransomware / malicious modification | **No** — changes replicate immediately |
 
@@ -197,5 +198,5 @@ Authelia's config directory is bind-mounted from GlusterFS (`/mnt/swarm-shared/a
 
 1. **Automate Vaultwarden backups** — Add a cron job or script to run `pg_dump` daily and store dumps outside GlusterFS (e.g., upload to object storage)
 2. **Test restores regularly** — Spin up a temporary volume from an OCI backup quarterly to verify data integrity
-3. **Consider adding an arbiter** — A GlusterFS arbiter node (e.g., on the GCP witness) would prevent split-brain without full replication overhead
+3. ~~Consider adding an arbiter~~ — **Done**: GCP witness now serves as the GlusterFS arbiter node, preventing split-brain without full replication overhead
 4. **Monitor backup status** — Use the OCI Console or API to verify backup policy compliance; add an Uptime Kuma check for backup age if possible

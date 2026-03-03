@@ -1,6 +1,40 @@
-variable "gcp_project" {}
-variable "gcp_region" { default = "us-central1" }
-variable "gcp_zone" { default = "us-central1-a" }
+# ──────────────────────────────────────────────────
+# Variables
+# ──────────────────────────────────────────────────
+
+variable "gcp_project" {
+  description = "GCP project ID (injected from Infisical)"
+  type        = string
+}
+
+variable "gcp_region" {
+  description = "GCP region for the subnet and resources"
+  type        = string
+  default     = "us-central1"
+}
+
+variable "gcp_zone" {
+  description = "GCP zone for the compute instance"
+  type        = string
+  default     = "us-central1-a"
+}
+
+variable "ssh_allowed_cidrs" {
+  description = "List of CIDR blocks allowed to SSH into the witness instance"
+  type        = list(string)
+  default     = ["0.0.0.0/0", "::/0"]
+}
+
+locals {
+  common_labels = {
+    project    = "goodoldme"
+    managed_by = "terraform"
+  }
+}
+
+# ──────────────────────────────────────────────────
+# Networking — VPC, Subnet, Firewall
+# ──────────────────────────────────────────────────
 
 resource "google_compute_network" "vpc_network" {
   name                    = "hybrid-swarm-network"
@@ -17,24 +51,54 @@ resource "google_compute_subnetwork" "ipv6_subnet" {
   ipv6_access_type = "EXTERNAL"
 }
 
-resource "google_compute_firewall" "allow_icmpv6" {
-  name    = "allow-icmpv6"
+# Allow ICMPv4 from all IPv4 sources
+resource "google_compute_firewall" "allow_icmp" {
+  name    = "allow-icmp"
   network = google_compute_network.vpc_network.name
 
   allow {
     protocol = "icmp"
   }
+
+  source_ranges = ["0.0.0.0/0"]
+}
+
+# Allow ICMPv6 from all IPv6 sources
+resource "google_compute_firewall" "allow_icmpv6" {
+  name    = "allow-icmpv6"
+  network = google_compute_network.vpc_network.name
+
   allow {
-    protocol = "58" # IPv6-ICMP
+    protocol = "58" # ICMPv6
   }
 
   source_ranges = ["::/0"]
 }
 
+# Allow SSH for initial Ansible connectivity
+resource "google_compute_firewall" "allow_ssh" {
+  name    = "allow-ssh"
+  network = google_compute_network.vpc_network.name
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+
+  source_ranges = var.ssh_allowed_cidrs
+  target_tags   = ["ssh-access"]
+}
+
+# ──────────────────────────────────────────────────
+# Compute — Swarm Witness (e2-micro)
+# ──────────────────────────────────────────────────
+
 resource "google_compute_instance" "witness" {
   name         = "swarm-witness"
   machine_type = "e2-micro"
   zone         = var.gcp_zone
+  labels       = local.common_labels
+  tags         = ["ssh-access"]
 
   boot_disk {
     initialize_params {
@@ -53,6 +117,11 @@ resource "google_compute_instance" "witness" {
   }
 }
 
+# ──────────────────────────────────────────────────
+# Outputs
+# ──────────────────────────────────────────────────
+
 output "witness_ipv6" {
-  value = google_compute_instance.witness.network_interface[0].ipv6_access_config[0].external_ipv6
+  description = "External IPv6 address of the Swarm witness instance"
+  value       = google_compute_instance.witness.network_interface[0].ipv6_access_config[0].external_ipv6
 }

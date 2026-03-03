@@ -19,6 +19,12 @@ fi
 STACK_NAME="$1"
 IP_ADDRESS="$2"
 
+# Validate IP address format
+if ! echo "$IP_ADDRESS" | grep -qE '^([0-9]{1,3}\.){3}[0-9]{1,3}$'; then
+    echo "Error: '$IP_ADDRESS' is not a valid IPv4 address."
+    exit 1
+fi
+
 # Automatically construct the subdomain
 RECORD_NAME="${STACK_NAME}.${BASE_DOMAIN}"
 RECORD_TYPE="A"
@@ -32,7 +38,7 @@ echo "Checking for existing DNS record..."
 # 1. Get the Record ID if it exists
 RECORD_ID=$(curl -s -X GET "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records?type=${RECORD_TYPE}&name=${RECORD_NAME}" \
      -H "Authorization: Bearer ${API_TOKEN}" \
-     -H "Content-Type: application/json" | jq -r '{"result"}[] | .[0] | .id')
+     -H "Content-Type: application/json" | jq -r '.result[0].id')
 
 # Build the JSON payload
 PAYLOAD=$(cat <<EOF

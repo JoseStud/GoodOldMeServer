@@ -1,0 +1,5 @@
+---
+service_user: media-srv
+service_uid: 1500
+service_group: media-srv
+service_gid: 1500

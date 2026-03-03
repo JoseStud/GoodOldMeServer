@@ -5,11 +5,49 @@
   ignore_errors: true
   changed_when: false
 
-- name: Install Docker Engine via convenience script
-  ansible.builtin.shell: curl -fsSL https://get.docker.com | sh
-  args:
-    creates: /usr/bin/docker
+- name: Install Docker Engine via official APT repository
   when: docker_check.rc != 0
+  block:
+    - name: Install prerequisites for Docker APT repo
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+        state: present
+        update_cache: true
+
+    - name: Create keyrings directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Add Docker GPG key
+      ansible.builtin.apt_key:
+        url: "https://download.docker.com/linux/{{ ansible_distribution | lower }}/gpg"
+        keyring: /etc/apt/keyrings/docker.gpg
+        state: present
+
+    - name: Add Docker APT repository
+      ansible.builtin.apt_repository:
+        repo: >-
+          deb [arch={{ ansible_architecture | replace('x86_64', 'amd64') | replace('aarch64', 'arm64') }}
+          signed-by=/etc/apt/keyrings/docker.gpg]
+          https://download.docker.com/linux/{{ ansible_distribution | lower }}
+          {{ ansible_distribution_release }} stable
+        state: present
+        filename: docker
+
+    - name: Install Docker CE packages
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+        update_cache: true
 
 - name: Ensure Docker service is started and enabled
   ansible.builtin.systemd:
@@ -19,6 +57,6 @@
 
 - name: Add provisioned user to docker group
   ansible.builtin.user:
-    name: media-srv
+    name: "{{ service_user }}"
     groups: docker
     append: true

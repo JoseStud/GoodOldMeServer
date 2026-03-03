@@ -1,14 +1,40 @@
 terraform {
+  required_version = ">= 1.5.0"
+
   required_providers {
     oci       = { source = "oracle/oci", version = "~> 5.0" }
     google    = { source = "hashicorp/google", version = "~> 5.0" }
     infisical = { source = "Infisical/infisical", version = ">= 0.8.0" }
   }
+
+  # TODO: Configure a remote backend for state persistence and locking.
+  # Options: OCI Object Storage (S3-compatible), GCS, or Terraform Cloud.
+  # Example:
+  # backend "s3" {
+  #   bucket   = "goodoldme-tf-state"
+  #   key      = "terraform.tfstate"
+  #   region   = "us-ashburn-1"
+  #   endpoint = "https://<namespace>.compat.objectstorage.<region>.oraclecloud.com"
+  #   ...
+  # }
 }
+
+# ──────────────────────────────────────────────────
+# Providers
+# ──────────────────────────────────────────────────
 
 provider "infisical" {
   host = "https://app.infisical.com"
 }
+
+provider "google" {
+  project = local.secrets.gcp_project_id
+  region  = "us-central1"
+}
+
+# ──────────────────────────────────────────────────
+# Secrets from Infisical
+# ──────────────────────────────────────────────────
 
 data "infisical_secrets" "infra" {
   env_slug     = "prod"
@@ -16,25 +42,51 @@ data "infisical_secrets" "infra" {
   folder_path  = "/Infrastructure"
 }
 
-variable "infisical_project_id" {
-  type = string
+# Map Infisical secret keys to local names for clarity and typo safety
+locals {
+  secrets = {
+    oci_compartment_id = data.infisical_secrets.infra.secrets["OCI_COMPARTMENT_ID"].value
+    ssh_ca_public_key  = data.infisical_secrets.infra.secrets["INSTANCE_SSH_PUBKEY"].value
+    gcp_project_id     = data.infisical_secrets.infra.secrets["GCP_PROJECT_ID"].value
+    oci_image_ocid     = data.infisical_secrets.infra.secrets["OCI_IMAGE_OCID"].value
+  }
 }
+
+# ──────────────────────────────────────────────────
+# Variables
+# ──────────────────────────────────────────────────
+
+variable "infisical_project_id" {
+  description = "Infisical workspace/project ID for secret retrieval"
+  type        = string
+}
+
+# ──────────────────────────────────────────────────
+# Modules
+# ──────────────────────────────────────────────────
 
 module "oci" {
   source               = "./oci"
-  oci_compartment_ocid = data.infisical_secrets.infra.secrets["OCI_COMPARTMENT_ID"].value
-  ssh_ca_public_key    = data.infisical_secrets.infra.secrets["INSTANCE_SSH_PUBKEY"].value # For ephemeral SSH, make sure this holds the SSH CA Public Key
+  oci_compartment_ocid = local.secrets.oci_compartment_id
+  ssh_ca_public_key    = local.secrets.ssh_ca_public_key
+  oci_image_ocid       = local.secrets.oci_image_ocid
 }
 
 module "gcp" {
   source      = "./gcp"
-  gcp_project = data.infisical_secrets.infra.secrets["GCP_PROJECT_ID"].value
+  gcp_project = local.secrets.gcp_project_id
 }
 
+# ──────────────────────────────────────────────────
+# Outputs
+# ──────────────────────────────────────────────────
+
 output "oci_public_ips" {
-  value = module.oci.public_worker_ips
+  description = "Public IPv4 addresses of the OCI worker instances"
+  value       = module.oci.public_worker_ips
 }
 
 output "gcp_witness_ipv6" {
-  value = module.gcp.witness_ipv6
+  description = "External IPv6 address of the GCP Swarm witness instance"
+  value       = module.gcp.witness_ipv6
 }

@@ -1,0 +1,7 @@
+---
+service_user: media-srv
+service_uid: 1500
+service_group: media-srv
+service_gid: 1500
+block_device: /dev/sdb
+mount_point: /mnt/app_data

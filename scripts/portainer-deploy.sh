@@ -23,14 +23,17 @@ fi
 ENDPOINT_ID=${ENDPOINT_ID:-1}
 
 # 1. Read .env file into Portainer JSON format
-# It skips empty lines and comments, splits by first '='
-ENV_JSON=$(grep -v '^#' "$ENV_FILE" | grep -v '^$' | awk -F '=' '{
-  key=$1;
-  sub(/^[^=]+=/,"");
-  val=$0;
-  gsub(/"/, "\\\"", val);
-  printf "{\"name\": \"%s\", \"value\": \"%s\"},\n", key, val;
-}' | sed '$ s/,$//')
+# Skips empty lines and comments, splits on first '=' only
+ENV_JSON=$(grep -v '^#' "$ENV_FILE" | grep -v '^$' | while IFS= read -r line; do
+  key="${line%%=*}"
+  val="${line#*=}"
+  # Strip surrounding quotes if present
+  val="${val#\"}"
+  val="${val%\"}"
+  # Escape inner double quotes for JSON
+  val="${val//\"/\\\"}"
+  printf '{"name": "%s", "value": "%s"},' "$key" "$val"
+done | sed 's/,$//')
 
 ENV_JSON="[${ENV_JSON}]"
 
@@ -63,10 +66,11 @@ EOF
 
 echo "Updating stack $STACK_NAME..."
 
-RESPONSE=$(curl -s -w "%{http_code}" -X PUT -H "Content-Type: application/json" -H "X-API-Key: ${PORTAINER_TOKEN}" -d "$PAYLOAD" "${PORTAINER_URL}/api/stacks/$STACK_ID?endpointId=$ENDPOINT_ID")
+RESPONSE=$(curl -s -o /tmp/portainer_response.json -w "%{http_code}" -X PUT -H "Content-Type: application/json" -H "X-API-Key: ${PORTAINER_TOKEN}" -d "$PAYLOAD" "${PORTAINER_URL}/api/stacks/$STACK_ID?endpointId=$ENDPOINT_ID")
 
-HTTP_STATUS=$(echo "$RESPONSE" | tr -d '\n' | sed -e 's/.*\([0-9]\{3\}\)$/\1/')
-BODY=$(echo "$RESPONSE" | sed -e 's/[0-9]\{3\}$//')
+HTTP_STATUS="$RESPONSE"
+BODY=$(cat /tmp/portainer_response.json)
+rm -f /tmp/portainer_response.json
 
 if [ "$HTTP_STATUS" -eq 200 ] || [ "$HTTP_STATUS" -eq 204 ]; then
     echo "Successfully updated stack $STACK_NAME."

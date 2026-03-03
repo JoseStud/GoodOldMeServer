@@ -64,30 +64,48 @@
 
 # --- Assign node labels (run from first manager) ---
 
-- name: Get Swarm node IDs and hostnames
-  ansible.builtin.command: docker node ls --format '{{ '{{' }}.ID{{ '}}' }} {{ '{{' }}.Hostname{{ '}}' }}'
+- name: Get Swarm node list (ID and Hostname)
+  ansible.builtin.command: docker node ls --format '{{ '{{' }}.ID{{ '}}' }},{{ '{{' }}.Hostname{{ '}}' }}'
   register: swarm_nodes
   changed_when: false
   when: inventory_hostname == groups['oci_nodes'][0]
 
+- name: Build hostname-to-nodeID mapping
+  ansible.builtin.set_fact:
+    swarm_node_map: >-
+      {{ swarm_node_map | default({}) | combine({item.split(',')[1]: item.split(',')[0]}) }}
+  loop: "{{ swarm_nodes.stdout_lines | default([]) }}"
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Gather all node hostnames
+  ansible.builtin.command: hostname
+  register: node_hostname
+  changed_when: false
+
 - name: Label OCI nodes with location=cloud
   ansible.builtin.command: >
-    docker node update --label-add location=cloud {{ item }}
+    docker node update --label-add location=cloud {{ swarm_node_map[hostvars[item].node_hostname.stdout | trim] }}
   loop: "{{ groups['oci_nodes'] }}"
-  when: inventory_hostname == groups['oci_nodes'][0]
+  when:
+    - inventory_hostname == groups['oci_nodes'][0]
+    - swarm_node_map is defined
+    - hostvars[item].node_hostname.stdout | trim in swarm_node_map
   changed_when: false
 
 - name: Label GCP witness with role=witness
   ansible.builtin.command: >
-    docker node update --label-add role=witness {{ item }}
+    docker node update --label-add role=witness {{ swarm_node_map[hostvars[item].node_hostname.stdout | trim] }}
   loop: "{{ groups['gcp_witness'] }}"
-  when: inventory_hostname == groups['oci_nodes'][0]
+  when:
+    - inventory_hostname == groups['oci_nodes'][0]
+    - swarm_node_map is defined
+    - hostvars[item].node_hostname.stdout | trim in swarm_node_map
   changed_when: false
 
 # --- Create overlay network (requires active Swarm) ---
 
 - name: Create Global Swarm Mesh Network
-  docker_network:
+  community.docker.docker_network:
     name: traefik_proxy
     driver: overlay
     attachable: yes
