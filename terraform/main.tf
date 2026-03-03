@@ -1,7 +1,7 @@
 terraform {
   required_providers {
-    oci = { source = "oracle/oci", version = "~> 5.0" }
-    google = { source = "hashicorp/google", version = "~> 5.0" }
+    oci       = { source = "oracle/oci", version = "~> 5.0" }
+    google    = { source = "hashicorp/google", version = "~> 5.0" }
     infisical = { source = "Infisical/infisical", version = ">= 0.8.0" }
   }
 }

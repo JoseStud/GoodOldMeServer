@@ -23,3 +23,20 @@
     - name: Run storage role
       ansible.builtin.include_role:
         name: storage
+
+    - name: Install Tailscale
+      ansible.builtin.shell: curl -fsSL https://tailscale.com/install.sh | sh
+      args:
+        creates: /usr/bin/tailscale
+
+    - name: Authenticate Tailscale (Requires TAILSCALE_AUTHKEY env)
+      ansible.builtin.shell: tailscale up --authkey={{ lookup('env', 'TAILSCALE_AUTHKEY') }} --ssh
+      ignore_errors: true
+
+    - name: Create Global Swarm Mesh Network
+      docker_network:
+        name: traefik_proxy
+        driver: overlay
+        attachable: yes
+        state: present
+      run_once: true

@@ -27,12 +27,12 @@ data "oci_identity_availability_domains" "ads" {
 
 variable "ssh_ca_public_key" {}
 
-resource "oci_core_instance" "app_server" {
+resource "oci_core_instance" "app_worker" {
   count               = 2
   availability_domain = data.oci_identity_availability_domains.ads.availability_domains[0].name
   compartment_id      = var.oci_compartment_ocid
-  shape               = "VM.Standard.A1.Flex" # Good for always free
-  display_name        = "app-server-${count.index}"
+  shape               = "VM.Standard.A1.Flex"
+  display_name        = "app-worker-${count.index + 1}"
 
   shape_config {
     ocpus         = 2
@@ -55,9 +55,7 @@ resource "oci_core_instance" "app_server" {
     EOF
     )
   }
-  
-  # Note: A real implementation requires a source_details block (image_id). 
-  # Using a placeholder variable for valid syntax
+
   source_details {
     source_type             = "image"
     source_id               = var.oci_image_ocid
@@ -121,21 +119,34 @@ resource "oci_core_network_security_group_security_rule" "bastion_ssh" {
   }
 }
 
-resource "oci_core_volume" "app_volume" {
+resource "oci_core_volume" "worker_volume" {
   count               = 2
   availability_domain = data.oci_identity_availability_domains.ads.availability_domains[0].name
   compartment_id      = var.oci_compartment_ocid
-  display_name        = "app-volume-${count.index}"
+  display_name        = "worker-volume-${count.index}"
   size_in_gbs         = 50
 }
 
-resource "oci_core_volume_attachment" "app_volume_attachment" {
-  count           = 2
-  attachment_type = "paravirtualized"
-  instance_id     = oci_core_instance.app_server[count.index].id
-  volume_id       = oci_core_volume.app_volume[count.index].id
+data "oci_core_volume_backup_policies" "silver" {
+  filter {
+    name   = "display_name"
+    values = ["silver"]
+  }
 }
 
-output "public_ips" {
-  value = oci_core_instance.app_server[*].public_ip
+resource "oci_core_volume_backup_policy_assignment" "worker_volume_backup" {
+  count     = 2
+  asset_id  = oci_core_volume.worker_volume[count.index].id
+  policy_id = data.oci_core_volume_backup_policies.silver.volume_backup_policies[0].id
+}
+
+resource "oci_core_volume_attachment" "worker_volume_attachment" {
+  count           = 2
+  attachment_type = "paravirtualized"
+  instance_id     = oci_core_instance.app_worker[count.index].id
+  volume_id       = oci_core_volume.worker_volume[count.index].id
+}
+
+output "public_worker_ips" {
+  value = oci_core_instance.app_worker[*].public_ip
 }
