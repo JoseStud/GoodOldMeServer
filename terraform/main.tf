@@ -32,9 +32,9 @@ module "gcp" {
 }
 
 output "oci_public_ips" {
-  value = module.oci.public_ips
+  value = module.oci.public_worker_ips
 }
 
-output "gcp_witness_public_ip" {
-  value = module.gcp.witness_public_ip
+output "gcp_witness_ipv6" {
+  value = module.gcp.witness_ipv6
 }

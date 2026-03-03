@@ -1,0 +1,95 @@
+---
+# Swarm bootstrap role — initializes a 3-manager Swarm over Tailscale mesh
+# Expects: Docker installed, Tailscale authenticated on all nodes
+
+- name: Gather Tailscale IPv4 address
+  ansible.builtin.command: tailscale ip -4
+  register: tailscale_ipv4
+  changed_when: false
+
+- name: Set Tailscale IP fact
+  ansible.builtin.set_fact:
+    ts_ip: "{{ tailscale_ipv4.stdout | trim }}"
+
+- name: Check if node is already in a Swarm
+  ansible.builtin.command: docker info --format '{{ '{{' }} .Swarm.LocalNodeState {{ '}}' }}'
+  register: swarm_state
+  changed_when: false
+
+# --- Initialize Swarm on first OCI node ---
+
+- name: Initialize Docker Swarm on first manager
+  ansible.builtin.command: >
+    docker swarm init
+    --advertise-addr {{ ts_ip }}
+    --listen-addr {{ ts_ip }}:2377
+  register: swarm_init
+  when:
+    - inventory_hostname == groups['oci_nodes'][0]
+    - swarm_state.stdout != 'active'
+
+- name: Get manager join token
+  ansible.builtin.command: docker swarm join-token -q manager
+  register: manager_token_result
+  changed_when: false
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Set manager token fact on first node
+  ansible.builtin.set_fact:
+    swarm_manager_token: "{{ manager_token_result.stdout | trim }}"
+    swarm_first_manager_ip: "{{ ts_ip }}"
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+# --- Join remaining nodes as managers ---
+
+- name: Join second OCI node as manager
+  ansible.builtin.command: >
+    docker swarm join
+    --token {{ hostvars[groups['oci_nodes'][0]].swarm_manager_token }}
+    --advertise-addr {{ ts_ip }}
+    {{ hostvars[groups['oci_nodes'][0]].swarm_first_manager_ip }}:2377
+  when:
+    - inventory_hostname == groups['oci_nodes'][1]
+    - swarm_state.stdout != 'active'
+
+- name: Join GCP witness as manager
+  ansible.builtin.command: >
+    docker swarm join
+    --token {{ hostvars[groups['oci_nodes'][0]].swarm_manager_token }}
+    --advertise-addr {{ ts_ip }}
+    {{ hostvars[groups['oci_nodes'][0]].swarm_first_manager_ip }}:2377
+  when:
+    - inventory_hostname in groups['gcp_witness']
+    - swarm_state.stdout != 'active'
+
+# --- Assign node labels (run from first manager) ---
+
+- name: Get Swarm node IDs and hostnames
+  ansible.builtin.command: docker node ls --format '{{ '{{' }}.ID{{ '}}' }} {{ '{{' }}.Hostname{{ '}}' }}'
+  register: swarm_nodes
+  changed_when: false
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Label OCI nodes with location=cloud
+  ansible.builtin.command: >
+    docker node update --label-add location=cloud {{ item }}
+  loop: "{{ groups['oci_nodes'] }}"
+  when: inventory_hostname == groups['oci_nodes'][0]
+  changed_when: false
+
+- name: Label GCP witness with role=witness
+  ansible.builtin.command: >
+    docker node update --label-add role=witness {{ item }}
+  loop: "{{ groups['gcp_witness'] }}"
+  when: inventory_hostname == groups['oci_nodes'][0]
+  changed_when: false
+
+# --- Create overlay network (requires active Swarm) ---
+
+- name: Create Global Swarm Mesh Network
+  docker_network:
+    name: traefik_proxy
+    driver: overlay
+    attachable: yes
+    state: present
+  run_once: true

@@ -15,15 +15,22 @@
     - name: Verify connection
       ansible.builtin.ping:
 
-    # Add further provisioning roles and tasks below
+    # === Phase 1: Base system setup ===
     - name: Run system_user role
       ansible.builtin.include_role:
         name: system_user
 
-    - name: Run storage role
+    - name: Run storage role (OCI block volumes)
       ansible.builtin.include_role:
         name: storage
+      when: inventory_hostname in groups['oci_nodes']
 
+    # === Phase 2: Docker Engine ===
+    - name: Run docker role
+      ansible.builtin.include_role:
+        name: docker
+
+    # === Phase 3: Tailscale mesh networking ===
     - name: Install Tailscale
       ansible.builtin.shell: curl -fsSL https://tailscale.com/install.sh | sh
       args:
@@ -31,12 +38,22 @@
 
     - name: Authenticate Tailscale (Requires TAILSCALE_AUTHKEY env)
       ansible.builtin.shell: tailscale up --authkey={{ lookup('env', 'TAILSCALE_AUTHKEY') }} --ssh
-      ignore_errors: true
+      register: tailscale_result
+      failed_when: tailscale_result.rc != 0
 
-    - name: Create Global Swarm Mesh Network
-      docker_network:
-        name: traefik_proxy
-        driver: overlay
-        attachable: yes
-        state: present
-      run_once: true
+    - name: Verify Tailscale mesh connectivity
+      ansible.builtin.assert:
+        that:
+          - tailscale_result.rc == 0
+        fail_msg: "Tailscale authentication failed — check TAILSCALE_AUTHKEY validity. stderr: {{ tailscale_result.stderr }}"
+        success_msg: "Node successfully joined Tailscale mesh"
+
+    # === Phase 4: GlusterFS distributed storage (OCI nodes only) ===
+    - name: Run glusterfs role
+      ansible.builtin.include_role:
+        name: glusterfs
+
+    # === Phase 5: Swarm bootstrap over Tailscale (includes overlay network) ===
+    - name: Run swarm role
+      ansible.builtin.include_role:
+        name: swarm

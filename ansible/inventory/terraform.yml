@@ -3,7 +3,9 @@ project_path: ../../terraform
 inventory_hostname:
   - public_ip
 groups:
-  oci_nodes: "true"
+  oci_nodes: "'oci' in provider"
+  gcp_witness: "'google' in provider"
 compose:
-  ansible_host: public_ip
-  ansible_user: "'ubuntu'"
+  # OCI nodes use public IPv4
+  ansible_host: public_ip | default(witness_ipv6, true)
+  ansible_user: "'ubuntu' if 'oci' in provider else 'debian'"

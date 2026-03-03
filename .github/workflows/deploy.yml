@@ -35,13 +35,19 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
-      - name: Wait for Terraform Cloud Run
+      - name: Create Terraform Cloud Run
         uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.0
         id: tfc-run
         with:
           workspace: ${{ vars.TFC_WORKSPACE }}
           configuration_version: ${{ github.sha }}
           message: "Triggered from GitHub Actions"
+
+      - name: Wait for Terraform Apply to Complete
+        uses: hashicorp/tfc-workflows-github/actions/apply-run@v1.0.0
+        with:
+          run: ${{ steps.tfc-run.outputs.run_id }}
+          comment: "Applied from GitHub Actions deploy workflow"
 
       # 3. Issue Ephemeral SSH Certificate via Infisical PKI
       - name: Generate Ephemeral SSH Certificate
@@ -50,10 +56,16 @@ jobs:
           ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ""
           infisical pki sign ssh --public-key=~/.ssh/id_rsa.pub --project-id=${{ vars.INFISICAL_PROJECT_ID }} --env=prod > ~/.ssh/id_rsa-cert.pub
 
-      # 4. Run Ansible with explicit inventory
+      # 4. Fetch SSH Host CA for host key verification
+      - name: Setup SSH Host Key Verification
+        run: |
+          infisical secrets get SSH_HOST_CA_PUBKEY --projectId=${{ vars.INFISICAL_PROJECT_ID }} --env=prod --plain > /tmp/host_ca.pub
+          echo "@cert-authority * $(cat /tmp/host_ca.pub)" >> ~/.ssh/known_hosts
+          rm /tmp/host_ca.pub
+
+      # 5. Run Ansible with explicit inventory
       - name: Run Ansible Playbooks
         run: |
           infisical run --projectId=${{ vars.INFISICAL_PROJECT_ID }} --env=prod -- ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml
         env:
-          ANSIBLE_HOST_KEY_CHECKING: "False"
           ANSIBLE_SSH_ARGS: "-o CertificateFile=~/.ssh/id_rsa-cert.pub -i ~/.ssh/id_rsa"

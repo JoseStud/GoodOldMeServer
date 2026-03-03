@@ -1,0 +1,140 @@
+---
+# GlusterFS role — targets OCI worker nodes only
+# Expects: storage role has already mounted /dev/sdb1 at /mnt/app_data
+
+- name: Install GlusterFS server
+  ansible.builtin.apt:
+    name: glusterfs-server
+    state: present
+    update_cache: true
+  when: inventory_hostname in groups['oci_nodes']
+
+- name: Start and enable glusterd service
+  ansible.builtin.systemd:
+    name: glusterd
+    state: started
+    enabled: true
+  when: inventory_hostname in groups['oci_nodes']
+
+- name: Gather Tailscale IPv4 address
+  ansible.builtin.command: tailscale ip -4
+  register: tailscale_ipv4
+  changed_when: false
+  when: inventory_hostname in groups['oci_nodes']
+
+- name: Set Tailscale IP fact
+  ansible.builtin.set_fact:
+    ts_ip: "{{ tailscale_ipv4.stdout | trim }}"
+  when: inventory_hostname in groups['oci_nodes']
+
+- name: Create GlusterFS brick directory on block volume
+  ansible.builtin.file:
+    path: /mnt/app_data/gluster_brick
+    state: directory
+    owner: media-srv
+    group: media-srv
+    mode: '0755'
+  when: inventory_hostname in groups['oci_nodes']
+
+- name: Probe GlusterFS peer (from first OCI node to second)
+  ansible.builtin.command: >
+    gluster peer probe {{ hostvars[groups['oci_nodes'][1]].ts_ip }}
+  register: peer_probe
+  changed_when: "'already in peer list' not in peer_probe.stdout"
+  failed_when: peer_probe.rc != 0 and 'already in peer list' not in peer_probe.stdout
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Probe GlusterFS peer (from second OCI node to first)
+  ansible.builtin.command: >
+    gluster peer probe {{ hostvars[groups['oci_nodes'][0]].ts_ip }}
+  register: peer_probe_reverse
+  changed_when: "'already in peer list' not in peer_probe_reverse.stdout"
+  failed_when: peer_probe_reverse.rc != 0 and 'already in peer list' not in peer_probe_reverse.stdout
+  when: inventory_hostname == groups['oci_nodes'][1]
+
+- name: Check if GlusterFS volume already exists
+  ansible.builtin.command: gluster volume info swarm_data
+  register: gluster_vol_check
+  ignore_errors: true
+  changed_when: false
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Create GlusterFS replica 2 volume
+  ansible.builtin.command: >
+    gluster volume create swarm_data replica 2 transport tcp
+    {{ hostvars[groups['oci_nodes'][0]].ts_ip }}:/mnt/app_data/gluster_brick
+    {{ hostvars[groups['oci_nodes'][1]].ts_ip }}:/mnt/app_data/gluster_brick
+    force
+  when:
+    - inventory_hostname == groups['oci_nodes'][0]
+    - gluster_vol_check.rc != 0
+
+- name: Start GlusterFS volume
+  ansible.builtin.command: gluster volume start swarm_data
+  register: gluster_start
+  changed_when: "'already started' not in gluster_start.stdout"
+  failed_when: gluster_start.rc != 0 and 'already started' not in gluster_start.stdout
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Install GlusterFS client (for mount)
+  ansible.builtin.apt:
+    name: glusterfs-client
+    state: present
+  when: inventory_hostname in groups['oci_nodes']
+
+- name: Create GlusterFS mount point
+  ansible.builtin.file:
+    path: /mnt/swarm-shared
+    state: directory
+    owner: media-srv
+    group: media-srv
+    mode: '0755'
+  when: inventory_hostname in groups['oci_nodes']
+
+- name: Mount GlusterFS volume
+  ansible.posix.mount:
+    path: /mnt/swarm-shared
+    src: "localhost:/swarm_data"
+    fstype: glusterfs
+    opts: "defaults,_netdev"
+    state: mounted
+  when: inventory_hostname in groups['oci_nodes']
+
+# Pre-create all shared directories for stacks
+- name: Create shared directory structure
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: media-srv
+    group: media-srv
+    mode: '0755'
+  loop:
+    # Auth
+    - /mnt/swarm-shared/auth/authelia/config
+    # AI interface
+    - /mnt/swarm-shared/ai-interface/open-webui
+    - /mnt/swarm-shared/ai-interface/openclaw/config
+    # Observability
+    - /mnt/swarm-shared/observability/prometheus_data
+    - /mnt/swarm-shared/observability/loki_data
+    - /mnt/swarm-shared/observability/grafana_data
+    - /mnt/swarm-shared/observability/prometheus
+    - /mnt/swarm-shared/observability/loki
+    - /mnt/swarm-shared/observability/promtail
+    # Gateway
+    - /mnt/swarm-shared/gateway/traefik_acme
+    # Management
+    - /mnt/swarm-shared/management/homarr/appdata
+    - /mnt/swarm-shared/management/portainer/data
+    # Network
+    - /mnt/swarm-shared/network/vaultwarden/data
+    - /mnt/swarm-shared/network/vaultwarden-db
+    - /mnt/swarm-shared/network/pihole/node1/etc-pihole
+    - /mnt/swarm-shared/network/pihole/node1/etc-dnsmasq.d
+    - /mnt/swarm-shared/network/pihole/node2/etc-pihole
+    - /mnt/swarm-shared/network/pihole/node2/etc-dnsmasq.d
+    # Uptime
+    - /mnt/swarm-shared/uptime-kuma/data
+    # Cloud
+    - /mnt/swarm-shared/cloud/filebrowser/database
+  when: inventory_hostname == groups['oci_nodes'][0]

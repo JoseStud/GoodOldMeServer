@@ -1,0 +1,24 @@
+---
+- name: Check if Docker is already installed
+  ansible.builtin.command: docker --version
+  register: docker_check
+  ignore_errors: true
+  changed_when: false
+
+- name: Install Docker Engine via convenience script
+  ansible.builtin.shell: curl -fsSL https://get.docker.com | sh
+  args:
+    creates: /usr/bin/docker
+  when: docker_check.rc != 0
+
+- name: Ensure Docker service is started and enabled
+  ansible.builtin.systemd:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Add provisioned user to docker group
+  ansible.builtin.user:
+    name: media-srv
+    groups: docker
+    append: true

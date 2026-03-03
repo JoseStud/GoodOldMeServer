@@ -42,7 +42,7 @@ resource "oci_core_instance" "app_worker" {
   create_vnic_details {
     subnet_id        = oci_core_subnet.dmz_subnet.id
     assign_public_ip = true
-    nsg_ids          = [oci_core_network_security_group.gateway_nsg.id, oci_core_network_security_group.bastion_nsg.id]
+    nsg_ids          = [oci_core_network_security_group.gateway_nsg.id]
   }
 
   metadata = {
@@ -99,25 +99,7 @@ resource "oci_core_network_security_group_security_rule" "gateway_https" {
   }
 }
 
-resource "oci_core_network_security_group" "bastion_nsg" {
-  compartment_id = var.oci_compartment_ocid
-  vcn_id         = oci_core_vcn.main_vcn.id
-  display_name   = "bastion-nsg"
-}
 
-resource "oci_core_network_security_group_security_rule" "bastion_ssh" {
-  network_security_group_id = oci_core_network_security_group.bastion_nsg.id
-  direction                 = "INGRESS"
-  protocol                  = "6" # TCP
-  source                    = "0.0.0.0/0"
-  source_type               = "CIDR_BLOCK"
-  tcp_options {
-    destination_port_range {
-      max = 22
-      min = 22
-    }
-  }
-}
 
 resource "oci_core_volume" "worker_volume" {
   count               = 2
