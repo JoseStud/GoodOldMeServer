@@ -129,23 +129,29 @@ Docker overlay networks span all Swarm nodes and provide encrypted service-to-se
 
 ## GlusterFS Replication
 
-GlusterFS provides a **replicated distributed filesystem** between the 2 OCI workers, ensuring all Docker bind-mount data is available on both nodes regardless of which one a service is scheduled on.
+GlusterFS provides a **replicated distributed filesystem** between the 2 OCI workers and the GCP witness arbiter, ensuring all Docker bind-mount data is available on both nodes regardless of which one a service is scheduled on, while preventing split-brain.
 
 ```mermaid
 flowchart LR
-    subgraph OCI1 [OCI Worker 1]
-        BD1[/dev/sdb → /mnt/app_data]
-        BR1[/mnt/app_data/gluster_brick]
-        MT1[/mnt/swarm-shared]
+    subgraph OCI1 ["OCI Worker 1"]
+        BD1[/"/dev/sdb -> /mnt/app_data"/]
+        BR1[/"/mnt/app_data/gluster_brick"/]
+        MT1[/"/mnt/swarm-shared"/]
     end
 
-    subgraph OCI2 [OCI Worker 2]
-        BD2[/dev/sdb → /mnt/app_data]
-        BR2[/mnt/app_data/gluster_brick]
-        MT2[/mnt/swarm-shared]
+    subgraph OCI2 ["OCI Worker 2"]
+        BD2[/"/dev/sdb -> /mnt/app_data"/]
+        BR2[/"/mnt/app_data/gluster_brick"/]
+        MT2[/"/mnt/swarm-shared"/]
     end
 
-    BR1 <-->|replica-2 over Tailscale| BR2
+    subgraph GCP ["GCP Witness"]
+        BR3[/"/mnt/arbiter_brick"/]
+    end
+
+    BR1 <-->|"replica 3 arbiter 1 over Tailscale"| BR2
+    BR1 <--> BR3
+    BR2 <--> BR3
     BD1 --> BR1
     BD2 --> BR2
     BR1 --> MT1
@@ -157,27 +163,29 @@ flowchart LR
 | Property | Value |
 |----------|-------|
 | **Volume name** | `swarm_data` |
-| **Type** | Replica 2 |
+| **Type** | Replica 3 Arbiter 1 |
 | **Transport** | TCP (over Tailscale) |
-| **Brick locations** | `<oci1_ts_ip>:/mnt/app_data/gluster_brick` + `<oci2_ts_ip>:/mnt/app_data/gluster_brick` |
+| **Brick locations** | `<oci1_ts_ip>:/mnt/app_data/gluster_brick` + `<oci2_ts_ip>:/mnt/app_data/gluster_brick` + `<gcp_witness_ts_ip>:/mnt/arbiter_brick` |
 | **Mount point** | `/mnt/swarm-shared` (on both OCI nodes) |
 | **Mount options** | `defaults,_netdev` |
 
 ### How It Works
 
 1. The OCI block volumes (`/dev/sdb`, 50 GB each) are partitioned, formatted ext4, and mounted at `/mnt/app_data` by the Ansible `storage` role
-2. GlusterFS creates a "brick" directory at `/mnt/app_data/gluster_brick` on each node
-3. The `swarm_data` volume is created as `replica 2` — every write to either brick is synchronously replicated to the other
-4. Both nodes mount the GlusterFS volume at `/mnt/swarm-shared` via localhost
+2. GlusterFS creates a "brick" directory at `/mnt/app_data/gluster_brick` on each OCI node, and an "arbiter brick" at `/mnt/arbiter_brick` on the GCP witness.
+3. The `swarm_data` volume is created as `replica 3 arbiter 1` — every write to either OCI brick is synchronously replicated to the other, while the arbiter node only stores metadata to break ties.
+4. Both OCI nodes mount the GlusterFS volume at `/mnt/swarm-shared` via localhost
 5. Docker services bind-mount subdirectories of `/mnt/swarm-shared` for persistent data
 
 ### Split-Brain Considerations
 
-With `replica 2` (no arbiter), GlusterFS can enter a **split-brain** state if both nodes write conflicting data during a network partition. Mitigations:
+With the `replica 3 arbiter 1` configuration, the GCP witness node acts as a tie-breaker. This prevents the **split-brain** state that can occur in a simple two-node setup if both nodes write conflicting data during a network partition.
 
+- The arbiter brick does not store file data, making it lightweight and suitable for the e2-micro instance.
 - Swarm typically schedules each service on one node at a time (`replicas: 1`) — concurrent writes are rare
 - Services that are especially sensitive (Vaultwarden) use PostgreSQL instead of direct file storage to avoid GlusterFS consistency issues
-- If split-brain occurs, manual resolution is required: `gluster volume heal swarm_data info` and `gluster volume heal swarm_data split-brain`
+- If an issue occurs, manual resolution can be checked with: `gluster volume heal swarm_data info`
+
 
 > **Important:** GlusterFS replica-2 provides **redundancy** (both copies of data), not **backup** (point-in-time recovery). For backups, see [Backup Strategy](backup-strategy.md).
 

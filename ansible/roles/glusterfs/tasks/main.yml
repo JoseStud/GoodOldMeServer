@@ -7,25 +7,34 @@
     name: glusterfs-server
     state: present
     update_cache: true
-  when: inventory_hostname in groups['oci_nodes']
+  when: inventory_hostname in groups['oci_nodes'] or inventory_hostname in groups['gcp_witness']
 
 - name: Start and enable glusterd service
   ansible.builtin.systemd:
     name: glusterd
     state: started
     enabled: true
-  when: inventory_hostname in groups['oci_nodes']
+  when: inventory_hostname in groups['oci_nodes'] or inventory_hostname in groups['gcp_witness']
 
 - name: Gather Tailscale IPv4 address
   ansible.builtin.command: tailscale ip -4
   register: tailscale_ipv4
   changed_when: false
-  when: inventory_hostname in groups['oci_nodes']
+  when: inventory_hostname in groups['oci_nodes'] or inventory_hostname in groups['gcp_witness']
 
 - name: Set Tailscale IP fact
   ansible.builtin.set_fact:
     ts_ip: "{{ tailscale_ipv4.stdout | trim }}"
-  when: inventory_hostname in groups['oci_nodes']
+  when: inventory_hostname in groups['oci_nodes'] or inventory_hostname in groups['gcp_witness']
+
+- name: Create GlusterFS arbiter brick directory
+  ansible.builtin.file:
+    path: /mnt/arbiter_brick
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: inventory_hostname in groups['gcp_witness']
 
 - name: Create GlusterFS brick directory on block volume
   ansible.builtin.file:
@@ -44,6 +53,14 @@
   failed_when: peer_probe.rc != 0 and 'already in peer list' not in peer_probe.stdout
   when: inventory_hostname == groups['oci_nodes'][0]
 
+- name: Probe GCP Witness GlusterFS peer
+  ansible.builtin.command: >
+    gluster peer probe {{ hostvars[groups['gcp_witness'][0]].ts_ip }}
+  register: peer_probe_gcp
+  changed_when: "'already in peer list' not in peer_probe_gcp.stdout"
+  failed_when: peer_probe_gcp.rc != 0 and 'already in peer list' not in peer_probe_gcp.stdout
+  when: inventory_hostname == groups['oci_nodes'][0]
+
 - name: Probe GlusterFS peer (from second OCI node to first)
   ansible.builtin.command: >
     gluster peer probe {{ hostvars[groups['oci_nodes'][0]].ts_ip }}
@@ -59,11 +76,12 @@
   changed_when: false
   when: inventory_hostname == groups['oci_nodes'][0]
 
-- name: Create GlusterFS replica 2 volume
+- name: Create GlusterFS replica 3 arbiter 1 volume
   ansible.builtin.command: >
-    gluster volume create swarm_data replica 2 transport tcp
+    gluster volume create swarm_data replica 3 arbiter 1 transport tcp
     {{ hostvars[groups['oci_nodes'][0]].ts_ip }}:/mnt/app_data/gluster_brick
     {{ hostvars[groups['oci_nodes'][1]].ts_ip }}:/mnt/app_data/gluster_brick
+    {{ hostvars[groups['gcp_witness'][0]].ts_ip }}:/mnt/arbiter_brick
     force
   when:
     - inventory_hostname == groups['oci_nodes'][0]
