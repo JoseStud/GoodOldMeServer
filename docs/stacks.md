@@ -57,12 +57,33 @@ All stacks follow these conventions:
 - **docker-socket-proxy** — Read-only proxy to the Docker socket (Traefik connects here instead of directly to `/var/run/docker.sock`)
 - HTTP→HTTPS redirect on all traffic
 - ACME certificates stored in a named Docker volume `traefik_acme` (local driver, mounted at `/etc/traefik/acme` inside the container)
+- Prometheus metrics exposed on a dedicated entrypoint (`:8082/metrics`)
+- **No config files required** — fully configured via CLI flags
 
 ### Auth
 
 - **Authelia** — SSO/2FA provider. Configuration bind-mounted from `/mnt/swarm-shared/auth/authelia/config`
 - **Authelia-DB** — PostgreSQL 16 (Alpine) backend for Authelia's storage. Data stored in a bind-mounted Docker volume at `/mnt/swarm-shared/auth/authelia-db`. Connected to Authelia via the `authelia_internal` overlay network (not exposed to `traefik_proxy`)
 - ForwardAuth middleware registered as `authelia@docker` — other stacks reference this for protected routes
+- Default access policy: `two_factor` for all protected services
+- OIDC provider configured for Grafana SSO (`client_id: grafana`)
+
+**Config files** (in `stacks/auth/config/`, synced to GlusterFS by Ansible):
+
+| File | Purpose |
+|------|---------|
+| `configuration.yml` | Authelia main config: server, session, storage, auth backend, access control, OIDC provider, TOTP/WebAuthn, SMTP notifier |
+| `users_database.yml` | File-based auth backend — user accounts with argon2id-hashed passwords |
+
+**Additional Infisical secrets** (under `/stacks/identity`):
+
+| Variable | How to Get |
+|----------|-----------|
+| `AUTHELIA_NOTIFIER_SMTP_USERNAME` | Gmail address for SMTP |
+| `AUTHELIA_NOTIFIER_SMTP_PASSWORD` | Gmail App Password (Settings → Security → App passwords) |
+| `AUTHELIA_NOTIFIER_SMTP_SENDER` | e.g. `Authelia <noreply@example.com>` |
+| `AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET` | Generate: `openssl rand -hex 32` |
+| `AUTHELIA_IDENTITY_PROVIDERS_OIDC_JWKS_0_KEY` | Generate: `authelia crypto certificate rsa generate --directory /tmp && cat /tmp/private.pem` |
 
 ### Management
 
@@ -78,12 +99,20 @@ All stacks follow these conventions:
 ### Observability
 
 - **Prometheus** — Metrics collection (15-day retention)
-- **Loki** — Log aggregation
-- **Promtail** — Log shipper (global — runs on every node)
+- **Loki** — Log aggregation (7-day retention, TSDB + filesystem storage)
+- **Promtail** — Log shipper (global — runs on every node, Docker socket discovery)
 - **Node Exporter** — Host metrics (global)
-- **Grafana** — Dashboards and visualization
+- **Grafana** — Dashboards and visualization (Authelia OIDC SSO, login form disabled)
 
 Data volumes are bind-mounted to GlusterFS for persistence and replication.
+
+**Config files** (in `stacks/observability/config/`, synced to GlusterFS by Ansible):
+
+| File | GlusterFS Path | Purpose |
+|------|---------------|---------|
+| `prometheus.yml` | `/mnt/swarm-shared/observability/prometheus/prometheus.yml` | Scrape targets: self, node-exporter, traefik, loki |
+| `loki-config.yaml` | `/mnt/swarm-shared/observability/loki/loki-config.yaml` | Loki storage, schema, retention, compactor |
+| `promtail.yml` | `/mnt/swarm-shared/observability/promtail/promtail.yml` | Docker SD log collection, label extraction, JSON pipeline |
 
 ### Media / AI Interface
 
@@ -108,7 +137,7 @@ Per-stack secrets are in their own Infisical paths:
 | Stack | Template | Infisical Path | Stack-Specific Variables |
 |-------|----------|---------------|--------------------------|
 | gateway | `stacks/gateway/.env.tmpl` | `/stacks/gateway` | `CLOUDFLARE_API_TOKEN` (from `/infrastructure`), `ACME_EMAIL`, `DOCKER_SOCKET_PROXY_URL` |
-| auth | `stacks/auth/.env.tmpl` | `/stacks/identity` | `AUTHELIA_JWT_SECRET`, `AUTHELIA_SESSION_SECRET`, `POSTGRES_PASSWORD` |
+| auth | `stacks/auth/.env.tmpl` | `/stacks/identity` | `AUTHELIA_JWT_SECRET`, `AUTHELIA_SESSION_SECRET`, `POSTGRES_PASSWORD`, `AUTHELIA_NOTIFIER_SMTP_USERNAME`, `AUTHELIA_NOTIFIER_SMTP_PASSWORD`, `AUTHELIA_NOTIFIER_SMTP_SENDER`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_JWKS_0_KEY` |
 | management | `stacks/management/.env.tmpl` | `/stacks/management` | `HOMARR_SECRET_KEY` |
 | network | `stacks/network/.env.tmpl` | `/stacks/network` | `VW_DB_PASS`, `VW_ADMIN_TOKEN`, `PIHOLE_PASSWORD` |
 | observability | `stacks/observability/.env.tmpl` | `/stacks/observability` | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET` |
@@ -118,10 +147,22 @@ Per-stack secrets are in their own Infisical paths:
 
 See [Infisical Workflow](infisical-workflow.md) for the full variable reference with generation commands.
 
+## Config File Sync
+
+Some stacks require configuration files that are bind-mounted from GlusterFS at runtime. These config files live in the repo under `stacks/<stack>/config/` and are synced to GlusterFS by Ansible:
+
+```bash
+# Sync all config files to GlusterFS
+ansible-playbook playbooks/provision.yml --tags sync-configs
+```
+
+Stacks that are self-configuring (no config files needed): **gateway**, **management**, **network**, **media/ai-interface**, **uptime**, **cloud**.
+
 ## Adding a New Stack
 
 1. Create `stacks/<name>/docker-compose.yml` following the shared patterns above
 2. Add secrets to Infisical under `/stacks/<name>`
 3. Create `.env.tmpl` for the Infisical Agent to render
-4. Deploy: `docker stack deploy -c stacks/<name>/docker-compose.yml <name>`
-5. Update this document and the [Deployment Runbook](deployment-runbook.md)
+4. If the stack needs config files, add them under `stacks/<name>/config/` and add a sync task to `ansible/roles/glusterfs/tasks/sync-configs.yml`
+5. Deploy: `docker stack deploy -c stacks/<name>/docker-compose.yml <name>`
+6. Update this document and the [Deployment Runbook](deployment-runbook.md)

@@ -85,6 +85,12 @@
         name: glusterfs
       tags: [phase4_glusterfs]
 
+    # === Phase 4b: Sync config files to GlusterFS ===
+    - name: Sync stack configuration files to GlusterFS
+      ansible.builtin.include_tasks:
+        file: ../roles/glusterfs/tasks/sync-configs.yml
+      tags: [phase4_glusterfs, sync-configs]
+
     # === Phase 5: Swarm bootstrap over Tailscale (includes overlay network) ===
     - name: Run swarm role
       ansible.builtin.include_role:

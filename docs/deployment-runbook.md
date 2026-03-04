@@ -14,6 +14,7 @@ Before deploying any stack, verify that all infrastructure layers are operationa
 | `PORTAINER_ADMIN_PASSWORD` set | `echo $PORTAINER_ADMIN_PASSWORD` is non-empty | `export PORTAINER_ADMIN_PASSWORD='...'` (bcrypt-hashed by Ansible at deploy time) |
 | Tailscale mesh active | `tailscale status` on each node shows 3 peers | `tailscale up --authkey=...` |
 | GlusterFS mounted | `df -h /mnt/swarm-shared` on OCI nodes | `mount -t glusterfs localhost:/swarm_data /mnt/swarm-shared` |
+| Config files synced | `ls /mnt/swarm-shared/auth/authelia/config/configuration.yml` | `ansible-playbook playbooks/provision.yml --tags sync-configs` |
 | Docker Swarm initialized | `docker node ls` shows 3 managers (2 Ready + 1 Ready) | Re-run Ansible `swarm` role |
 | `traefik_proxy` network exists | `docker network ls \| grep traefik_proxy` | `docker network create --driver overlay --attachable traefik_proxy` |
 | Infisical Agent running | `systemctl status infisical-agent` | See [Agent Installation](infisical-workflow.md#installing-the-agent) |
@@ -92,6 +93,72 @@ curl -I http://localhost:80
 
 ### Step 2: Auth
 
+#### One-Time Setup (before first deploy)
+
+Authelia requires config files and secrets to be prepared before the stack will start.
+
+**1. Sync config files to GlusterFS:**
+
+```bash
+ansible-playbook playbooks/provision.yml --tags sync-configs
+# This copies stacks/auth/config/* to /mnt/swarm-shared/auth/authelia/config/
+# and stacks/observability/config/* to their respective GlusterFS paths
+```
+
+**2. Create a user in `users_database.yml`:**
+
+```bash
+# Generate an argon2id password hash
+docker run --rm authelia/authelia:latest \
+  authelia crypto hash generate argon2 --password 'your-strong-password'
+
+# Edit the users database (on host or in repo, then re-sync)
+vim stacks/auth/config/users_database.yml
+# Add your user under the 'users:' key:
+#   admin:
+#     disabled: false
+#     displayname: 'Admin User'
+#     email: 'admin@example.com'
+#     password: '<paste argon2id hash>'
+#     groups:
+#       - 'admins'
+
+# Re-sync to GlusterFS
+ansible-playbook playbooks/provision.yml --tags sync-configs
+```
+
+**3. Generate OIDC keys and hash the Grafana client secret:**
+
+```bash
+# Generate RSA private key for OIDC JWT signing
+docker run --rm authelia/authelia:latest \
+  authelia crypto certificate rsa generate --directory /tmp
+# Copy the private key output — store as AUTHELIA_IDENTITY_PROVIDERS_OIDC_JWKS_0_KEY in Infisical
+
+# Generate OIDC HMAC secret
+openssl rand -hex 32
+# Store as AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET in Infisical
+
+# Hash the Grafana OIDC client secret (the plaintext is GF_OIDC_CLIENT_SECRET in Infisical)
+docker run --rm authelia/authelia:latest \
+  authelia crypto hash generate argon2 --password '<GF_OIDC_CLIENT_SECRET value>'
+# Paste the resulting hash into stacks/auth/config/configuration.yml under:
+#   identity_providers.oidc.clients[0].client_secret
+# Then re-sync: ansible-playbook playbooks/provision.yml --tags sync-configs
+```
+
+**4. Add SMTP secrets to Infisical** (under `/stacks/identity`):
+
+| Variable | Value |
+|----------|-------|
+| `AUTHELIA_NOTIFIER_SMTP_USERNAME` | Your Gmail address |
+| `AUTHELIA_NOTIFIER_SMTP_PASSWORD` | Gmail App Password (Google Account → Security → App passwords) |
+| `AUTHELIA_NOTIFIER_SMTP_SENDER` | `Authelia <noreply@yourdomain.com>` |
+| `AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET` | (generated above) |
+| `AUTHELIA_IDENTITY_PROVIDERS_OIDC_JWKS_0_KEY` | (RSA PEM generated above — paste full multi-line key) |
+
+#### Deploy
+
 ```bash
 # Auth .env is rendered by the Infisical Agent (stacks/auth/.env.tmpl)
 # If deploying before the Agent is running, manually create the .env:
@@ -102,11 +169,18 @@ docker stack deploy -c stacks/auth/docker-compose.yml auth
 **Verify:**
 ```bash
 docker stack services auth
-# Expected: authelia (1/1)
+# Expected: authelia (1/1), authelia-db (1/1)
+
+# Check Authelia logs for startup errors
+docker service logs auth_authelia --tail 50
 
 # Test Authelia is reachable via Traefik
 curl -I https://auth.example.com
 # Expected: HTTP 200 (Authelia login page)
+
+# Test OIDC discovery endpoint
+curl -s https://auth.example.com/.well-known/openid-configuration | jq .
+# Expected: JSON with issuer, authorization_endpoint, token_endpoint, etc.
 ```
 
 ### Step 3+: Remaining Stacks (Terraform-managed)

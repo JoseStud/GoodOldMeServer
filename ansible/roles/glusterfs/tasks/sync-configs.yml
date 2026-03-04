@@ -1,0 +1,47 @@
+---
+# Sync configuration files from the repository to GlusterFS shared storage.
+# Run: ansible-playbook playbooks/provision.yml --tags sync-configs
+#
+# These config files are bind-mounted by Docker Swarm stacks.
+# They must exist on GlusterFS before the stacks are deployed.
+
+- name: Sync Authelia configuration to GlusterFS
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: media-srv
+    group: media-srv
+    mode: '0644'
+  loop:
+    - src: "{{ playbook_dir }}/../../stacks/auth/config/configuration.yml"
+      dest: /mnt/swarm-shared/auth/authelia/config/configuration.yml
+    - src: "{{ playbook_dir }}/../../stacks/auth/config/users_database.yml"
+      dest: /mnt/swarm-shared/auth/authelia/config/users_database.yml
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Sync Prometheus configuration to GlusterFS
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../stacks/observability/config/prometheus.yml"
+    dest: /mnt/swarm-shared/observability/prometheus/prometheus.yml
+    owner: media-srv
+    group: media-srv
+    mode: '0644'
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Sync Loki configuration to GlusterFS
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../stacks/observability/config/loki-config.yaml"
+    dest: /mnt/swarm-shared/observability/loki/loki-config.yaml
+    owner: media-srv
+    group: media-srv
+    mode: '0644'
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Sync Promtail configuration to GlusterFS
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../stacks/observability/config/promtail.yml"
+    dest: /mnt/swarm-shared/observability/promtail/promtail.yml
+    owner: media-srv
+    group: media-srv
+    mode: '0644'
+  when: inventory_hostname == groups['oci_nodes'][0]
