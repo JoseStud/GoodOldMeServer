@@ -1,0 +1,6 @@
+---
+profile: basic
+skip_list:
+  - yaml[line-length]
+  - name[template]
+  - no-changed-when

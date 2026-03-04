@@ -9,6 +9,9 @@ terraform/*.tfplan
 terraform/**/*.tfplan
 terraform/.terraform.lock.hcl
 terraform/**/.terraform.lock.hcl
+!terraform/infra/.terraform.lock.hcl
+!terraform/portainer-root/.terraform.lock.hcl
+!terraform/portainer/.terraform.lock.hcl
 
 # Ansible
 ansible/*.retry
