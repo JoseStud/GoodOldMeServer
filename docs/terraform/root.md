@@ -1,6 +1,11 @@
-# Root Terraform Module
+# Root Terraform Module (Legacy)
 
-The root module orchestrates all cloud infrastructure by pulling secrets from Infisical and passing them to the OCI and GCP child modules. It acts as the single entry point for `terraform apply`.
+This document describes the historical monolithic root module under `terraform/main.tf`.
+
+The active deployment model now uses split roots/workspaces:
+
+- `terraform/infra` (`goodoldme-infra`) for OCI + GCP provisioning
+- `terraform/portainer-root` (`goodoldme-portainer`) for Portainer GitOps stacks/webhooks
 
 ## How It Works
 
@@ -11,7 +16,7 @@ The root module orchestrates all cloud infrastructure by pulling secrets from In
    - `/cloud-provider/oci` — `OCI_COMPARTMENT_OCID`, `OCI_IMAGE_OCID`
    - `/cloud-provider/gcp` — `GCP_PROJECT_ID`
 3. The OCI and GCP providers are configured directly from Infisical secrets (OCI credentials, GCP service account key)
-4. Secrets are passed as variables to the child modules; outputs (worker IPs, witness IPv6) are re-exported for Ansible's dynamic inventory
+4. Secrets are passed as variables to the child modules; outputs (worker IPs, witness IPv6) are re-exported for Ansible inventory handover
 
 ## Regenerating Docs
 
@@ -59,7 +64,9 @@ terraform-docs markdown table terraform/oci/ > docs/terraform/oci.md
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
+| <a name="input_gcp_ssh_allowed_cidrs"></a> [gcp\_ssh\_allowed\_cidrs](#input\_gcp\_ssh\_allowed\_cidrs) | CIDR blocks allowed to SSH into the GCP witness node | `list(string)` | n/a | yes |
 | <a name="input_infisical_project_id"></a> [infisical\_project\_id](#input\_infisical\_project\_id) | Infisical workspace/project ID for secret retrieval | `string` | n/a | yes |
+| <a name="input_oci_ssh_allowed_cidr"></a> [oci\_ssh\_allowed\_cidr](#input\_oci\_ssh\_allowed\_cidr) | CIDR block allowed to SSH into OCI worker nodes | `string` | n/a | yes |
 | <a name="input_oci_region"></a> [oci\_region](#input\_oci\_region) | OCI region for the provider | `string` | `"us-ashburn-1"` | no |
 
 ## Outputs

@@ -1,0 +1,26 @@
+name: Deploy Portainer Module (Legacy Wrapper)
+
+on:
+  repository_dispatch:
+    types:
+      - stacks-portainer-apply-requested
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  call-meta-pipeline:
+    uses: ./.github/workflows/meta-pipeline.yml
+    with:
+      run_infra_apply: false
+      run_ansible_bootstrap: false
+      run_portainer_apply: true
+      stacks_sha: ${{ github.event.client_payload.stacks_sha || '' }}
+      changed_stacks: ""
+      config_stacks: ""
+      structural_change: ${{ github.event.client_payload.reason == 'structural-change' || github.event.client_payload.reason == 'manual-refresh' }}
+      reason: ${{ github.event.client_payload.reason || 'legacy-portainer-manual-dispatch' }}
+      changed_paths: ${{ github.event.client_payload.changed_paths || '' }}
+    secrets: inherit

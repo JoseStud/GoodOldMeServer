@@ -22,7 +22,11 @@ variable "gcp_zone" {
 variable "ssh_allowed_cidrs" {
   description = "List of CIDR blocks allowed to SSH into the witness instance"
   type        = list(string)
-  default     = ["0.0.0.0/0", "::/0"]
+
+  validation {
+    condition     = length(var.ssh_allowed_cidrs) > 0 && alltrue([for cidr in var.ssh_allowed_cidrs : can(cidrhost(cidr, 0))])
+    error_message = "ssh_allowed_cidrs must contain at least one valid CIDR."
+  }
 }
 
 locals {

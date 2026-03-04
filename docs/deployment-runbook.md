@@ -8,10 +8,12 @@ Before deploying any stack, verify that all infrastructure layers are operationa
 
 | Prerequisite | How to Verify | Fix |
 |-------------|---------------|-----|
-| Terraform applied | `terraform output` shows IPs | `terraform apply` |
+| Terraform infra workspace applied | Terraform Cloud run for `goodoldme-infra` succeeds (or `terraform -chdir=terraform/infra output`) | Run `meta-pipeline.yml` with `run_infra_apply=true` or `terraform -chdir=terraform/infra apply` |
+| Terraform Portainer workspace applied | Terraform Cloud run for `goodoldme-portainer` succeeds (or `terraform -chdir=terraform/portainer-root output`) | Run `meta-pipeline.yml` with `run_portainer_apply=true` or `terraform -chdir=terraform/portainer-root apply` |
+| Terraform Cloud Agent pool active | Terraform Cloud workspace run settings show Agent execution (not managed workers) and at least one healthy agent | Start/reconnect agent host and re-run |
 | Ansible provisioning complete | SSH into nodes, verify Docker/Tailscale/GlusterFS/Portainer | Re-run `ansible-playbook` |
 | Portainer running | `curl -s http://localhost:9000/api/system/status` returns HTTP 200 | Re-run Ansible `portainer_bootstrap` role |
-| `PORTAINER_ADMIN_PASSWORD` set | `echo $PORTAINER_ADMIN_PASSWORD` is non-empty | `export PORTAINER_ADMIN_PASSWORD='...'` (bcrypt-hashed by Ansible at deploy time) |
+| `PORTAINER_ADMIN_PASSWORD` set | `echo $PORTAINER_ADMIN_PASSWORD` is non-empty | `export PORTAINER_ADMIN_PASSWORD='...'` (bcrypt-hashed by Ansible and written to `/stacks/management` during bootstrap) |
 | Tailscale mesh active | `tailscale status` on each node shows 3 peers | `tailscale up --authkey=...` |
 | GlusterFS mounted | `df -h /mnt/swarm-shared` on OCI nodes | `mount -t glusterfs localhost:/swarm_data /mnt/swarm-shared` |
 | Config files synced | `ls /mnt/swarm-shared/auth/authelia/config/configuration.yml` | `ansible-playbook playbooks/provision.yml --tags sync-configs` |
@@ -22,7 +24,7 @@ Before deploying any stack, verify that all infrastructure layers are operationa
 
 ## Deployment Order
 
-Stacks have dependencies — deploy in this order:
+Stacks have dependencies. The meta-pipeline enforces this order with health gates:
 
 ```mermaid
 flowchart TD
@@ -42,10 +44,10 @@ flowchart TD
 ```
 
 **Why this order:**
-1. **Management first (Ansible)** — Portainer is the control plane. Ansible bootstraps it during provisioning (Phase 6) because Terraform's Portainer provider needs the API to already exist
-2. **Gateway first (Terraform)** — All application stacks depend on `traefik_proxy` network and need Traefik running to route traffic
-3. **Auth second (Terraform)** — Most stacks reference `authelia@docker` middleware; Traefik will return 500 errors if the middleware service doesn't exist
-4. **Everything else** — No inter-dependencies among the remaining stacks
+1. **Management first (Ansible)** — Portainer is the control plane. Ansible bootstraps it during provisioning (Phase 6) because Terraform's Portainer provider needs the API to already exist.
+2. **Gateway first (Portainer webhook)** — The pipeline triggers Gateway and waits for `https://gateway-health.<BASE_DOMAIN>/healthz` to return 200.
+3. **Auth second (Portainer webhook)** — Auth is gated on Gateway health to prevent cascading redeploy failures.
+4. **Everything else** — The pipeline follows manifest dependencies from `stacks/stacks.yaml`.
 
 ## Deploy Commands
 
@@ -185,11 +187,17 @@ curl -s https://auth.example.com/.well-known/openid-configuration | jq .
 
 ### Step 3+: Remaining Stacks (Terraform-managed)
 
-After Ansible has bootstrapped Portainer, **Terraform manages all application stacks** via the Portainer provider. Running `terraform apply` will create each stack in Portainer with GitOps webhooks enabled and write the webhook URLs to Infisical `/deployments`.
+After Ansible has bootstrapped Portainer, **Terraform manages all application stacks** via the Portainer provider. Use the split workspace model:
+
+1. `goodoldme-infra` (`terraform/infra`) provisions OCI/GCP and runs Ansible bootstrap.
+2. `goodoldme-portainer` (`terraform/portainer-root`) creates Git-backed Portainer stacks with webhooks and writes `/deployments` secrets.
+
+Runs should execute in a **Terraform Cloud Agent pool** so provider calls originate from trusted network CIDRs and use `PORTAINER_API_URL` (`https://portainer-api.<domain>`).
 
 ```bash
-# From the terraform/ directory
-terraform apply
+# Local fallback (if not using Terraform Cloud workspaces)
+terraform -chdir=terraform/infra apply
+terraform -chdir=terraform/portainer-root apply
 ```
 
 For **manual deployment** (fallback), the Infisical Agent handles deployment automatically via its `exec.command`. Or deploy directly:
@@ -241,21 +249,26 @@ docker service ls --filter "desired-state=running" --format "{{.Name}} {{.Replic
 
 ### Via Portainer GitOps Webhooks (preferred)
 
-Every stack is linked to the Git repository in Portainer with **Enable Webhook**. When you push changes to `main`, Portainer automatically pulls the new Compose files and redeploys.
+Every stack is linked to the `JoseStud/stacks` Git repository in Portainer with **Enable Webhook**. Trigger calls must come from a **private trusted source**, not public GitHub-hosted runners.
 
-**Automatic (CI):** The GitHub Actions workflow triggers all webhooks after provisioning completes. Store the comma-separated webhook URLs in the `PORTAINER_WEBHOOK_URLS` GitHub Actions secret.
+**Automatic (private automation):**
+
+1. Push to `main` in the stacks repo triggers `stacks/.github/workflows/private-redeploy.yml` on a self-hosted runner.
+2. The workflow computes changed stacks from `stacks.yaml` and dispatches one event (`stacks-redeploy-requested`) to this infra repo.
+3. Infra `meta-pipeline.yml` validates secrets, runs Portainer apply when `structural_change=true`, runs config sync when `config_stacks` is non-empty, then triggers health-gated webhooks.
+4. Health gates use manifest dependencies: Gateway is checked first (`gateway-health.<BASE_DOMAIN>/healthz`) before Auth and downstream stacks.
 
 **Manual (one-off):**
 
 ```bash
 # Trigger a single stack's webhook
-./scripts/portainer-webhook.sh https://portainer.example.com/api/webhooks/<uuid>
+./scripts/portainer-webhook.sh https://portainer-api.example.com/api/webhooks/<uuid>
 
 # Trigger all stacks at once via env var
 WEBHOOK_URLS="<url1>,<url2>,<url3>" ./scripts/portainer-webhook.sh
 ```
 
-> No API key or `ENDPOINT_ID` needed — each webhook URL is natively bound to one specific stack in Portainer.
+> No API key or `ENDPOINT_ID` needed — each webhook URL is natively bound to one specific stack in Portainer. Access is restricted at Traefik by IP allowlist/rate-limit middleware on `portainer-api.<domain>`.
 
 ### Via CLI (direct Swarm commands)
 
@@ -276,9 +289,9 @@ docker service update --force <stack>_<service>
 
 Stacks are now managed declaratively via the `portainer` Terraform module. To add a new stack:
 
-1. Create the `docker-compose.yml` under `stacks/<name>/`
-2. Add an entry to the `local.stacks` map in `terraform/portainer/main.tf`
-3. Run `terraform apply` — the stack, webhook, and Infisical secret are all created automatically
+1. Create the `docker-compose.yml` in the stacks repo under `<name>/`
+2. Add a new entry to `stacks/stacks.yaml` with `compose_path`, `portainer_managed`, dependencies, and optional health check metadata
+3. Run `terraform -chdir=terraform/portainer-root apply` (or trigger `meta-pipeline.yml` with `run_portainer_apply=true`) — the stack, webhook, and Infisical secret are all created automatically
 
 The webhook URL is written to Infisical `/deployments` as `WEBHOOK_URL_<STACK_NAME>` and appended to the combined `PORTAINER_WEBHOOK_URLS` secret.
 

@@ -1,0 +1,32 @@
+name: Deploy Infra and Bootstrap (Legacy Wrapper)
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_bootstrap:
+        description: "Run Ansible provisioning without infra apply"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  call-meta-pipeline:
+    uses: ./.github/workflows/meta-pipeline.yml
+    with:
+      run_infra_apply: ${{ inputs.run_bootstrap != 'true' }}
+      run_ansible_bootstrap: ${{ inputs.run_bootstrap == 'true' }}
+      run_portainer_apply: ${{ inputs.run_bootstrap == 'true' }}
+      structural_change: false
+      reason: "legacy-deploy-infra-bootstrap"
+      changed_stacks: ""
+      config_stacks: ""
+      changed_paths: ""
+      stacks_sha: ""
+    secrets: inherit

@@ -7,11 +7,14 @@ set -euo pipefail
 # Portainer natively watches the linked Git repository. Hitting the
 # webhook URL tells Portainer "the branch has changed — pull & redeploy".
 # No API key, no ENDPOINT_ID — the webhook is bound to the exact stack.
+# For security, call these from trusted private automation sources only.
 #
 # Usage:
-#   ./scripts/portainer-webhook.sh <webhook_url>            # single stack
-#   ./scripts/portainer-webhook.sh <url1> <url2> ...        # multiple stacks
-#   WEBHOOK_URLS="url1,url2" ./scripts/portainer-webhook.sh # via env var (comma-separated)
+#   ./scripts/portainer-webhook.sh <webhook_url>                    # single stack
+#   ./scripts/portainer-webhook.sh <url1> <url2> ...                # multiple stacks
+#   WEBHOOK_URLS="url1,url2" ./scripts/portainer-webhook.sh         # via env var (comma-separated)
+# Example URL:
+#   https://portainer-api.example.com/api/webhooks/<uuid>
 #
 # Environment Variables (optional):
 #   WEBHOOK_URLS   Comma-separated list of webhook URLs (used when no args given)

@@ -1,5 +1,7 @@
 plugin: cloud.terraform.terraform_provider
-project_path: ../../terraform
+project_path: ../../terraform/infra
+# Local/operator inventory source. CI pipelines render a deterministic
+# inventory artifact from Terraform Cloud outputs (inventory-ci.yml).
 inventory_hostname:
   - public_ip
 groups:

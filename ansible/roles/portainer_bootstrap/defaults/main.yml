@@ -27,5 +27,8 @@ portainer_admin_password: "{{ lookup('env', 'PORTAINER_ADMIN_PASSWORD') }}"
 # Bcrypt cost factor for hashing the admin password (10–14 recommended)
 portainer_bcrypt_rounds: 12
 
+# API token description used for Terraform-managed Portainer credentials
+portainer_api_token_description: terraform-managed
+
 # Infisical project ID for writing the API key
 infisical_project_id: "{{ lookup('env', 'INFISICAL_PROJECT_ID') | default('', true) }}"

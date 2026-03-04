@@ -5,6 +5,7 @@ Personal homelab/cloud server infrastructure using a three-tier architecture:
 1. **Terraform** provisions cloud resources across Oracle Cloud (2× Ampere A1.Flex workers) and Google Cloud (1× e2-micro Swarm witness)
 2. **Ansible** bootstraps nodes through 5 phases: system user → Docker → Tailscale mesh → GlusterFS (replica-3-arbiter-1) → Docker Swarm (3-manager cluster)
 3. **Docker Swarm** stacks deploy application workloads (8 stacks) behind Traefik reverse proxy with Authelia SSO, using Infisical for secret management
+4. **Meta Pipeline (GitHub Actions)** orchestrates secret validation → infra apply → inventory handover → Ansible bootstrap → Portainer apply → health-gated stack redeploy
 
 ## Prerequisites
 
@@ -15,23 +16,33 @@ Personal homelab/cloud server infrastructure using a three-tier architecture:
 - OCI free-tier account (Ampere A1 instances + block volumes)
 - GCP free-tier account (e2-micro instance)
 - SSH CA key pair for certificate-based authentication
+- Terraform Cloud workspace variables for SSH allowlists:
+  - `oci_ssh_allowed_cidr`
+  - `gcp_ssh_allowed_cidrs`
 
 ## Quick Start
 
 ```bash
-# 1. Provision cloud infrastructure
-cd terraform && terraform apply
+# 1. End-to-end orchestration (recommended)
+# GitHub Actions: .github/workflows/meta-pipeline.yml
 
-# 2. Bootstrap nodes (Docker, Tailscale, GlusterFS, Swarm)
-cd ../ansible && ansible-playbook -i inventory/terraform.yml playbooks/provision.yml
+# 2. Local fallback: provision cloud infrastructure
+terraform -chdir=terraform/infra apply
 
-# 3. Deploy stacks (see deployment runbook for full procedure)
+# 3. Local fallback: bootstrap nodes (Docker, Tailscale, GlusterFS, Swarm)
+ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml
+
+# 4. Local fallback: create Portainer-managed GitOps stacks + webhooks
+terraform -chdir=terraform/portainer-root apply
+
+# 5. Deploy stacks (see deployment runbook for full procedure)
 docker stack deploy -c stacks/gateway/docker-compose.yml gateway
 docker stack deploy -c stacks/auth/docker-compose.yml auth
 # ... remaining stacks in any order
 ```
 
 For the full deployment procedure, see the [Deployment Runbook](docs/deployment-runbook.md).
+For first-time pipeline setup, use the [Meta-Pipeline Cutover Checklist](docs/meta-pipeline-cutover-checklist.md).
 
 ## Documentation
 

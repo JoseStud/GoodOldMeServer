@@ -30,6 +30,12 @@
   when: inventory_hostname == groups['oci_nodes'][0]
   no_log: true
 
+- name: Set candidate API key from environment
+  ansible.builtin.set_fact:
+    portainer_api_key_candidate: "{{ lookup('env', 'PORTAINER_API_KEY') | default('', true) | trim }}"
+  when: inventory_hostname == groups['oci_nodes'][0]
+  no_log: true
+
 - name: Deploy management stack (Portainer + Homarr)
   ansible.builtin.command: >
     docker stack deploy
@@ -104,10 +110,54 @@
   register: existing_tokens
   when: inventory_hostname == groups['oci_nodes'][0]
 
-- name: Determine if Terraform API key already exists
+- name: Determine Terraform-managed token IDs
   ansible.builtin.set_fact:
-    terraform_token_exists: "{{ existing_tokens.json | selectattr('description', 'equalto', 'terraform-managed') | list | length > 0 }}"
+    terraform_managed_token_ids: "{{ existing_tokens.json | selectattr('description', 'equalto', portainer_api_token_description) | map(attribute='id') | list }}"
   when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Validate existing PORTAINER_API_KEY from environment
+  ansible.builtin.uri:
+    url: "{{ portainer_api_url }}/system/status"
+    method: GET
+    headers:
+      X-API-Key: "{{ portainer_api_key_candidate }}"
+    status_code: [200, 401, 403]
+    validate_certs: false
+  register: portainer_key_validation
+  when:
+    - inventory_hostname == groups['oci_nodes'][0]
+    - portainer_api_key_candidate | length > 0
+  no_log: true
+
+- name: Determine API key repair mode
+  ansible.builtin.set_fact:
+    reuse_existing_api_key: "{{ (portainer_api_key_candidate | length > 0) and (portainer_key_validation is defined) and (portainer_key_validation.status == 200) }}"
+    rotate_api_key: "{{ not ((portainer_api_key_candidate | length > 0) and (portainer_key_validation is defined) and (portainer_key_validation.status == 200)) }}"
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Reuse existing valid API key
+  ansible.builtin.set_fact:
+    portainer_api_key: "{{ portainer_api_key_candidate }}"
+    portainer_api_key_source: "reused-existing-key"
+  when:
+    - inventory_hostname == groups['oci_nodes'][0]
+    - reuse_existing_api_key | default(false)
+  no_log: true
+
+- name: Delete existing Terraform-managed API keys before rotation
+  ansible.builtin.uri:
+    url: "{{ portainer_api_url }}/users/1/tokens/{{ item }}"
+    method: DELETE
+    headers:
+      Authorization: "Bearer {{ portainer_jwt }}"
+    status_code: [200, 204]
+    validate_certs: false
+  loop: "{{ terraform_managed_token_ids | default([]) }}"
+  when:
+    - inventory_hostname == groups['oci_nodes'][0]
+    - rotate_api_key | default(false)
+    - (terraform_managed_token_ids | default([]) | length) > 0
+  no_log: true
 
 - name: Create Portainer API key for Terraform
   ansible.builtin.uri:
@@ -117,22 +167,56 @@
       Authorization: "Bearer {{ portainer_jwt }}"
     body_format: json
     body:
-      description: "terraform-managed"
+      description: "{{ portainer_api_token_description }}"
     status_code: 200
     validate_certs: false
   register: api_key_result
   when:
     - inventory_hostname == groups['oci_nodes'][0]
-    - not terraform_token_exists
+    - rotate_api_key | default(true)
   no_log: true
 
-- name: Set API key fact
-  ansible.builtin.set_fact:
-    portainer_api_key: "{{ api_key_result.json.rawAPIKey }}"
+- name: Ensure API key rotation produced a raw key
+  ansible.builtin.assert:
+    that:
+      - api_key_result is defined
+      - api_key_result.json is defined
+      - api_key_result.json.rawAPIKey is defined
+      - api_key_result.json.rawAPIKey | length > 0
+    fail_msg: "API key rotation was required, but Portainer did not return a raw API key."
   when:
     - inventory_hostname == groups['oci_nodes'][0]
-    - api_key_result is not skipped
+    - rotate_api_key | default(true)
   no_log: true
+
+- name: Set rotated API key fact
+  ansible.builtin.set_fact:
+    portainer_api_key: "{{ api_key_result.json.rawAPIKey }}"
+    portainer_api_key_source: "rotated-new-key"
+  when:
+    - inventory_hostname == groups['oci_nodes'][0]
+    - rotate_api_key | default(true)
+  no_log: true
+
+- name: Write PORTAINER_ADMIN_PASSWORD_HASH to Infisical
+  ansible.builtin.command: >
+    infisical secrets set PORTAINER_ADMIN_PASSWORD_HASH={{ portainer_admin_password_hash }}
+    --env=prod
+    --path=/stacks/management
+    --projectId={{ infisical_project_id }}
+  environment:
+    INFISICAL_TOKEN: "{{ lookup('env', 'INFISICAL_TOKEN') }}"
+  register: infisical_hash_result
+  changed_when: infisical_hash_result.rc == 0
+  when:
+    - inventory_hostname == groups['oci_nodes'][0]
+    - infisical_project_id | length > 0
+  no_log: true
+
+- name: Set API key source fallback
+  ansible.builtin.set_fact:
+    portainer_api_key_source: "{{ portainer_api_key_source | default('unknown') }}"
+  when: inventory_hostname == groups['oci_nodes'][0]
 
 # ──────────────────────────────────────────────
 # Write credentials to Infisical /management
@@ -148,6 +232,21 @@
     INFISICAL_TOKEN: "{{ lookup('env', 'INFISICAL_TOKEN') }}"
   register: infisical_url_result
   changed_when: infisical_url_result.rc == 0
+  when:
+    - inventory_hostname == groups['oci_nodes'][0]
+    - infisical_project_id | length > 0
+    - portainer_base_domain != 'localhost'
+
+- name: Write PORTAINER_API_URL to Infisical
+  ansible.builtin.command: >
+    infisical secrets set PORTAINER_API_URL=https://portainer-api.{{ portainer_base_domain }}
+    --env=prod
+    --path=/management
+    --projectId={{ infisical_project_id }}
+  environment:
+    INFISICAL_TOKEN: "{{ lookup('env', 'INFISICAL_TOKEN') }}"
+  register: infisical_api_url_result
+  changed_when: infisical_api_url_result.rc == 0
   when:
     - inventory_hostname == groups['oci_nodes'][0]
     - infisical_project_id | length > 0
@@ -190,8 +289,11 @@
   ansible.builtin.debug:
     msg: |
       Portainer bootstrap complete:
-        URL:        https://portainer.{{ portainer_base_domain }}
-        API Key:    {{ 'written to Infisical /management' if (infisical_project_id | length > 0) else 'MANUAL — set PORTAINER_API_KEY in Infisical /management' }}
-        Stack:      management (portainer-server + portainer-agent + homarr)
-        Health:     {{ 'OK' if (final_health_check is defined and final_health_check.status == 200) else 'SKIPPED' }}
+        UI URL:      https://portainer.{{ portainer_base_domain }}
+        API URL:     https://portainer-api.{{ portainer_base_domain }}
+        API Key:     {{ 'written to Infisical /management' if (infisical_project_id | length > 0) else 'MANUAL — set PORTAINER_API_KEY in Infisical /management' }}
+        Key Mode:    {{ portainer_api_key_source }}
+        Admin Hash:  {{ 'written to Infisical /stacks/management' if (infisical_project_id | length > 0) else 'MANUAL — set PORTAINER_ADMIN_PASSWORD_HASH in Infisical /stacks/management' }}
+        Stack:       management (portainer-server + portainer-agent + homarr)
+        Health:      {{ 'OK' if (final_health_check is defined and final_health_check.status == 200) else 'SKIPPED' }}
   when: inventory_hostname == groups['oci_nodes'][0]

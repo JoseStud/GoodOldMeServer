@@ -1,6 +1,6 @@
 # Scripts & Utilities
 
-This section details helper scripts stored within the `scripts/` folder.
+This section details helper scripts stored within the `scripts/` folder and CI automation scripts under `.github/scripts/`.
 
 ## Overview
 
@@ -24,12 +24,28 @@ Scripts in this repository perform operational tasks, run CI/CD automations, wra
 - **Example**: `./scripts/cloudflare-dns.sh portainer 192.168.1.50`
 
 ### `scripts/portainer-webhook.sh`
-- **Purpose**: Triggers Portainer GitOps webhooks to redeploy stacks. Each stack is linked to the Git repository in Portainer with "Enable Webhook" — hitting the webhook URL tells Portainer to pull the latest Compose files and redeploy. No API key or endpoint ID required.
+- **Purpose**: Triggers Portainer GitOps webhooks to redeploy stacks from trusted private automation sources. Each stack is linked to the Git repository in Portainer with "Enable Webhook" — hitting the webhook URL tells Portainer to pull the latest Compose files and redeploy. No API key or endpoint ID required.
 - **Parameters**: 
   - Positional args: one or more webhook URLs
   - Or environment: `WEBHOOK_URLS` (comma-separated list of Portainer webhook URLs)
-- **Example (positional)**: `./scripts/portainer-webhook.sh https://portainer.example.com/api/webhooks/<uuid>`
-- **Example (env var)**: `WEBHOOK_URLS="https://portainer.example.com/api/webhooks/<uuid1>,https://portainer.example.com/api/webhooks/<uuid2>" ./scripts/portainer-webhook.sh`
+- **Example (positional)**: `./scripts/portainer-webhook.sh https://portainer-api.example.com/api/webhooks/<uuid>`
+- **Example (env var)**: `WEBHOOK_URLS="https://portainer-api.example.com/api/webhooks/<uuid1>,https://portainer-api.example.com/api/webhooks/<uuid2>" ./scripts/portainer-webhook.sh`
+
+### `.github/scripts/render_inventory_from_tfc_outputs.sh`
+- **Purpose**: Fetches Terraform Cloud workspace outputs (`oci_public_ips`, `gcp_witness_ipv6`) and renders deterministic `inventory-ci.yml` for GitHub Actions handover jobs.
+- **Parameters**:
+  - `$1`: `<TFC_WORKSPACE_NAME>`
+  - `$2`: Optional output file path (default: `inventory-ci.yml`)
+  - Environment: `TFC_TOKEN`, `TFC_ORGANIZATION`, optional `TFC_API_URL`
+- **Example**: `TFC_TOKEN=... TFC_ORGANIZATION=my-org .github/scripts/render_inventory_from_tfc_outputs.sh goodoldme-infra`
+
+### `.github/scripts/trigger_webhooks_with_gates.sh`
+- **Purpose**: Triggers Portainer stack webhooks with dependency-aware health gates from `stacks/stacks.yaml` (for example, wait for Gateway health before Auth redeploy).
+- **Parameters**:
+  - `$1`: Manifest path (for example `stacks/stacks.yaml`)
+  - `$2`: Optional `changed_stacks` CSV (or `STACKS_CSV` env var)
+  - Environment: `WEBHOOK_URL_*` from Infisical `/deployments`, `BASE_DOMAIN` for templated health URLs
+- **Example**: `STACKS_CSV="gateway,auth" .github/scripts/trigger_webhooks_with_gates.sh stacks/stacks.yaml`
 
 ### `scripts/archive/portainer-deploy.sh` *(archived)*
 - **Purpose**: Legacy script that pushed `.env` files to Portainer via its REST API. Replaced by native GitOps webhooks.

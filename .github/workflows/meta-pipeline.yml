@@ -1,0 +1,674 @@
+name: Meta Pipeline
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "terraform/**"
+      - "ansible/**"
+      - ".github/workflows/**"
+      - ".github/scripts/**"
+      - "stacks"
+  repository_dispatch:
+    types:
+      - stacks-redeploy-requested
+  workflow_dispatch:
+    inputs:
+      run_infra_apply:
+        description: "Create infra run and wait for manual confirm/apply in Terraform Cloud"
+        required: false
+        default: false
+        type: boolean
+      run_ansible_bootstrap:
+        description: "Run Ansible provision playbook"
+        required: false
+        default: false
+        type: boolean
+      run_portainer_apply:
+        description: "Run Terraform Cloud apply for Portainer workspace"
+        required: false
+        default: false
+        type: boolean
+      stacks_sha:
+        description: "Optional stacks repository commit SHA"
+        required: false
+        type: string
+      changed_stacks:
+        description: "Comma-separated stack names for health-gated webhook redeploy"
+        required: false
+        type: string
+      config_stacks:
+        description: "Comma-separated stack names requiring config sync"
+        required: false
+        type: string
+      structural_change:
+        description: "Whether stack structure changed and Portainer apply is required"
+        required: false
+        default: false
+        type: boolean
+      reason:
+        description: "Execution reason label"
+        required: false
+        default: "manual-dispatch"
+        type: string
+      changed_paths:
+        description: "Optional CSV list of changed structural paths"
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      run_infra_apply:
+        required: false
+        type: boolean
+      run_ansible_bootstrap:
+        required: false
+        type: boolean
+      run_portainer_apply:
+        required: false
+        type: boolean
+      stacks_sha:
+        required: false
+        type: string
+      changed_stacks:
+        required: false
+        type: string
+      config_stacks:
+        required: false
+        type: string
+      structural_change:
+        required: false
+        type: boolean
+      reason:
+        required: false
+        type: string
+      changed_paths:
+        required: false
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: meta-pipeline-${{ github.ref_name || github.event.repository.default_branch || 'main' }}
+  cancel-in-progress: false
+
+jobs:
+  resolve-context:
+    runs-on: ubuntu-latest
+    outputs:
+      run_infra_apply: ${{ steps.resolve.outputs.run_infra_apply }}
+      run_ansible_bootstrap: ${{ steps.resolve.outputs.run_ansible_bootstrap }}
+      run_portainer_apply: ${{ steps.resolve.outputs.run_portainer_apply }}
+      run_config_sync: ${{ steps.resolve.outputs.run_config_sync }}
+      run_health_redeploy: ${{ steps.resolve.outputs.run_health_redeploy }}
+      has_work: ${{ steps.resolve.outputs.has_work }}
+      stacks_sha: ${{ steps.resolve.outputs.stacks_sha }}
+      changed_stacks: ${{ steps.resolve.outputs.changed_stacks }}
+      config_stacks: ${{ steps.resolve.outputs.config_stacks }}
+      structural_change: ${{ steps.resolve.outputs.structural_change }}
+      reason: ${{ steps.resolve.outputs.reason }}
+      changed_paths: ${{ steps.resolve.outputs.changed_paths }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve execution context
+        id: resolve
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_SHA: ${{ github.sha }}
+
+          INPUT_RUN_INFRA: ${{ inputs.run_infra_apply }}
+          INPUT_RUN_ANSIBLE: ${{ inputs.run_ansible_bootstrap }}
+          INPUT_RUN_PORTAINER: ${{ inputs.run_portainer_apply }}
+          INPUT_STACKS_SHA: ${{ inputs.stacks_sha }}
+          INPUT_CHANGED_STACKS: ${{ inputs.changed_stacks }}
+          INPUT_CONFIG_STACKS: ${{ inputs.config_stacks }}
+          INPUT_STRUCTURAL_CHANGE: ${{ inputs.structural_change }}
+          INPUT_REASON: ${{ inputs.reason }}
+          INPUT_CHANGED_PATHS: ${{ inputs.changed_paths }}
+
+          PAYLOAD_STACKS_SHA: ${{ github.event.client_payload.stacks_sha }}
+          PAYLOAD_CHANGED_STACKS: ${{ github.event.client_payload.changed_stacks }}
+          PAYLOAD_CONFIG_STACKS: ${{ github.event.client_payload.config_stacks }}
+          PAYLOAD_STRUCTURAL_CHANGE: ${{ github.event.client_payload.structural_change }}
+          PAYLOAD_REASON: ${{ github.event.client_payload.reason }}
+          PAYLOAD_CHANGED_PATHS: ${{ github.event.client_payload.changed_paths }}
+        run: |
+          set -euo pipefail
+
+          normalize_csv() {
+            local input="$1"
+            input="$(echo "$input" | tr -d '\r')"
+            if [[ -z "$input" || "$input" == "null" ]]; then
+              echo ""
+              return
+            fi
+
+            IFS=',' read -ra parts <<< "$input"
+            if [[ ${#parts[@]} -eq 0 ]]; then
+              echo ""
+              return
+            fi
+
+            printf '%s\n' "${parts[@]}" \
+              | awk '{$1=$1; print}' \
+              | awk 'NF > 0' \
+              | awk '!seen[$0]++' \
+              | sort \
+              | paste -sd, -
+          }
+
+          to_bool() {
+            local value="${1:-}"
+            case "${value,,}" in
+              true|1|yes) echo "true" ;;
+              *) echo "false" ;;
+            esac
+          }
+
+          run_infra_apply="false"
+          run_ansible_bootstrap="false"
+          run_portainer_apply="false"
+          stacks_sha=""
+          changed_stacks=""
+          config_stacks=""
+          structural_change="false"
+          reason=""
+          changed_paths=""
+
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            before="$PUSH_BEFORE"
+            after="$PUSH_SHA"
+
+            if [[ "$before" == "0000000000000000000000000000000000000000" ]]; then
+              changed_files="$(git show --name-only --pretty='' "$after")"
+            else
+              changed_files="$(git diff --name-only "$before" "$after")"
+            fi
+
+            if echo "$changed_files" | grep -Eq '^(terraform/infra/|terraform/oci/|terraform/gcp/)'; then
+              run_infra_apply="true"
+            fi
+
+            if echo "$changed_files" | grep -Eq '^ansible/'; then
+              run_ansible_bootstrap="true"
+            fi
+
+            if echo "$changed_files" | grep -Eq '^(terraform/portainer/|terraform/portainer-root/|\.github/workflows/|\.github/scripts/)'; then
+              run_portainer_apply="true"
+            fi
+
+            # Infra changes imply Ansible bootstrap and Portainer apply sequencing.
+            if [[ "$run_infra_apply" == "true" ]]; then
+              run_ansible_bootstrap="true"
+              run_portainer_apply="true"
+            fi
+
+            # Ansible/bootstrap-related changes should reconcile Portainer credentials.
+            if [[ "$run_ansible_bootstrap" == "true" ]]; then
+              run_portainer_apply="true"
+            fi
+
+            reason="infra-repo-push"
+            changed_paths="$(normalize_csv "$(echo "$changed_files" | paste -sd, -)")"
+          elif [[ "$EVENT_NAME" == "repository_dispatch" ]]; then
+            stacks_sha="${PAYLOAD_STACKS_SHA}"
+            changed_stacks="$(normalize_csv "${PAYLOAD_CHANGED_STACKS}")"
+            config_stacks="$(normalize_csv "${PAYLOAD_CONFIG_STACKS}")"
+            structural_change="$(to_bool "${PAYLOAD_STRUCTURAL_CHANGE}")"
+            reason="${PAYLOAD_REASON}"
+            changed_paths="$(normalize_csv "${PAYLOAD_CHANGED_PATHS}")"
+
+            if [[ "$structural_change" == "true" || "$reason" == "structural-change" || "$reason" == "manual-refresh" ]]; then
+              run_portainer_apply="true"
+            fi
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" || "$EVENT_NAME" == "workflow_call" ]]; then
+            run_infra_apply="$(to_bool "${INPUT_RUN_INFRA}")"
+            run_ansible_bootstrap="$(to_bool "${INPUT_RUN_ANSIBLE}")"
+            run_portainer_apply="$(to_bool "${INPUT_RUN_PORTAINER}")"
+            stacks_sha="${INPUT_STACKS_SHA}"
+            changed_stacks="$(normalize_csv "${INPUT_CHANGED_STACKS}")"
+            config_stacks="$(normalize_csv "${INPUT_CONFIG_STACKS}")"
+            structural_change="$(to_bool "${INPUT_STRUCTURAL_CHANGE}")"
+            reason="${INPUT_REASON}"
+            changed_paths="$(normalize_csv "${INPUT_CHANGED_PATHS}")"
+          fi
+
+          if [[ -n "$config_stacks" ]]; then
+            changed_stacks="$(normalize_csv "${changed_stacks},${config_stacks}")"
+          fi
+
+          run_config_sync="false"
+          if [[ -n "$config_stacks" ]]; then
+            run_config_sync="true"
+          fi
+
+          run_health_redeploy="false"
+          if [[ -n "$changed_stacks" ]]; then
+            run_health_redeploy="true"
+          fi
+
+          if [[ -z "$reason" ]]; then
+            if [[ "$run_infra_apply" == "true" ]]; then
+              reason="infra-reconcile"
+            elif [[ "$run_portainer_apply" == "true" ]]; then
+              reason="portainer-reconcile"
+            elif [[ "$run_health_redeploy" == "true" ]]; then
+              reason="content-change"
+            else
+              reason="no-op"
+            fi
+          fi
+
+          if [[ -z "$stacks_sha" || "$stacks_sha" == "null" ]]; then
+            stacks_sha="$(git rev-parse HEAD:stacks 2>/dev/null || true)"
+          fi
+
+          if [[ -n "$stacks_sha" && ! "$stacks_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid stacks SHA: $stacks_sha"
+            exit 1
+          fi
+
+          has_work="false"
+          if [[ "$run_infra_apply" == "true" || "$run_ansible_bootstrap" == "true" || "$run_portainer_apply" == "true" || "$run_config_sync" == "true" || "$run_health_redeploy" == "true" ]]; then
+            has_work="true"
+          fi
+
+          echo "run_infra_apply=$run_infra_apply" >> "$GITHUB_OUTPUT"
+          echo "run_ansible_bootstrap=$run_ansible_bootstrap" >> "$GITHUB_OUTPUT"
+          echo "run_portainer_apply=$run_portainer_apply" >> "$GITHUB_OUTPUT"
+          echo "run_config_sync=$run_config_sync" >> "$GITHUB_OUTPUT"
+          echo "run_health_redeploy=$run_health_redeploy" >> "$GITHUB_OUTPUT"
+          echo "has_work=$has_work" >> "$GITHUB_OUTPUT"
+          echo "stacks_sha=$stacks_sha" >> "$GITHUB_OUTPUT"
+          echo "changed_stacks=$changed_stacks" >> "$GITHUB_OUTPUT"
+          echo "config_stacks=$config_stacks" >> "$GITHUB_OUTPUT"
+          echo "structural_change=$structural_change" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          echo "changed_paths=$changed_paths" >> "$GITHUB_OUTPUT"
+
+      - name: Print execution context
+        run: |
+          echo "run_infra_apply=${{ steps.resolve.outputs.run_infra_apply }}"
+          echo "run_ansible_bootstrap=${{ steps.resolve.outputs.run_ansible_bootstrap }}"
+          echo "run_portainer_apply=${{ steps.resolve.outputs.run_portainer_apply }}"
+          echo "run_config_sync=${{ steps.resolve.outputs.run_config_sync }}"
+          echo "run_health_redeploy=${{ steps.resolve.outputs.run_health_redeploy }}"
+          echo "stacks_sha=${{ steps.resolve.outputs.stacks_sha }}"
+          echo "changed_stacks=${{ steps.resolve.outputs.changed_stacks }}"
+          echo "config_stacks=${{ steps.resolve.outputs.config_stacks }}"
+          echo "reason=${{ steps.resolve.outputs.reason }}"
+          echo "changed_paths=${{ steps.resolve.outputs.changed_paths }}"
+
+  secret-validation:
+    needs: [resolve-context]
+    if: ${{ needs.resolve-context.outputs.has_work == 'true' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup Infisical
+        run: |
+          curl -1sLf 'https://artifacts-infisical-core.infisical.com/setup.deb.sh' | sudo -E bash
+          sudo apt-get update && sudo apt-get install -y infisical-core
+
+      - name: Infisical OIDC Login
+        run: |
+          infisical login --method=oidc --oidc-client-id=${{ vars.INFISICAL_MACHINE_IDENTITY_ID }} --domain="https://app.infisical.com"
+
+      - name: Validate required secret paths
+        env:
+          RUN_INFRA: ${{ needs.resolve-context.outputs.run_infra_apply }}
+          RUN_ANSIBLE: ${{ needs.resolve-context.outputs.run_ansible_bootstrap }}
+          RUN_PORTAINER: ${{ needs.resolve-context.outputs.run_portainer_apply }}
+          RUN_HEALTH: ${{ needs.resolve-context.outputs.run_health_redeploy }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$RUN_INFRA" == "true" ]]; then
+            infisical run --projectId=${{ vars.INFISICAL_PROJECT_ID }} --env=prod --path=/security -- bash -lc '[[ -n "${SSH_CA_PUBLIC_KEY:-}" ]]'
+            infisical run --projectId=${{ vars.INFISICAL_PROJECT_ID }} --env=prod --path=/cloud-provider/oci -- bash -lc '[[ -n "${OCI_COMPARTMENT_OCID:-}" && -n "${OCI_IMAGE_OCID:-}" ]]'
+            infisical run --projectId=${{ vars.INFISICAL_PROJECT_ID }} --env=prod --path=/cloud-provider/gcp -- bash -lc '[[ -n "${GCP_PROJECT_ID:-}" ]]'
+          fi
+
+          if [[ "$RUN_ANSIBLE" == "true" ]]; then
+            infisical run --projectId=${{ vars.INFISICAL_PROJECT_ID }} --env=prod --path=/infrastructure -- bash -lc '[[ -n "${BASE_DOMAIN:-}" && -n "${TZ:-}" && -n "${TAILSCALE_OAUTH_CLIENT_ID:-}" ]]'
+            infisical run --projectId=${{ vars.INFISICAL_PROJECT_ID }} --env=prod --path=/stacks/management -- bash -lc '[[ -n "${HOMARR_SECRET_KEY:-}" && -n "${PORTAINER_ADMIN_PASSWORD:-}" && -n "${PORTAINER_AUTOMATION_ALLOWED_CIDRS:-}" ]]'
+          fi
+
+          if [[ "$RUN_PORTAINER" == "true" && "$RUN_ANSIBLE" != "true" ]]; then
+            infisical run --projectId=${{ vars.INFISICAL_PROJECT_ID }} --env=prod --path=/management -- bash -lc '[[ -n "${PORTAINER_API_URL:-}" && -n "${PORTAINER_API_KEY:-}" ]]'
+          fi
+
+          if [[ "$RUN_HEALTH" == "true" ]]; then
+            if [[ "$RUN_PORTAINER" != "true" ]]; then
+              infisical run --projectId=${{ vars.INFISICAL_PROJECT_ID }} --env=prod --path=/deployments -- bash -lc '[[ -n "${PORTAINER_WEBHOOK_URLS:-}" ]]'
+            fi
+            infisical run --projectId=${{ vars.INFISICAL_PROJECT_ID }} --env=prod --path=/infrastructure -- bash -lc '[[ -n "${BASE_DOMAIN:-}" ]]'
+          fi
+
+  infra-apply:
+    needs: [resolve-context, secret-validation]
+    if: ${{ needs.resolve-context.outputs.run_infra_apply == 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Create Terraform Cloud Infra Run
+        uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.0
+        id: tfc-run
+        with:
+          workspace: ${{ vars.TFC_WORKSPACE_INFRA || 'goodoldme-infra' }}
+          configuration_version: ${{ github.sha }}
+          message: "Meta pipeline infra apply (${{ needs.resolve-context.outputs.reason }})"
+
+      - name: Wait for manual confirm/apply in Terraform Cloud
+        env:
+          RUN_ID: ${{ steps.tfc-run.outputs.run_id }}
+          TFC_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
+          TFC_WORKSPACE: ${{ vars.TFC_WORKSPACE_INFRA || 'goodoldme-infra' }}
+          WAIT_TIMEOUT_SECONDS: ${{ vars.TFC_INFRA_APPLY_WAIT_TIMEOUT_SECONDS || '7200' }}
+        timeout-minutes: 125
+        run: |
+          set -euo pipefail
+
+          if ! [[ "${WAIT_TIMEOUT_SECONDS}" =~ ^[0-9]+$ ]]; then
+            echo "Invalid WAIT_TIMEOUT_SECONDS='${WAIT_TIMEOUT_SECONDS}', expected integer seconds."
+            exit 1
+          fi
+
+          if [[ -n "${TFC_ORGANIZATION}" ]]; then
+            echo "Terraform Cloud run URL: https://app.terraform.io/app/${TFC_ORGANIZATION}/${TFC_WORKSPACE}/runs/${RUN_ID}"
+          else
+            echo "Terraform Cloud run ID: ${RUN_ID}"
+          fi
+          echo "Waiting for you to confirm/apply this infra run in Terraform Cloud."
+
+          deadline=$((SECONDS + WAIT_TIMEOUT_SECONDS))
+          last_status=""
+          apply_started="false"
+          printed_confirm_hint="false"
+          checked_auto_apply="false"
+
+          while (( SECONDS < deadline )); do
+            run_json="$(
+              curl --silent --show-error --fail \
+                --header "Authorization: Bearer ${TFC_TOKEN}" \
+                --header "Content-Type: application/vnd.api+json" \
+                "https://app.terraform.io/api/v2/runs/${RUN_ID}"
+            )"
+
+            status="$(jq -r '.data.attributes.status // "unknown"' <<<"${run_json}")"
+            is_confirmable="$(jq -r '.data.attributes.actions["is-confirmable"] // false' <<<"${run_json}")"
+            has_changes="$(jq -r '.data.attributes["has-changes"] // "unknown"' <<<"${run_json}")"
+            auto_apply="$(jq -r '.data.attributes["auto-apply"] // false' <<<"${run_json}")"
+
+            if [[ "${status}" != "${last_status}" ]]; then
+              echo "Infra run status: ${status}"
+              last_status="${status}"
+            fi
+
+            if [[ "${checked_auto_apply}" == "false" ]]; then
+              checked_auto_apply="true"
+              if [[ "${auto_apply}" == "true" ]]; then
+                echo "Terraform Cloud run is configured with auto-apply=true."
+                echo "Disable auto-apply for '${TFC_WORKSPACE}' to require manual confirmation."
+                exit 1
+              fi
+            fi
+
+            case "${status}" in
+              applied)
+                echo "Infra run applied successfully."
+                exit 0
+                ;;
+              canceled|discarded|errored|force_canceled)
+                echo "Infra run ended unsuccessfully with status '${status}'."
+                exit 1
+                ;;
+            esac
+
+            if [[ "${status}" == "planned_and_finished" && "${is_confirmable}" == "false" && "${has_changes}" == "false" ]]; then
+              echo "Infra run completed with no changes."
+              exit 0
+            fi
+
+            if [[ "${status}" == "apply_queued" || "${status}" == "applying" || "${status}" == "applied" ]]; then
+              apply_started="true"
+            fi
+
+            if [[ "${apply_started}" == "false" && "${is_confirmable}" == "true" && "${printed_confirm_hint}" == "false" ]]; then
+              echo "Run is confirmable. Confirm and apply in Terraform Cloud to continue."
+              printed_confirm_hint="true"
+            fi
+
+            sleep 10
+          done
+
+          echo "Timed out after ${WAIT_TIMEOUT_SECONDS}s waiting for infra run completion."
+          exit 1
+
+  inventory-handover:
+    needs: [resolve-context, secret-validation, infra-apply]
+    if: ${{ always() && (needs.resolve-context.outputs.run_ansible_bootstrap == 'true' || needs.resolve-context.outputs.run_config_sync == 'true') && (needs.infra-apply.result == 'success' || needs.infra-apply.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    env:
+      TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+      TFC_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Render deterministic Ansible inventory from Terraform Cloud outputs
+        run: |
+          chmod +x .github/scripts/render_inventory_from_tfc_outputs.sh
+          .github/scripts/render_inventory_from_tfc_outputs.sh "${{ vars.TFC_WORKSPACE_INFRA || 'goodoldme-infra' }}" inventory-ci.yml
+
+      - name: Upload CI inventory artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: inventory-ci
+          path: inventory-ci.yml
+          if-no-files-found: error
+
+  ansible-bootstrap:
+    needs: [resolve-context, secret-validation, inventory-handover]
+    if: ${{ needs.resolve-context.outputs.run_ansible_bootstrap == 'true' }}
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Checkout stacks submodule at requested SHA
+        if: ${{ needs.resolve-context.outputs.stacks_sha != '' }}
+        run: |
+          STACKS_SHA="${{ needs.resolve-context.outputs.stacks_sha }}"
+          git -C stacks fetch --depth=1 origin "$STACKS_SHA"
+          git -C stacks checkout --detach "$STACKS_SHA"
+
+      - name: Download CI inventory artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: inventory-ci
+          path: .
+
+      - name: Setup Infisical
+        run: |
+          curl -1sLf 'https://artifacts-infisical-core.infisical.com/setup.deb.sh' | sudo -E bash
+          sudo apt-get update && sudo apt-get install -y infisical-core
+
+      - name: Infisical OIDC Login
+        run: |
+          infisical login --method=oidc --oidc-client-id=${{ vars.INFISICAL_MACHINE_IDENTITY_ID }} --domain="https://app.infisical.com"
+
+      - name: Generate Ephemeral SSH Certificate
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ""
+          infisical ssh sign --public-key=~/.ssh/id_ed25519.pub --ca-id=${{ vars.INFISICAL_SSH_CA_ID }} > ~/.ssh/id_ed25519-cert.pub
+
+      - name: Run Ansible bootstrap
+        run: |
+          infisical run --projectId=${{ vars.INFISICAL_PROJECT_ID }} --env=prod -- ansible-playbook -i inventory-ci.yml ansible/playbooks/provision.yml
+        env:
+          ANSIBLE_SSH_ARGS: "-o StrictHostKeyChecking=accept-new -o CertificateFile=~/.ssh/id_ed25519-cert.pub -i ~/.ssh/id_ed25519"
+
+  post-bootstrap-secret-check:
+    needs: [resolve-context, ansible-bootstrap]
+    if: ${{ always() && needs.resolve-context.outputs.run_portainer_apply == 'true' && (needs.ansible-bootstrap.result == 'success' || needs.ansible-bootstrap.result == 'skipped') }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup Infisical
+        run: |
+          curl -1sLf 'https://artifacts-infisical-core.infisical.com/setup.deb.sh' | sudo -E bash
+          sudo apt-get update && sudo apt-get install -y infisical-core
+
+      - name: Infisical OIDC Login
+        run: |
+          infisical login --method=oidc --oidc-client-id=${{ vars.INFISICAL_MACHINE_IDENTITY_ID }} --domain="https://app.infisical.com"
+
+      - name: Validate bootstrap-managed Portainer secrets
+        run: |
+          infisical run --projectId=${{ vars.INFISICAL_PROJECT_ID }} --env=prod --path=/management -- bash -lc '
+            [[ -n "${PORTAINER_API_URL:-}" ]]
+            [[ -n "${PORTAINER_API_KEY:-}" ]]
+          '
+          infisical run --projectId=${{ vars.INFISICAL_PROJECT_ID }} --env=prod --path=/stacks/management -- bash -lc '
+            [[ -n "${PORTAINER_ADMIN_PASSWORD_HASH:-}" ]]
+          '
+
+  portainer-apply:
+    needs: [resolve-context, secret-validation, post-bootstrap-secret-check]
+    if: ${{ needs.resolve-context.outputs.run_portainer_apply == 'true' }}
+    runs-on: ubuntu-latest
+    env:
+      TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Create Terraform Cloud Portainer Run
+        uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.0
+        id: tfc-run
+        with:
+          workspace: ${{ vars.TFC_WORKSPACE_PORTAINER || 'goodoldme-portainer' }}
+          configuration_version: ${{ github.sha }}
+          message: "Meta pipeline Portainer apply (${{ needs.resolve-context.outputs.reason }})"
+
+      - name: Apply Terraform Cloud Portainer Run
+        uses: hashicorp/tfc-workflows-github/actions/apply-run@v1.0.0
+        with:
+          run: ${{ steps.tfc-run.outputs.run_id }}
+          comment: "Applied by meta pipeline"
+
+  config-sync:
+    needs: [resolve-context, secret-validation, inventory-handover, portainer-apply]
+    if: ${{ always() && needs.resolve-context.outputs.run_config_sync == 'true' && (needs.portainer-apply.result == 'success' || needs.portainer-apply.result == 'skipped') }}
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Checkout stacks submodule at requested SHA
+        if: ${{ needs.resolve-context.outputs.stacks_sha != '' }}
+        run: |
+          STACKS_SHA="${{ needs.resolve-context.outputs.stacks_sha }}"
+          git -C stacks fetch --depth=1 origin "$STACKS_SHA"
+          git -C stacks checkout --detach "$STACKS_SHA"
+
+      - name: Download CI inventory artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: inventory-ci
+          path: .
+
+      - name: Setup Infisical
+        run: |
+          curl -1sLf 'https://artifacts-infisical-core.infisical.com/setup.deb.sh' | sudo -E bash
+          sudo apt-get update && sudo apt-get install -y infisical-core
+
+      - name: Infisical OIDC Login
+        run: |
+          infisical login --method=oidc --oidc-client-id=${{ vars.INFISICAL_MACHINE_IDENTITY_ID }} --domain="https://app.infisical.com"
+
+      - name: Generate Ephemeral SSH Certificate
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ""
+          infisical ssh sign --public-key=~/.ssh/id_ed25519.pub --ca-id=${{ vars.INFISICAL_SSH_CA_ID }} > ~/.ssh/id_ed25519-cert.pub
+
+      - name: Sync stack configs only
+        run: |
+          infisical run --projectId=${{ vars.INFISICAL_PROJECT_ID }} --env=prod -- ansible-playbook -i inventory-ci.yml ansible/playbooks/provision.yml --tags sync-configs
+        env:
+          ANSIBLE_SSH_ARGS: "-o StrictHostKeyChecking=accept-new -o CertificateFile=~/.ssh/id_ed25519-cert.pub -i ~/.ssh/id_ed25519"
+
+  health-gated-redeploy:
+    needs: [resolve-context, secret-validation, portainer-apply, config-sync]
+    if: ${{ always() && needs.resolve-context.outputs.run_health_redeploy == 'true' && (needs.portainer-apply.result == 'success' || needs.portainer-apply.result == 'skipped') && (needs.config-sync.result == 'success' || needs.config-sync.result == 'skipped') }}
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Checkout stacks submodule at requested SHA
+        if: ${{ needs.resolve-context.outputs.stacks_sha != '' }}
+        run: |
+          STACKS_SHA="${{ needs.resolve-context.outputs.stacks_sha }}"
+          git -C stacks fetch --depth=1 origin "$STACKS_SHA"
+          git -C stacks checkout --detach "$STACKS_SHA"
+
+      - name: Setup yq
+        run: |
+          sudo wget -q https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
+
+      - name: Setup Infisical
+        run: |
+          curl -1sLf 'https://artifacts-infisical-core.infisical.com/setup.deb.sh' | sudo -E bash
+          sudo apt-get update && sudo apt-get install -y infisical-core
+
+      - name: Infisical OIDC Login
+        run: |
+          infisical login --method=oidc --oidc-client-id=${{ vars.INFISICAL_MACHINE_IDENTITY_ID }} --domain="https://app.infisical.com"
+
+      - name: Trigger health-gated webhooks
+        env:
+          STACKS_CSV: ${{ needs.resolve-context.outputs.changed_stacks }}
+        run: |
+          chmod +x .github/scripts/trigger_webhooks_with_gates.sh
+          infisical run --projectId=${{ vars.INFISICAL_PROJECT_ID }} --env=prod -- bash -lc '
+            .github/scripts/trigger_webhooks_with_gates.sh stacks/stacks.yaml "${STACKS_CSV}"
+          '

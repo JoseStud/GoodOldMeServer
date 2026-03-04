@@ -38,7 +38,11 @@ variable "oci_image_ocid" {
 variable "ssh_allowed_cidr" {
   description = "CIDR block allowed to SSH into instances (restrict to your IP or VPN range)"
   type        = string
-  default     = "0.0.0.0/0"
+
+  validation {
+    condition     = can(cidrhost(var.ssh_allowed_cidr, 0))
+    error_message = "ssh_allowed_cidr must be a valid IPv4 or IPv6 CIDR."
+  }
 }
 
 locals {

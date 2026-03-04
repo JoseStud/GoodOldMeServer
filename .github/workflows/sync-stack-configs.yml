@@ -1,0 +1,35 @@
+name: Sync Stack Configs (Legacy Wrapper)
+
+on:
+  repository_dispatch:
+    types:
+      - stacks-config-changed
+  workflow_dispatch:
+    inputs:
+      stacks_sha:
+        description: "Commit SHA from github.com/JoseStud/stacks"
+        required: true
+        type: string
+      changed_stacks:
+        description: "Comma-separated stack names (auth,observability)"
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  call-meta-pipeline:
+    uses: ./.github/workflows/meta-pipeline.yml
+    with:
+      run_infra_apply: false
+      run_ansible_bootstrap: false
+      run_portainer_apply: false
+      stacks_sha: ${{ github.event.client_payload.stacks_sha || inputs.stacks_sha }}
+      changed_stacks: ${{ github.event.client_payload.changed_stacks || inputs.changed_stacks }}
+      config_stacks: ${{ github.event.client_payload.changed_stacks || inputs.changed_stacks }}
+      structural_change: false
+      reason: "legacy-config-sync"
+      changed_paths: ""
+    secrets: inherit

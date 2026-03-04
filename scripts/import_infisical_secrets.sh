@@ -15,7 +15,9 @@ infisical secrets set TAILSCALE_OAUTH_CLIENT_ID="your_tailscale_oauth_client_id_
 
 echo "Creating secrets for folder: /management"
 infisical secrets set PORTAINER_URL="https://portainer.example.com" --env=$ENV --path="/management" || true
+infisical secrets set PORTAINER_API_URL="https://portainer-api.example.com" --env=$ENV --path="/management" || true
 infisical secrets set PORTAINER_API_KEY="your_portainer_api_key_here" --env=$ENV --path="/management" || true
+infisical secrets set PORTAINER_LICENSE_KEY="" --env=$ENV --path="/management" || true
 
 echo "Creating secrets for folder: /deployments"
 infisical secrets set PORTAINER_WEBHOOK_URLS="" --env=$ENV --path="/deployments" || true
@@ -44,6 +46,7 @@ echo "Creating secrets for folder: /stacks/management"
 infisical secrets set HOMARR_SECRET_KEY="your_homarr_secret_key" --env=$ENV --path="/stacks/management" || true
 infisical secrets set PORTAINER_ADMIN_PASSWORD="your_portainer_admin_password" --env=$ENV --path="/stacks/management" || true
 infisical secrets set PORTAINER_ADMIN_PASSWORD_HASH="your_portainer_admin_password_hash" --env=$ENV --path="/stacks/management" || true
+infisical secrets set PORTAINER_AUTOMATION_ALLOWED_CIDRS="203.0.113.10/32" --env=$ENV --path="/stacks/management" || true
 
 echo "Creating secrets for folder: /stacks/network"
 infisical secrets set VW_DB_PASS="your_vw_db_pass" --env=$ENV --path="/stacks/network" || true
@@ -63,4 +66,3 @@ infisical secrets set OCI_IMAGE_OCID="your_oci_image_ocid" --env=$ENV --path="/c
 
 echo "Creating secrets for folder: /cloud-provider/gcp"
 infisical secrets set GCP_PROJECT_ID="your_gcp_project_id" --env=$ENV --path="/cloud-provider/gcp" || true
-

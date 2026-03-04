@@ -2,6 +2,7 @@ terraform {
   required_providers {
     portainer = { source = "portainer/portainer", version = "~> 1.0" }
     infisical = { source = "Infisical/infisical", version = ">= 0.8.0" }
+    http      = { source = "hashicorp/http", version = ">= 3.0.0" }
   }
 }
 
@@ -44,25 +45,67 @@ variable "git_password" {
   sensitive   = true
 }
 
+variable "license_key" {
+  description = "Portainer Business Edition license key (optional — leave empty to skip)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "stacks_manifest_url" {
+  description = "URL of the stacks manifest (stacks.yaml) used to define Portainer-managed stacks"
+  type        = string
+  default     = "https://raw.githubusercontent.com/JoseStud/stacks/main/stacks.yaml"
+}
+
+variable "stacks_manifest_token" {
+  description = "Optional bearer token used to fetch a private stacks manifest URL"
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
 # ──────────────────────────────────────────────
 # Stack Definitions
 # ──────────────────────────────────────────────
 
+data "http" "stacks_manifest" {
+  url = var.stacks_manifest_url
+
+  request_headers = var.stacks_manifest_token != null && trim(var.stacks_manifest_token) != "" ? {
+    Authorization = "Bearer ${var.stacks_manifest_token}"
+  } : {}
+}
+
 locals {
-  # Map of stack name → compose file path (relative to repo root)
-  # NOTE: The 'management' stack (Portainer + Homarr) is deployed by Ansible
-  # during Phase 6 (portainer_bootstrap role), NOT managed here.
+  stacks_manifest = yamldecode(data.http.stacks_manifest.response_body)
+  stack_entries   = try(local.stacks_manifest.stacks, {})
+
+  # Map of stack name -> compose file path for Portainer-managed stacks only.
   stacks = {
-    gateway       = "stacks/gateway/docker-compose.yml"
-    auth          = "stacks/auth/docker-compose.yml"
-    network       = "stacks/network/docker-compose.yml"
-    observability = "stacks/observability/docker-compose.yml"
-    ai-interface  = "stacks/media/ai-interface/docker-compose.yml"
-    uptime        = "stacks/uptime/docker-compose.yml"
-    cloud         = "stacks/cloud/docker-compose.yml"
+    for name, cfg in local.stack_entries :
+    name => cfg.compose_path
+    if try(cfg.portainer_managed, false)
   }
 
   has_git_auth = var.git_username != null && var.git_password != null
+}
+
+check "stacks_manifest_version" {
+  assert {
+    condition     = try(local.stacks_manifest.version, 0) == 1
+    error_message = "stacks.yaml must define version: 1."
+  }
+}
+
+check "stacks_manifest_compose_paths" {
+  assert {
+    condition = alltrue([
+      for name, cfg in local.stacks :
+      trim(cfg) != ""
+    ])
+    error_message = "All portainer_managed stacks in stacks.yaml must define a non-empty compose_path."
+  }
 }
 
 # ──────────────────────────────────────────────
@@ -90,6 +133,17 @@ resource "portainer_stack" "swarm" {
   git_repository_authentication = local.has_git_auth
   repository_username           = local.has_git_auth ? var.git_username : null
   repository_password           = local.has_git_auth ? var.git_password : null
+}
+
+# ──────────────────────────────────────────────
+# Portainer License (Business Edition)
+# ──────────────────────────────────────────────
+
+resource "portainer_licenses" "be" {
+  count = var.license_key != "" ? 1 : 0
+
+  key   = var.license_key
+  force = true
 }
 
 # ──────────────────────────────────────────────

@@ -8,17 +8,21 @@ terraform {
     portainer = { source = "portainer/portainer", version = "~> 1.0" }
   }
 
-  # TODO: Configure a remote backend for state persistence and locking.
-  # Options: OCI Object Storage (S3-compatible), GCS, or Terraform Cloud.
-  # Example:
-  # backend "s3" {
-  #   bucket   = "goodoldme-tf-state"
-  #   key      = "terraform.tfstate"
-  #   region   = "us-ashburn-1"
-  #   endpoint = "https://<namespace>.compat.objectstorage.<region>.oraclecloud.com"
-  #   ...
-  # }
+  cloud {
+    # Set organization from environment:
+    #   TF_CLOUD_ORGANIZATION=<your-org-name>
+    # Select workspace at runtime with:
+    #   TF_WORKSPACE=<workspace-name>
+    workspaces {
+      tags = ["goodoldme"]
+    }
+  }
 }
+
+# NOTE: This monolithic root is retained for backward compatibility.
+# The active deployment model uses split roots/workspaces:
+# - terraform/infra (goodoldme-infra)
+# - terraform/portainer-root (goodoldme-portainer)
 
 # ──────────────────────────────────────────────────
 # Providers
@@ -44,8 +48,10 @@ provider "google" {
 }
 
 provider "portainer" {
-  # Authenticate via API key stored in Infisical /management
-  endpoint = local.secrets.portainer_url
+  # Authenticate via API key stored in Infisical /management.
+  # Use the automation-only endpoint (portainer-api.<domain>) so UI
+  # access remains protected by Authelia.
+  endpoint = local.secrets.portainer_api_url
   api_key  = local.secrets.portainer_api_key
 }
 
@@ -93,15 +99,17 @@ locals {
     ssh_ca_public_key = data.infisical_secrets.security.secrets["SSH_CA_PUBLIC_KEY"].value
 
     # /cloud-provider/oci
-    oci_compartment_id  = data.infisical_secrets.oci.secrets["OCI_COMPARTMENT_OCID"].value
-    oci_image_ocid      = data.infisical_secrets.oci.secrets["OCI_IMAGE_OCID"].value
+    oci_compartment_id = data.infisical_secrets.oci.secrets["OCI_COMPARTMENT_OCID"].value
+    oci_image_ocid     = data.infisical_secrets.oci.secrets["OCI_IMAGE_OCID"].value
 
     # /cloud-provider/gcp
-    gcp_project_id      = data.infisical_secrets.gcp.secrets["GCP_PROJECT_ID"].value
+    gcp_project_id = data.infisical_secrets.gcp.secrets["GCP_PROJECT_ID"].value
 
     # /management (Portainer)
-    portainer_url     = data.infisical_secrets.management.secrets["PORTAINER_URL"].value
-    portainer_api_key = data.infisical_secrets.management.secrets["PORTAINER_API_KEY"].value
+    portainer_url         = data.infisical_secrets.management.secrets["PORTAINER_URL"].value
+    portainer_api_url     = data.infisical_secrets.management.secrets["PORTAINER_API_URL"].value
+    portainer_api_key     = data.infisical_secrets.management.secrets["PORTAINER_API_KEY"].value
+    portainer_license_key = try(data.infisical_secrets.management.secrets["PORTAINER_LICENSE_KEY"].value, "")
   }
 }
 
@@ -120,6 +128,16 @@ variable "oci_region" {
   default     = "us-ashburn-1"
 }
 
+variable "oci_ssh_allowed_cidr" {
+  description = "CIDR block allowed to SSH into OCI worker nodes"
+  type        = string
+}
+
+variable "gcp_ssh_allowed_cidrs" {
+  description = "CIDR blocks allowed to SSH into the GCP witness node"
+  type        = list(string)
+}
+
 variable "portainer_endpoint_id" {
   description = "Portainer environment (endpoint) ID for the Swarm cluster"
   type        = number
@@ -131,6 +149,19 @@ variable "repository_url" {
   type        = string
 }
 
+variable "stacks_manifest_url" {
+  description = "URL of the stacks manifest (stacks.yaml) used by the Portainer module"
+  type        = string
+  default     = "https://raw.githubusercontent.com/JoseStud/stacks/main/stacks.yaml"
+}
+
+variable "stacks_manifest_token" {
+  description = "Optional bearer token used to fetch a private stacks manifest URL"
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
 # ──────────────────────────────────────────────────
 # Modules
 # ──────────────────────────────────────────────────
@@ -140,18 +171,23 @@ module "oci" {
   oci_compartment_ocid = local.secrets.oci_compartment_id
   ssh_ca_public_key    = local.secrets.ssh_ca_public_key
   oci_image_ocid       = local.secrets.oci_image_ocid
+  ssh_allowed_cidr     = var.oci_ssh_allowed_cidr
 }
 
 module "gcp" {
-  source      = "./gcp"
-  gcp_project = local.secrets.gcp_project_id
+  source            = "./gcp"
+  gcp_project       = local.secrets.gcp_project_id
+  ssh_allowed_cidrs = var.gcp_ssh_allowed_cidrs
 }
 
 module "portainer" {
-  source               = "./portainer"
-  endpoint_id          = var.portainer_endpoint_id
-  repository_url       = var.repository_url
-  infisical_project_id = var.infisical_project_id
+  source                = "./portainer"
+  endpoint_id           = var.portainer_endpoint_id
+  repository_url        = var.repository_url
+  infisical_project_id  = var.infisical_project_id
+  stacks_manifest_url   = var.stacks_manifest_url
+  stacks_manifest_token = var.stacks_manifest_token
+  license_key           = local.secrets.portainer_license_key
 }
 
 # ──────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 - name: Create partition on block volume
   community.general.parted:
-    device: /dev/sdb
+    device: "{{ block_device }}"
     number: 1
     state: present
     fs_type: ext4
@@ -8,19 +8,19 @@
 - name: Format the partition
   community.general.filesystem:
     fstype: ext4
-    dev: /dev/sdb1
+    dev: "{{ block_device_partition }}"
 
 - name: Mount the volume
   ansible.posix.mount:
-    path: /mnt/app_data
-    src: /dev/sdb1
+    path: "{{ mount_point }}"
+    src: "{{ block_device_partition }}"
     fstype: ext4
     state: mounted
 
 - name: Ensure correct ownership on mount directory
   ansible.builtin.file:
-    path: /mnt/app_data
+    path: "{{ mount_point }}"
     state: directory
-    owner: media-srv
-    group: media-srv
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
     mode: '0755'

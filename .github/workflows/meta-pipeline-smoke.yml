@@ -1,0 +1,395 @@
+name: Meta Pipeline Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_infra_apply:
+        description: "Simulate infra apply intent"
+        required: false
+        default: false
+        type: boolean
+      run_ansible_bootstrap:
+        description: "Simulate ansible bootstrap intent"
+        required: false
+        default: false
+        type: boolean
+      run_portainer_apply:
+        description: "Simulate Portainer apply intent"
+        required: false
+        default: false
+        type: boolean
+      stacks_sha:
+        description: "Optional stacks SHA to validate (40-char hex)"
+        required: false
+        type: string
+      changed_stacks:
+        description: "Comma-separated stacks (example: gateway,auth)"
+        required: false
+        type: string
+      config_stacks:
+        description: "Comma-separated config-only stacks"
+        required: false
+        type: string
+      structural_change:
+        description: "Simulate structural change flag"
+        required: false
+        default: false
+        type: boolean
+      reason:
+        description: "Reason label"
+        required: false
+        default: "manual-smoke"
+        type: string
+      changed_paths:
+        description: "Comma-separated changed paths"
+        required: false
+        type: string
+  repository_dispatch:
+    types:
+      - stacks-redeploy-smoke-requested
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/meta-pipeline.yml"
+      - ".github/workflows/meta-pipeline-smoke.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: meta-pipeline-smoke-${{ github.ref_name || github.event.repository.default_branch || 'main' }}
+  cancel-in-progress: true
+
+jobs:
+  resolve-context-smoke:
+    runs-on: ubuntu-latest
+    outputs:
+      run_infra_apply: ${{ steps.resolve.outputs.run_infra_apply }}
+      run_ansible_bootstrap: ${{ steps.resolve.outputs.run_ansible_bootstrap }}
+      run_portainer_apply: ${{ steps.resolve.outputs.run_portainer_apply }}
+      run_config_sync: ${{ steps.resolve.outputs.run_config_sync }}
+      run_health_redeploy: ${{ steps.resolve.outputs.run_health_redeploy }}
+      has_work: ${{ steps.resolve.outputs.has_work }}
+      stacks_sha: ${{ steps.resolve.outputs.stacks_sha }}
+      changed_stacks: ${{ steps.resolve.outputs.changed_stacks }}
+      config_stacks: ${{ steps.resolve.outputs.config_stacks }}
+      structural_change: ${{ steps.resolve.outputs.structural_change }}
+      reason: ${{ steps.resolve.outputs.reason }}
+      changed_paths: ${{ steps.resolve.outputs.changed_paths }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate payload contract
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_STACKS_SHA: ${{ inputs.stacks_sha }}
+          INPUT_CHANGED_STACKS: ${{ inputs.changed_stacks }}
+          INPUT_CONFIG_STACKS: ${{ inputs.config_stacks }}
+          INPUT_STRUCTURAL_CHANGE: ${{ inputs.structural_change }}
+          INPUT_REASON: ${{ inputs.reason }}
+          INPUT_CHANGED_PATHS: ${{ inputs.changed_paths }}
+          PAYLOAD_STACKS_SHA: ${{ github.event.client_payload.stacks_sha }}
+          PAYLOAD_CHANGED_STACKS: ${{ github.event.client_payload.changed_stacks }}
+          PAYLOAD_CONFIG_STACKS: ${{ github.event.client_payload.config_stacks }}
+          PAYLOAD_STRUCTURAL_CHANGE: ${{ github.event.client_payload.structural_change }}
+          PAYLOAD_REASON: ${{ github.event.client_payload.reason }}
+          PAYLOAD_CHANGED_PATHS: ${{ github.event.client_payload.changed_paths }}
+        run: |
+          set -euo pipefail
+
+          validate_sha() {
+            local sha="${1:-}"
+            if [[ -z "$sha" || "$sha" == "null" ]]; then
+              return
+            fi
+            if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "Invalid stacks_sha: '$sha' (must be 40-char lowercase hex)."
+              exit 1
+            fi
+          }
+
+          validate_stack_csv() {
+            local csv="${1:-}"
+            if [[ -z "$csv" || "$csv" == "null" ]]; then
+              return
+            fi
+            if ! [[ "$csv" =~ ^[a-z0-9][a-z0-9-]*(,[a-z0-9][a-z0-9-]*)*$ ]]; then
+              echo "Invalid stack CSV: '$csv' (expected: stack-a,stack-b)."
+              exit 1
+            fi
+          }
+
+          validate_paths_csv() {
+            local csv="${1:-}"
+            if [[ -z "$csv" || "$csv" == "null" ]]; then
+              return
+            fi
+            if [[ "$csv" =~ [[:space:]] || "$csv" == *",,"* || "$csv" == ,* || "$csv" == *, ]]; then
+              echo "Invalid changed_paths CSV: '$csv'."
+              exit 1
+            fi
+          }
+
+          validate_reason() {
+            local reason="${1:-}"
+            if [[ -z "$reason" || "$reason" == "null" ]]; then
+              return
+            fi
+            case "$reason" in
+              structural-change|manual-refresh|content-change|infra-repo-push|infra-reconcile|portainer-reconcile|manual-dispatch|manual-smoke|no-op)
+                ;;
+              *)
+                echo "Invalid reason '$reason'."
+                echo "Allowed: structural-change, manual-refresh, content-change, infra-repo-push, infra-reconcile, portainer-reconcile, manual-dispatch, manual-smoke, no-op"
+                exit 1
+                ;;
+            esac
+          }
+
+          stacks_sha=""
+          changed_stacks=""
+          config_stacks=""
+          structural_change=""
+          reason=""
+          changed_paths=""
+
+          if [[ "$EVENT_NAME" == "repository_dispatch" ]]; then
+            stacks_sha="${PAYLOAD_STACKS_SHA}"
+            changed_stacks="${PAYLOAD_CHANGED_STACKS}"
+            config_stacks="${PAYLOAD_CONFIG_STACKS}"
+            structural_change="${PAYLOAD_STRUCTURAL_CHANGE}"
+            reason="${PAYLOAD_REASON}"
+            changed_paths="${PAYLOAD_CHANGED_PATHS}"
+
+            if [[ -z "${stacks_sha}" || "${stacks_sha}" == "null" ]]; then
+              echo "repository_dispatch payload must include non-empty client_payload.stacks_sha."
+              exit 1
+            fi
+
+            if [[ -z "${reason}" || "${reason}" == "null" ]]; then
+              echo "repository_dispatch payload must include non-empty client_payload.reason."
+              exit 1
+            fi
+
+            if [[ -z "${structural_change}" || "${structural_change}" == "null" ]]; then
+              echo "repository_dispatch payload must include client_payload.structural_change."
+              exit 1
+            fi
+          else
+            stacks_sha="${INPUT_STACKS_SHA}"
+            changed_stacks="${INPUT_CHANGED_STACKS}"
+            config_stacks="${INPUT_CONFIG_STACKS}"
+            structural_change="${INPUT_STRUCTURAL_CHANGE}"
+            reason="${INPUT_REASON}"
+            changed_paths="${INPUT_CHANGED_PATHS}"
+          fi
+
+          validate_sha "$stacks_sha"
+          validate_stack_csv "$changed_stacks"
+          validate_stack_csv "$config_stacks"
+          validate_paths_csv "$changed_paths"
+          validate_reason "$reason"
+
+          if [[ -n "$structural_change" && "$structural_change" != "null" ]]; then
+            case "${structural_change,,}" in
+              true|false|1|0|yes|no) ;;
+              *)
+                echo "Invalid structural_change '$structural_change'."
+                exit 1
+                ;;
+            esac
+          fi
+
+          echo "Payload validation passed."
+
+      - name: Resolve execution context (dry-run)
+        id: resolve
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_SHA: ${{ github.sha }}
+
+          INPUT_RUN_INFRA: ${{ inputs.run_infra_apply }}
+          INPUT_RUN_ANSIBLE: ${{ inputs.run_ansible_bootstrap }}
+          INPUT_RUN_PORTAINER: ${{ inputs.run_portainer_apply }}
+          INPUT_STACKS_SHA: ${{ inputs.stacks_sha }}
+          INPUT_CHANGED_STACKS: ${{ inputs.changed_stacks }}
+          INPUT_CONFIG_STACKS: ${{ inputs.config_stacks }}
+          INPUT_STRUCTURAL_CHANGE: ${{ inputs.structural_change }}
+          INPUT_REASON: ${{ inputs.reason }}
+          INPUT_CHANGED_PATHS: ${{ inputs.changed_paths }}
+
+          PAYLOAD_STACKS_SHA: ${{ github.event.client_payload.stacks_sha }}
+          PAYLOAD_CHANGED_STACKS: ${{ github.event.client_payload.changed_stacks }}
+          PAYLOAD_CONFIG_STACKS: ${{ github.event.client_payload.config_stacks }}
+          PAYLOAD_STRUCTURAL_CHANGE: ${{ github.event.client_payload.structural_change }}
+          PAYLOAD_REASON: ${{ github.event.client_payload.reason }}
+          PAYLOAD_CHANGED_PATHS: ${{ github.event.client_payload.changed_paths }}
+        run: |
+          set -euo pipefail
+
+          normalize_csv() {
+            local input="$1"
+            input="$(echo "$input" | tr -d '\r')"
+            if [[ -z "$input" || "$input" == "null" ]]; then
+              echo ""
+              return
+            fi
+
+            IFS=',' read -ra parts <<< "$input"
+            if [[ ${#parts[@]} -eq 0 ]]; then
+              echo ""
+              return
+            fi
+
+            printf '%s\n' "${parts[@]}" \
+              | awk '{$1=$1; print}' \
+              | awk 'NF > 0' \
+              | awk '!seen[$0]++' \
+              | sort \
+              | paste -sd, -
+          }
+
+          to_bool() {
+            local value="${1:-}"
+            case "${value,,}" in
+              true|1|yes) echo "true" ;;
+              *) echo "false" ;;
+            esac
+          }
+
+          run_infra_apply="false"
+          run_ansible_bootstrap="false"
+          run_portainer_apply="false"
+          stacks_sha=""
+          changed_stacks=""
+          config_stacks=""
+          structural_change="false"
+          reason=""
+          changed_paths=""
+
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            before="$PUSH_BEFORE"
+            after="$PUSH_SHA"
+
+            if [[ "$before" == "0000000000000000000000000000000000000000" ]]; then
+              changed_files="$(git show --name-only --pretty='' "$after")"
+            else
+              changed_files="$(git diff --name-only "$before" "$after")"
+            fi
+
+            if echo "$changed_files" | grep -Eq '^(terraform/infra/|terraform/oci/|terraform/gcp/)'; then
+              run_infra_apply="true"
+            fi
+
+            if echo "$changed_files" | grep -Eq '^ansible/'; then
+              run_ansible_bootstrap="true"
+            fi
+
+            if echo "$changed_files" | grep -Eq '^(terraform/portainer/|terraform/portainer-root/|\.github/workflows/|\.github/scripts/)'; then
+              run_portainer_apply="true"
+            fi
+
+            if [[ "$run_infra_apply" == "true" ]]; then
+              run_ansible_bootstrap="true"
+              run_portainer_apply="true"
+            fi
+
+            if [[ "$run_ansible_bootstrap" == "true" ]]; then
+              run_portainer_apply="true"
+            fi
+
+            reason="infra-repo-push"
+            changed_paths="$(normalize_csv "$(echo "$changed_files" | paste -sd, -)")"
+          elif [[ "$EVENT_NAME" == "repository_dispatch" ]]; then
+            stacks_sha="${PAYLOAD_STACKS_SHA}"
+            changed_stacks="$(normalize_csv "${PAYLOAD_CHANGED_STACKS}")"
+            config_stacks="$(normalize_csv "${PAYLOAD_CONFIG_STACKS}")"
+            structural_change="$(to_bool "${PAYLOAD_STRUCTURAL_CHANGE}")"
+            reason="${PAYLOAD_REASON}"
+            changed_paths="$(normalize_csv "${PAYLOAD_CHANGED_PATHS}")"
+
+            if [[ "$structural_change" == "true" || "$reason" == "structural-change" || "$reason" == "manual-refresh" ]]; then
+              run_portainer_apply="true"
+            fi
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            run_infra_apply="$(to_bool "${INPUT_RUN_INFRA}")"
+            run_ansible_bootstrap="$(to_bool "${INPUT_RUN_ANSIBLE}")"
+            run_portainer_apply="$(to_bool "${INPUT_RUN_PORTAINER}")"
+            stacks_sha="${INPUT_STACKS_SHA}"
+            changed_stacks="$(normalize_csv "${INPUT_CHANGED_STACKS}")"
+            config_stacks="$(normalize_csv "${INPUT_CONFIG_STACKS}")"
+            structural_change="$(to_bool "${INPUT_STRUCTURAL_CHANGE}")"
+            reason="${INPUT_REASON}"
+            changed_paths="$(normalize_csv "${INPUT_CHANGED_PATHS}")"
+          fi
+
+          if [[ -n "$config_stacks" ]]; then
+            changed_stacks="$(normalize_csv "${changed_stacks},${config_stacks}")"
+          fi
+
+          run_config_sync="false"
+          if [[ -n "$config_stacks" ]]; then
+            run_config_sync="true"
+          fi
+
+          run_health_redeploy="false"
+          if [[ -n "$changed_stacks" ]]; then
+            run_health_redeploy="true"
+          fi
+
+          if [[ -z "$reason" ]]; then
+            if [[ "$run_infra_apply" == "true" ]]; then
+              reason="infra-reconcile"
+            elif [[ "$run_portainer_apply" == "true" ]]; then
+              reason="portainer-reconcile"
+            elif [[ "$run_health_redeploy" == "true" ]]; then
+              reason="content-change"
+            else
+              reason="no-op"
+            fi
+          fi
+
+          if [[ -n "$stacks_sha" && "$stacks_sha" != "null" && ! "$stacks_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid stacks SHA: $stacks_sha"
+            exit 1
+          fi
+
+          has_work="false"
+          if [[ "$run_infra_apply" == "true" || "$run_ansible_bootstrap" == "true" || "$run_portainer_apply" == "true" || "$run_config_sync" == "true" || "$run_health_redeploy" == "true" ]]; then
+            has_work="true"
+          fi
+
+          echo "run_infra_apply=$run_infra_apply" >> "$GITHUB_OUTPUT"
+          echo "run_ansible_bootstrap=$run_ansible_bootstrap" >> "$GITHUB_OUTPUT"
+          echo "run_portainer_apply=$run_portainer_apply" >> "$GITHUB_OUTPUT"
+          echo "run_config_sync=$run_config_sync" >> "$GITHUB_OUTPUT"
+          echo "run_health_redeploy=$run_health_redeploy" >> "$GITHUB_OUTPUT"
+          echo "has_work=$has_work" >> "$GITHUB_OUTPUT"
+          echo "stacks_sha=$stacks_sha" >> "$GITHUB_OUTPUT"
+          echo "changed_stacks=$changed_stacks" >> "$GITHUB_OUTPUT"
+          echo "config_stacks=$config_stacks" >> "$GITHUB_OUTPUT"
+          echo "structural_change=$structural_change" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          echo "changed_paths=$changed_paths" >> "$GITHUB_OUTPUT"
+
+      - name: Print dry-run result
+        run: |
+          echo "This workflow is a smoke test. No deployment actions are executed."
+          echo "run_infra_apply=${{ steps.resolve.outputs.run_infra_apply }}"
+          echo "run_ansible_bootstrap=${{ steps.resolve.outputs.run_ansible_bootstrap }}"
+          echo "run_portainer_apply=${{ steps.resolve.outputs.run_portainer_apply }}"
+          echo "run_config_sync=${{ steps.resolve.outputs.run_config_sync }}"
+          echo "run_health_redeploy=${{ steps.resolve.outputs.run_health_redeploy }}"
+          echo "has_work=${{ steps.resolve.outputs.has_work }}"
+          echo "stacks_sha=${{ steps.resolve.outputs.stacks_sha }}"
+          echo "changed_stacks=${{ steps.resolve.outputs.changed_stacks }}"
+          echo "config_stacks=${{ steps.resolve.outputs.config_stacks }}"
+          echo "structural_change=${{ steps.resolve.outputs.structural_change }}"
+          echo "reason=${{ steps.resolve.outputs.reason }}"
+          echo "changed_paths=${{ steps.resolve.outputs.changed_paths }}"

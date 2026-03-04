@@ -5,8 +5,9 @@ Welcome to the centralized GoodOldMeServer documentation. This repository manage
 1. **Infrastructure Provisioning** — Terraform provisions cloud resources across OCI (2× Ampere A1 workers) and GCP (1× e2-micro Swarm witness)
 2. **Configuration Management** — Ansible bootstraps nodes: system users, Docker, Tailscale mesh networking, GlusterFS distributed storage, and a 3-manager Docker Swarm cluster
 3. **Application Workloads** — Docker Swarm stacks with Infisical-managed secrets, routed through Traefik reverse proxy with Authelia SSO
+4. **Meta Pipeline** — GitHub Actions orchestrates secret validation, Terraform apply, inventory handover, Ansible bootstrap, Portainer apply, and health-gated webhook redeploys
 
-> **Note:** The `stacks/` directory is a [Git submodule](https://github.com/JoseStud/stacks) tracking the `main` branch.
+> **Note:** The `stacks/` directory is a [Git submodule](https://github.com/JoseStud/stacks) tracking the `main` branch. Submodule update PRs are managed by Dependabot (`gitsubmodule` ecosystem).
 
 ## High-Level Architecture
 
@@ -25,7 +26,7 @@ flowchart TD
 
     subgraph Config [Configuration Management — Ansible]
         ANS[Ansible Playbook]
-        INV[Dynamic Inventory<br/>cloud.terraform.terraform_provider]
+        INV[Inventory Source<br/>terraform_provider (local)<br/>inventory-ci.yml (CI)]
         USR[system_user role]
         STR[storage role]
         DOCK[docker role]
@@ -45,7 +46,7 @@ flowchart TD
         GW --> AUTH --> APPS
     end
 
-    IaC -->|IPs & metadata via state| Config
+    IaC -->|Terraform outputs -> inventory handover| Config
     Config -->|Docker + Tailscale + GlusterFS + Swarm| Workloads
 ```
 
@@ -69,6 +70,7 @@ flowchart TD
 
 - [**Network Architecture**](network-architecture.md) — Tailscale mesh, 3-manager Swarm topology, GlusterFS replication, overlay networks, DNS & ingress flow
 - [**Infisical Secrets Workflow**](infisical-workflow.md) — Agent config, `.env.tmpl` templating, secret injection pipeline
+- [**Meta-Pipeline Cutover Checklist**](meta-pipeline-cutover-checklist.md) — Minimal first-run checklist (GitHub vars/secrets + Terraform workspace vars)
 - [**Deployment Runbook**](deployment-runbook.md) — Stack ordering, deploy commands, verification, rollback procedures
 - [**Backup Strategy**](backup-strategy.md) — OCI Silver backup policy, GlusterFS redundancy, application-level backups, recovery
 

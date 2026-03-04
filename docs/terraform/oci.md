@@ -76,7 +76,7 @@ No modules.
 |------|-------------|------|---------|:--------:|
 | <a name="input_oci_compartment_ocid"></a> [oci\_compartment\_ocid](#input\_oci\_compartment\_ocid) | OCI compartment OCID where all resources will be created | `string` | n/a | yes |
 | <a name="input_oci_image_ocid"></a> [oci\_image\_ocid](#input\_oci\_image\_ocid) | OCI image OCID for the worker instances (Ubuntu aarch64) | `string` | n/a | yes |
-| <a name="input_ssh_allowed_cidr"></a> [ssh\_allowed\_cidr](#input\_ssh\_allowed\_cidr) | CIDR block allowed to SSH into instances (restrict to your IP or VPN range) | `string` | `"0.0.0.0/0"` | no |
+| <a name="input_ssh_allowed_cidr"></a> [ssh\_allowed\_cidr](#input\_ssh\_allowed\_cidr) | CIDR block allowed to SSH into instances (restrict to your IP or VPN range) | `string` | n/a | yes |
 | <a name="input_ssh_ca_public_key"></a> [ssh\_ca\_public\_key](#input\_ssh\_ca\_public\_key) | SSH CA public key injected into instances via cloud-init for certificate-based auth | `string` | n/a | yes |
 
 ## Outputs

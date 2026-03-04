@@ -1,10 +1,10 @@
 # Configuration Management: Ansible
 
-This section covers the configuration management strategy, detailing every role, the dynamic inventory, SSH authentication, and the full 5-phase provisioning lifecycle.
+This section covers the configuration management strategy, detailing every role, the inventory sources, SSH authentication, and the full 6-phase provisioning lifecycle.
 
 ## Architecture & Integration
 
-Ansible bridges raw Terraform-provisioned infrastructure and the Docker Swarm workloads. It uses a dynamic inventory plugin to auto-discover nodes from Terraform state, then bootstraps them through a deterministic 5-phase sequence: system setup → Docker → Tailscale mesh → GlusterFS storage → Swarm cluster.
+Ansible bridges raw Terraform-provisioned infrastructure and the Docker Swarm workloads. Local runs use a dynamic inventory plugin to auto-discover nodes from Terraform state, while CI renders a deterministic `inventory-ci.yml` artifact from Terraform Cloud outputs (`oci_public_ips`, `gcp_witness_ipv6`) before executing Ansible.
 
 ```mermaid
 sequenceDiagram
@@ -50,18 +50,18 @@ sequenceDiagram
     PB->>OCI1: portainer_bootstrap role (deploy management stack)
     PB->>OCI1: Wait for Portainer API health
     PB->>OCI1: Init admin user + create API key
-    PB->>OCI1: Write PORTAINER_URL + API_KEY to Infisical /management
+    PB->>OCI1: Write PORTAINER_URL + PORTAINER_API_URL + API_KEY to Infisical /management
 ```
 
 ## Dynamic Inventory
 
-The inventory uses the `cloud.terraform.terraform_provider` plugin to pull host information directly from Terraform state — no static IP lists to maintain.
+The local inventory uses the `cloud.terraform.terraform_provider` plugin to pull host information directly from Terraform state — no static IP lists to maintain.
 
 **File:** `ansible/inventory/terraform.yml`
 
 ```yaml
 plugin: cloud.terraform.terraform_provider
-project_path: ../../terraform
+project_path: ../../terraform/infra
 ```
 
 | Group | Provider Match | Hosts | `ansible_user` |
@@ -98,7 +98,7 @@ The `ansible/playbooks/provision.yml` playbook runs all 6 phases sequentially. I
 | Role | What It Does | Condition |
 |------|-------------|-----------|
 | `system_user` | Creates `media-srv` user and group with UID/GID `1500`, no home directory. All containers run file operations as this user for consistent ownership across GlusterFS. | All nodes |
-| `storage` | Partitions `/dev/sdb`, formats as ext4, mounts at `/mnt/app_data`, sets ownership to `media-srv:media-srv` with mode `0755`. Note: the role currently uses hardcoded device paths (`/dev/sdb`, `/dev/sdb1`) and mount point (`/mnt/app_data`) rather than the `{{ block_device }}` / `{{ mount_point }}` variables defined in `defaults/main.yml`. | OCI nodes only (`oci_nodes` group) |
+| `storage` | Partitions `{{ block_device }}`, formats `{{ block_device_partition }}` as ext4, mounts at `{{ mount_point }}`, and sets ownership to `{{ service_user }}:{{ service_group }}` with mode `0755`. Defaults are `/dev/sdb`, `/dev/sdb1` (or `p1` for NVMe), `/mnt/app_data`. | OCI nodes only (`oci_nodes` group) |
 
 ### Phase 2: Docker Engine
 
@@ -182,7 +182,7 @@ All directories are owned by `media-srv:media-srv` (UID/GID 1500) with mode `075
 
 | Role | What It Does |
 |------|-------------|
-| `portainer_bootstrap` | Deploys the management stack (Portainer server + agent + Homarr) via `docker stack deploy`, waits for the Portainer API to be healthy, generates a bcrypt hash of the admin password and passes it via the `--admin-password` CLI flag, creates a Terraform-dedicated API key, and writes `PORTAINER_URL` + `PORTAINER_API_KEY` to Infisical `/management` |
+| `portainer_bootstrap` | Deploys the management stack (Portainer server + agent + Homarr) via `docker stack deploy`, waits for the Portainer API to be healthy, generates a bcrypt hash of the admin password, writes `PORTAINER_ADMIN_PASSWORD_HASH` to Infisical `/stacks/management`, repairs/rotates the Terraform API key if needed, and writes `PORTAINER_URL` + `PORTAINER_API_URL` + `PORTAINER_API_KEY` to Infisical `/management` |
 
 **Detailed flow:**
 1. Generate a bcrypt hash of `PORTAINER_ADMIN_PASSWORD` (Ansible `password_hash('bcrypt')` filter)
@@ -190,9 +190,10 @@ All directories are owned by `media-srv:media-srv` (UID/GID 1500) with mode `075
 3. Wait for `http://localhost:9000/api/system/status` to return HTTP 200 (up to 120s)
 4. Admin user is initialized automatically by Portainer via the `--admin-password` CLI flag (bcrypt hash) — no API call needed. This is idempotent and avoids transmitting the plaintext password over HTTP
 5. Authenticate via `POST /api/auth` to get a JWT
-6. Check for existing API keys; create one labeled `terraform-managed` if absent
-7. Write `PORTAINER_URL` and `PORTAINER_API_KEY` to Infisical `/management` via the Infisical CLI
-8. Verify the API key works against the Portainer status endpoint
+6. Validate any existing `PORTAINER_API_KEY` from environment (`GET /api/system/status`); if missing/invalid, rotate `terraform-managed` token(s) and mint a new raw key
+7. Write `PORTAINER_ADMIN_PASSWORD_HASH` to Infisical `/stacks/management`
+8. Write `PORTAINER_URL`, `PORTAINER_API_URL`, and `PORTAINER_API_KEY` to Infisical `/management` via the Infisical CLI
+9. Verify the API key works against the Portainer status endpoint
 
 **Why Ansible and not Terraform?** Portainer is the control plane that Terraform's Portainer provider talks to. Terraform cannot create the thing it depends on to authenticate. Ansible bootstraps Portainer as infrastructure, then Terraform manages the application stacks through it.
 
@@ -248,4 +249,4 @@ ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --limit oci_
 ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --limit gcp_witness
 ```
 
-> **Prerequisites:** Terraform must have been applied first (the dynamic inventory reads from Terraform state). Ensure `~/.ssh/id_rsa-cert.pub` is a valid signed certificate.
+> **Prerequisites:** Terraform infra must be applied first. Local runs read from Terraform state (`inventory/terraform.yml`), while CI uses the rendered `inventory-ci.yml` artifact. Ensure your SSH certificate is valid.

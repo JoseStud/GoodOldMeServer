@@ -4,4 +4,5 @@ service_uid: 1500
 service_group: media-srv
 service_gid: 1500
 block_device: /dev/sdb
+block_device_partition: "{{ block_device }}{{ 'p1' if (block_device is match('^/dev/(nvme|mmcblk)')) else '1' }}"
 mount_point: /mnt/app_data
