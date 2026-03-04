@@ -124,7 +124,27 @@ docker service ls --filter "desired-state=running" --format "{{.Name}} {{.Replic
 
 ## Updating a Stack
 
-To update a stack after changing its docker-compose.yml or environment:
+### Via Portainer GitOps Webhooks (preferred)
+
+Every stack is linked to the Git repository in Portainer with **Enable Webhook**. When you push changes to `main`, Portainer automatically pulls the new Compose files and redeploys.
+
+**Automatic (CI):** The GitHub Actions workflow triggers all webhooks after provisioning completes. Store the comma-separated webhook URLs in the `PORTAINER_WEBHOOK_URLS` GitHub Actions secret.
+
+**Manual (one-off):**
+
+```bash
+# Trigger a single stack's webhook
+./scripts/portainer-webhook.sh https://portainer.example.com/api/webhooks/<uuid>
+
+# Trigger all stacks at once via env var
+WEBHOOK_URLS="<url1>,<url2>,<url3>" ./scripts/portainer-webhook.sh
+```
+
+> No API key or `ENDPOINT_ID` needed — each webhook URL is natively bound to one specific stack in Portainer.
+
+### Via CLI (direct Swarm commands)
+
+You can still deploy directly with the Docker CLI when needed:
 
 ```bash
 # Re-deploy (idempotent — only updates changed services)
@@ -137,11 +157,20 @@ docker service update --image <new-image> <stack>_<service>
 docker service update --force <stack>_<service>
 ```
 
+### Setting Up Portainer GitOps for a New Stack
+
+1. In Portainer, go to **Stacks → Add Stack → Repository**
+2. Enter the Git repository URL and branch (`main`)
+3. Set the **Compose path** to the stack's `docker-compose.yml` (e.g., `stacks/gateway/docker-compose.yml`)
+4. Add any required environment variables (or let Infisical Agent handle `.env` injection on the host)
+5. Check **Enable Webhook** — Portainer generates a unique URL like `https://portainer.example.com/api/webhooks/<uuid>`
+6. Copy the URL and add it to the `PORTAINER_WEBHOOK_URLS` GitHub Actions secret (comma-separated with existing URLs)
+
 ### Updating Secrets
 
 1. Update the secret value in Infisical Cloud
 2. For auto-injected stacks: restart the Infisical Agent — it will re-render `.env.tmpl` and re-deploy
-3. For manual stacks: edit the `.env` file and re-deploy with `docker stack deploy`
+3. For manual stacks: edit the `.env` file and trigger the stack's webhook or re-deploy with `docker stack deploy`
 
 ## Removing a Stack
 

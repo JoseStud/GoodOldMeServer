@@ -15,7 +15,8 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
+  # ── Infrastructure & Configuration ────────────────────────────────────
+  provision:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -69,3 +70,22 @@ jobs:
           infisical run --projectId=${{ vars.INFISICAL_PROJECT_ID }} --env=prod -- ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml
         env:
           ANSIBLE_SSH_ARGS: "-o CertificateFile=~/.ssh/id_rsa-cert.pub -i ~/.ssh/id_rsa"
+
+  # ── Portainer GitOps Webhooks ─────────────────────────────────────────
+  # Each stack is linked to this repo in Portainer with "Enable Webhook".
+  # Hitting the webhook URL tells Portainer to pull the latest compose
+  # files from Git and redeploy — no API key or ENDPOINT_ID required.
+  redeploy-stacks:
+    runs-on: ubuntu-latest
+    needs: provision
+    if: ${{ always() && !failure() && !cancelled() }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Trigger Portainer Webhooks
+        run: ./scripts/portainer-webhook.sh
+        env:
+          # Comma-separated Portainer GitOps webhook URLs stored in GitHub Secrets.
+          # Add one URL per stack: Portainer → Stack → Edit → GitOps → Webhook URL.
+          WEBHOOK_URLS: ${{ secrets.PORTAINER_WEBHOOK_URLS }}

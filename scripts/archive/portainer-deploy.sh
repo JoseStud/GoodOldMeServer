@@ -3,7 +3,7 @@
 set -e
 
 # Required Environment Variables:
-# PORTAINER_URL (e.g., https://portainer.example.com)
+# BASE_DOMAIN (e.g., example.com)
 # PORTAINER_TOKEN (Access Token from Portainer)
 # ENDPOINT_ID (Often 1 for local)
 
@@ -15,11 +15,12 @@ if [ -z "$STACK_NAME" ] || [ -z "$ENV_FILE" ]; then
     exit 1
 fi
 
-if [ -z "$PORTAINER_URL" ] || [ -z "$PORTAINER_TOKEN" ]; then
-    echo "Error: PORTAINER_URL and PORTAINER_TOKEN environment variables must be set."
+if [ -z "$BASE_DOMAIN" ] || [ -z "$PORTAINER_TOKEN" ]; then
+    echo "Error: BASE_DOMAIN and PORTAINER_TOKEN environment variables must be set."
     exit 1
 fi
 
+PORTAINER_URL="https://portainer.${BASE_DOMAIN}"
 ENDPOINT_ID=${ENDPOINT_ID:-1}
 
 # 1. Read .env file into Portainer JSON format

@@ -22,7 +22,7 @@ flowchart LR
 | Path | Consumer | Secrets |
 |------|----------|---------|
 | `/infrastructure` | Terraform, Ansible, Scripts | `BASE_DOMAIN`, `CLOUDFLARE_API_TOKEN`, `TAILSCALE_OAUTH_CLIENT_ID`, `TAILSCALE_OAUTH_CLIENT_SECRET`, `TZ`, `ZONE_ID`, `ACME_EMAIL` |
-| `/management` | Portainer deploy script | `ENDPOINT_ID`, `PORTAINER_TOKEN`, `PORTAINER_URL` |
+| `/management` | *(deprecated — webhook URLs in GitHub Secrets)* | — |
 | `/security` | Terraform (cloud-init), Ansible (SSH CA) | `SSH_CA_PRIVATE_KEY`, `SSH_CA_PUBLIC_KEY`, `SSH_HOST_CA_PUBKEY` |
 | `/stacks/gateway` | Traefik | `ACME_EMAIL`, `DOCKER_SOCKET_PROXY_URL` |
 | `/stacks/identity` | Authelia SSO | `AUTHELIA_JWT_SECRET`, `AUTHELIA_SESSION_SECRET`, `POSTGRES_PASSWORD` |
@@ -51,13 +51,9 @@ flowchart LR
 | `TAILSCALE_OAUTH_CLIENT_SECRET` | Tailscale admin → Settings → OAuth clients → Generated secret (with tags) | Ansible provisioning (`tailscale up --authkey=...`) |
 | `ACME_EMAIL` | Any valid email — Let's Encrypt sends expiry warnings here | Traefik cert resolver |
 
-### `/management` — Portainer Deploy Script
+### `/management` — Portainer *(no secrets needed)*
 
-| Variable | How to Get | Used By |
-|----------|-----------|---------|
-| `PORTAINER_URL` | Full URL of your Portainer instance (e.g. `https://portainer.example.com`) | `portainer-deploy.sh` |
-| `PORTAINER_TOKEN` | Portainer UI → My Account → Access Tokens → Add access token | `portainer-deploy.sh` |
-| `ENDPOINT_ID` | Portainer UI → Environments → click your env → ID in URL (usually `1`) | `portainer-deploy.sh` |
+> **Note:** The old `portainer-deploy.sh` script required `PORTAINER_TOKEN` and `ENDPOINT_ID` in Infisical. With native GitOps webhooks, these are no longer needed — the webhook URL (stored in GitHub Actions secrets as `PORTAINER_WEBHOOK_URLS`) is the only credential. You may remove `PORTAINER_TOKEN` and `ENDPOINT_ID` from Infisical `/management`.
 
 ### `/security` — SSH Certificate Authority
 
