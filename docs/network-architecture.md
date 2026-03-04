@@ -26,7 +26,7 @@ graph TB
     end
 
     subgraph GCP [Google Cloud — GCP]
-        GCP1[swarm-witness<br/>e2-micro · Debian 12<br/>IPv4 + IPv6]
+        GCP1[swarm-witness<br/>e2-micro · Debian 12<br/>IPv6 only (external)]
         GVPC[VPC hybrid-swarm-network<br/>IPv6 Subnet]
         GVPC --- GCP1
     end
@@ -43,7 +43,7 @@ graph TB
     NSG --> OCI1
     NSG --> OCI2
 
-    OCI1 <-.->|GlusterFS replica-2<br/>over Tailscale| OCI2
+    OCI1 <-.->|GlusterFS replica-3-arbiter-1<br/>over Tailscale| OCI2
 ```
 
 ## Tailscale Mesh Networking
@@ -125,6 +125,7 @@ Docker overlay networks span all Swarm nodes and provide encrypted service-to-se
 | `socket-proxy` | Gateway stack | Stack | No | Traefik ↔ docker-socket-proxy (isolated Docker API access) |
 | `portainer_agent` | Management stack | Stack | No | Portainer server ↔ agent communication |
 | `vaultwarden_internal` | Network stack | Stack | No | Vaultwarden ↔ PostgreSQL |
+| `authelia_internal` | Auth stack | Stack | No | Authelia ↔ PostgreSQL (authelia-db) |
 | `pihole_internal` | Network stack | Stack | No | Orbital Sync ↔ Pi-hole instances |
 
 ## GlusterFS Replication
@@ -187,7 +188,7 @@ With the `replica 3 arbiter 1` configuration, the GCP witness node acts as a tie
 - If an issue occurs, manual resolution can be checked with: `gluster volume heal swarm_data info`
 
 
-> **Important:** GlusterFS replica-2 provides **redundancy** (both copies of data), not **backup** (point-in-time recovery). For backups, see [Backup Strategy](backup-strategy.md).
+> **Important:** GlusterFS replica-3-arbiter-1 provides **redundancy** (data replicated across both OCI nodes with GCP arbiter for quorum), not **backup** (point-in-time recovery). For backups, see [Backup Strategy](backup-strategy.md).
 
 ## DNS & Ingress Flow
 

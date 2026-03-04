@@ -30,7 +30,7 @@ flowchart TD
         STR[storage role]
         DOCK[docker role]
         TS[Tailscale mesh]
-        GFS[glusterfs role<br/>replica-2 volume]
+        GFS[glusterfs role<br/>replica-3-arbiter-1 volume]
         SWM[swarm role<br/>3-manager cluster]
         ANS --> INV
         INV --> USR --> STR --> DOCK --> TS --> GFS --> SWM

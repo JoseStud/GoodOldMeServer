@@ -11,7 +11,6 @@ flowchart LR
     INF[Infisical Cloud] -->|SDK| TF[Terraform]
     TF -->|/cloud-provider/oci| OCI[OCI Provider]
     TF -->|/cloud-provider/gcp| GCP[GCP Provider]
-    TF -->|/security| SEC[SSH CA keys]
     INF -->|Agent| ENV[.env files<br/>rendered on host]
     ENV -->|/infrastructure + /stacks/*| STACKS[Docker Stack Deploy]
     INF -->|env vars| SCRIPTS[Scripts<br/>/infrastructure + /management]
@@ -48,18 +47,11 @@ flowchart LR
 | `CLOUDFLARE_API_TOKEN` | Cloudflare dashboard → My Profile → API Tokens → Create Token → Zone:DNS:Edit | Traefik (ACME DNS challenge), `cloudflare-dns.sh` |
 | `ZONE_ID` | Cloudflare dashboard → select domain → Overview sidebar → Zone ID | `cloudflare-dns.sh` |
 | `TAILSCALE_OAUTH_CLIENT_ID` | Tailscale admin → Settings → OAuth clients → Generate client | Ansible provisioning (`tailscale up --authkey=...`) |
-| ~~`ACME_EMAIL`~~ | ~~Moved to `/stacks/gateway`~~ | ~~See gateway section below~~ |
 
 ### `/management` — Portainer *(no secrets needed)*
 
-> **Note:** The old `portainer-deploy.sh` script required `PORTAINER_TOKEN` and `ENDPOINT_ID` in Infisical. With native GitOps webhooks, these are no longer needed — the webhook URL (stored in GitHub Actions secrets as `PORTAINER_WEBHOOK_URLS`) is the only credential. You may remove `PORTAINER_TOKEN` and `ENDPOINT_ID` from Infisical `/management`.
-
-### `/security` — SSH Certificate Authority
-
-| Variable | How to Get | Used By |
-|----------|-----------|---------|
-| `SSH_CA_PUBLIC_KEY` | `ssh-keygen -t ed25519 -f ssh_ca` → contents of `ssh_ca.pub` | Terraform cloud-init (OCI instances trust this CA) |
-| `SSH_HOST_CA_PUBKEY` | `ssh-keygen -t ed25519 -f ssh_host_ca` → contents of `ssh_host_ca.pub` (or reuse `SSH_CA_PUBLIC_KEY` if using one CA for both) | GitHub Actions `deploy.yml` (`@cert-authority *` in `known_hosts`) |
+> **Note:**  With native GitOps webhooks, these are no longer needed — the webhook URL (stored in GitHub Actions secrets as `PORTAINER_WEBHOOK_URLS`) is the only credential.
+The GitHub Actions pipeline now dynamically authenticates via OIDC and signs an ephemeral runner certificate using `infisical ssh sign --ca-id=$INFISICAL_SSH_CA_ID`.
 
 ### `/stacks/gateway` — Traefik
 
@@ -128,13 +120,14 @@ The workflow authenticates to Infisical via **OIDC** (not Universal Auth), so no
 |----------|-----------|---------|
 | `INFISICAL_MACHINE_IDENTITY_ID` | Infisical → Access Control → Machine Identities → OIDC Auth → Identity ID | `deploy.yml` OIDC login (`infisical login --method=oidc`) |
 | `INFISICAL_PROJECT_ID` | Infisical → Project Settings → Project ID | `deploy.yml` PKI signing, secret fetching |
+| `INFISICAL_SSH_CA_ID` | Infisical → SSH Management → SSH CA details | `deploy.yml` ephemeral key signing |
 | `TFC_WORKSPACE` | Terraform Cloud → Workspaces → workspace name | `deploy.yml` Terraform apply step |
 
 #### Secrets (`secrets.*`)
 
 | Variable | How to Get | Used By |
 |----------|-----------|---------|
-| `PORTAINER_WEBHOOK_URLS` | Portainer → Stacks → Webhooks (pipe-separated list) | `deploy.yml` → `portainer-webhook.sh` |
+| `PORTAINER_WEBHOOK_URLS` | Portainer → Stacks → Webhooks (comma-separated list) | `deploy.yml` → `portainer-webhook.sh` |
 
 ---
 
@@ -195,7 +188,82 @@ locals {
 
 ## Infisical Agent (Docker Swarm)
 
-The Infisical Agent runs on each Swarm node. It renders `.env` files from `.env.tmpl` templates and triggers stack redeploys on secret changes.
+The Infisical Agent runs on each Swarm node as a **systemd service**. It renders `.env` files from `.env.tmpl` templates and triggers stack redeploys on secret changes.
+
+### Installing the Agent
+
+1. **Download the Infisical CLI/Agent binary** (includes the agent mode):
+
+```bash
+# Install via the official install script
+curl -1sLf 'https://dl.cloudsmith.io/public/infisical/infisical-cli/setup.deb.sh' | sudo bash
+sudo apt-get install -y infisical
+```
+
+2. **Place the agent configuration** at `/etc/infisical/agent.yaml`. The reference config is maintained in this repo at `stacks/infisical-agent.yaml`:
+
+```bash
+sudo mkdir -p /etc/infisical
+sudo cp stacks/infisical-agent.yaml /etc/infisical/agent.yaml
+```
+
+3. **Bootstrap Universal Auth credentials** — these are the only secrets stored outside Infisical. Edit the agent config to set `client-id` and `client-secret`:
+
+```bash
+sudo nano /etc/infisical/agent.yaml
+# Set auth.config.client-id and auth.config.client-secret
+```
+
+> Generate these credentials in Infisical: **Access Control → Machine Identities → Create Identity → Universal Auth**. Grant the identity read access to the project.
+
+4. **Create the systemd unit file** at `/etc/systemd/system/infisical-agent.service`:
+
+```ini
+[Unit]
+Description=Infisical Agent
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/infisical agent --config /etc/infisical/agent.yaml
+Restart=always
+RestartSec=10
+User=root
+
+[Install]
+WantedBy=multi-user.target
+```
+
+5. **Enable and start the service:**
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now infisical-agent
+```
+
+6. **Verify the agent is running and templates are rendered:**
+
+```bash
+# Check service status
+systemctl status infisical-agent
+
+# Verify .env files have been created
+ls -la /opt/stacks/*/.env
+
+# Check agent logs for errors
+journalctl -u infisical-agent --no-pager -n 50
+```
+
+### Stacks Directory on Host
+
+The agent expects all stacks at `/opt/stacks/` on the host. This is typically a symlink or clone of the `stacks/` directory from this repository:
+
+```bash
+sudo ln -s /path/to/GoodOldMeServer/stacks /opt/stacks
+# Or clone the stacks submodule directly:
+sudo git clone https://github.com/JoseStud/stacks.git /opt/stacks
+```
 
 ### Template Pattern
 

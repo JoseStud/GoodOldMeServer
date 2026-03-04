@@ -35,4 +35,9 @@ Scripts in this repository perform operational tasks, run CI/CD automations, wra
 - **Purpose**: Legacy script that pushed `.env` files to Portainer via its REST API. Replaced by native GitOps webhooks.
 - **Parameters**: `$1` `<STACK_NAME>`, `$2` `<ENV_FILE_PATH>`, env `BASE_DOMAIN`, `PORTAINER_TOKEN`, `ENDPOINT_ID`
 
+### `scripts/archive/update_deploy.py` *(archived)*
+- **Purpose**: Utility script that scans all `docker-compose.yml` files and injects `update_config: order: start-first` into every service's `deploy:` block. Used as a one-time migration tool to ensure zero-downtime rolling updates across all stacks.
+- **Parameters**: None (hardcoded list of compose files)
+- **Example**: `python3 scripts/archive/update_deploy.py`
+
 > For deployment commands, see the [Deployment Runbook](deployment-runbook.md). For Ansible operations, see the [Ansible docs](ansible.md#running-ansible).

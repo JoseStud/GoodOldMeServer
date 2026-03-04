@@ -19,8 +19,8 @@ All workloads are constrained to `node.labels.location == cloud` (OCI nodes). Th
 | Stack | Services | Constraint | Depends On |
 |-------|----------|------------|------------|
 | **gateway** | traefik, socket-proxy | `node.role == manager` (global) | — |
-| **auth** | authelia | `location == cloud` | gateway |
-| **management** | homarr, portainer-server, portainer-agent | `location == cloud` (server/homarr), global (agent) | gateway, auth |
+| **auth** | authelia, authelia-db | `location == cloud` | gateway |
+| **management** | homarr, portainer-server, portainer-agent | `location == cloud` (homarr), `node.role == manager` (server), global (agent) | gateway, auth |
 | **network** | vaultwarden, vaultwarden-db, pihole-1, pihole-2, orbital-sync | `location == cloud` | gateway, auth |
 | **observability** | prometheus, loki, promtail, node-exporter, grafana | `location == cloud` (stateful), global (promtail, node-exporter) | gateway, auth |
 | **media** | open-webui, openclaw-gateway, openclaw-cli | `location == cloud` | gateway, auth |
@@ -56,11 +56,12 @@ All stacks follow these conventions:
 - **Traefik v3** — Reverse proxy, runs globally on all managers
 - **docker-socket-proxy** — Read-only proxy to the Docker socket (Traefik connects here instead of directly to `/var/run/docker.sock`)
 - HTTP→HTTPS redirect on all traffic
-- ACME certificates stored at `/mnt/swarm-shared/gateway/traefik_acme/acme.json`
+- ACME certificates stored in a named Docker volume `traefik_acme` (local driver, mounted at `/etc/traefik/acme` inside the container)
 
 ### Auth
 
 - **Authelia** — SSO/2FA provider. Configuration bind-mounted from `/mnt/swarm-shared/auth/authelia/config`
+- **Authelia-DB** — PostgreSQL 16 (Alpine) backend for Authelia's storage. Data stored in a bind-mounted Docker volume at `/mnt/swarm-shared/auth/authelia-db`. Connected to Authelia via the `authelia_internal` overlay network (not exposed to `traefik_proxy`)
 - ForwardAuth middleware registered as `authelia@docker` — other stacks reference this for protected routes
 
 ### Management
@@ -106,12 +107,12 @@ Per-stack secrets are in their own Infisical paths:
 
 | Stack | Template | Infisical Path | Stack-Specific Variables |
 |-------|----------|---------------|--------------------------|
-| gateway | `stacks/gateway/.env.tmpl` | `/stacks/gateway` | `DOCKER_SOCKET_PROXY_URL` |
+| gateway | `stacks/gateway/.env.tmpl` | `/stacks/gateway` | `CLOUDFLARE_API_TOKEN` (from `/infrastructure`), `ACME_EMAIL`, `DOCKER_SOCKET_PROXY_URL` |
 | auth | `stacks/auth/.env.tmpl` | `/stacks/identity` | `AUTHELIA_JWT_SECRET`, `AUTHELIA_SESSION_SECRET`, `POSTGRES_PASSWORD` |
 | management | `stacks/management/.env.tmpl` | `/stacks/management` | `HOMARR_SECRET_KEY` |
 | network | `stacks/network/.env.tmpl` | `/stacks/network` | `VW_DB_PASS`, `VW_ADMIN_TOKEN`, `PIHOLE_PASSWORD` |
 | observability | `stacks/observability/.env.tmpl` | `/stacks/observability` | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET` |
-| ai-interface | `stacks/media/ai-interface/.env.tmpl` | `/stacks/ai-interface` | *(none yet)* |
+| ai-interface | `stacks/media/ai-interface/.env.tmpl` | `/stacks/ai-interface` | `ARCH_PC_IP` |
 | uptime | `stacks/uptime/.env.tmpl` | — | *(globals only)* |
 | cloud | `stacks/cloud/.env.tmpl` | — | *(globals only)* |
 

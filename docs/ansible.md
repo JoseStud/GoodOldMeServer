@@ -92,7 +92,7 @@ The `ansible/playbooks/provision.yml` playbook runs all 5 phases sequentially. I
 | Role | What It Does | Condition |
 |------|-------------|-----------|
 | `system_user` | Creates `media-srv` user and group with UID/GID `1500`, no home directory. All containers run file operations as this user for consistent ownership across GlusterFS. | All nodes |
-| `storage` | Discovers the unpartitioned block device via `lsblk`, partitions it, formats as ext4, mounts at `/mnt/app_data`, sets ownership to `{{ service_user }}:{{ service_group }}` with mode `0755`. | OCI nodes only (`oci_nodes` group) |
+| `storage` | Partitions `/dev/sdb`, formats as ext4, mounts at `/mnt/app_data`, sets ownership to `media-srv:media-srv` with mode `0755`. Note: the role currently uses hardcoded device paths (`/dev/sdb`, `/dev/sdb1`) and mount point (`/mnt/app_data`) rather than the `{{ block_device }}` / `{{ mount_point }}` variables defined in `defaults/main.yml`. | OCI nodes only (`oci_nodes` group) |
 
 ### Phase 2: Docker Engine
 
@@ -133,7 +133,7 @@ After this phase, all 3 nodes (2 OCI + 1 GCP) can communicate over Tailscale's e
 
 ```
 /mnt/swarm-shared/
-├── auth/authelia/config/
+├── auth/{authelia/config,authelia-db}/
 ├── ai-interface/open-webui/
 ├── ai-interface/openclaw/config/
 ├── observability/{prometheus_data,loki_data,grafana_data,prometheus,loki,promtail}/
@@ -191,7 +191,8 @@ ansible/
     │   ├── defaults/main.yml        # Parameterized user
     │   └── tasks/main.yml           # APT repo install Docker, enable service
     ├── glusterfs/
-    │   ├── defaults/main.yml        # Parameterized volume name, paths
+    │   ├── defaults/main.yml        # (currently empty — values are inline in tasks)
+    ├── templates/               # (reserved for future Jinja2 templates)
     │   └── tasks/main.yml           # GlusterFS replica-3-arbiter-1 volume + shared dirs
     └── swarm/tasks/main.yml         # 3-manager Swarm init + overlay network
 ```

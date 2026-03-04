@@ -151,6 +151,27 @@ docker exec -i $(docker ps -q --filter "name=network_vaultwarden-db") \
   psql -U vaultwarden -d vaultwarden < vaultwarden_backup_YYYYMMDD.sql
 ```
 
+### Authelia (PostgreSQL)
+
+Authelia uses PostgreSQL 16 for session and authentication data. Follows the same pattern as Vaultwarden.
+
+**Export (pg_dump):**
+```bash
+# Find the running container
+docker ps --filter "name=auth_authelia-db" --format "{{.ID}}"
+
+# Dump the database
+docker exec $(docker ps -q --filter "name=auth_authelia-db") \
+  pg_dump -U authelia authelia > authelia_backup_$(date +%Y%m%d).sql
+```
+
+**Restore:**
+```bash
+# Drop and recreate (DESTRUCTIVE)
+docker exec -i $(docker ps -q --filter "name=auth_authelia-db") \
+  psql -U authelia -d authelia < authelia_backup_YYYYMMDD.sql
+```
+
 ### Pi-hole Configuration
 
 Pi-hole configs are stored on GlusterFS and synced between instances via Orbital Sync every 30 minutes.
@@ -191,6 +212,7 @@ Authelia's config directory is bind-mounted from GlusterFS (`/mnt/swarm-shared/a
 | OCI Block Volume | Full disk (GlusterFS brick) | Daily | 5 days | Yes (OCI policy) |
 | GlusterFS | Real-time replication | Continuous | N/A (not a backup) | Yes |
 | Vaultwarden DB | PostgreSQL dump | Manual | — | No |
+| Authelia DB | PostgreSQL dump | Manual | — | No |
 | Pi-hole config | Teleporter export | Manual | — | No |
 | Grafana dashboards | API export | Manual | — | No |
 

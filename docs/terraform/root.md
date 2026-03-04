@@ -28,6 +28,7 @@ terraform-docs markdown table terraform/oci/ > docs/terraform/oci.md
 
 | Name | Version |
 |------|---------|
+| <a name="requirement_terraform"></a> [terraform](#requirement\_terraform) | >= 1.5.0 |
 | <a name="requirement_google"></a> [google](#requirement\_google) | ~> 5.0 |
 | <a name="requirement_infisical"></a> [infisical](#requirement\_infisical) | >= 0.8.0 |
 | <a name="requirement_oci"></a> [oci](#requirement\_oci) | ~> 5.0 |
@@ -49,19 +50,23 @@ terraform-docs markdown table terraform/oci/ > docs/terraform/oci.md
 
 | Name | Type |
 |------|------|
+| [infisical_secrets.gcp](https://registry.terraform.io/providers/Infisical/infisical/latest/docs/data-sources/secrets) | data source |
 | [infisical_secrets.infra](https://registry.terraform.io/providers/Infisical/infisical/latest/docs/data-sources/secrets) | data source |
+| [infisical_secrets.oci](https://registry.terraform.io/providers/Infisical/infisical/latest/docs/data-sources/secrets) | data source |
+| [infisical_secrets.security](https://registry.terraform.io/providers/Infisical/infisical/latest/docs/data-sources/secrets) | data source |
 
 ## Inputs
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
-| <a name="input_infisical_project_id"></a> [infisical\_project\_id](#input\_infisical\_project\_id) | n/a | `string` | n/a | yes |
+| <a name="input_infisical_project_id"></a> [infisical\_project\_id](#input\_infisical\_project\_id) | Infisical workspace/project ID for secret retrieval | `string` | n/a | yes |
+| <a name="input_oci_region"></a> [oci\_region](#input\_oci\_region) | OCI region for the provider | `string` | `"us-ashburn-1"` | no |
 
 ## Outputs
 
 | Name | Description |
 |------|-------------|
 | <a name="output_gcp_witness_ipv6"></a> [gcp\_witness\_ipv6](#output\_gcp\_witness\_ipv6) | External IPv6 address of the GCP Swarm witness instance |
-| <a name="output_oci_public_ips"></a> [oci\_public\_ips](#output\_oci\_public\_ips) | List of public IPv4 addresses for the OCI worker instances |
+| <a name="output_oci_public_ips"></a> [oci\_public\_ips](#output\_oci\_public\_ips) | Public IPv4 addresses of the OCI worker instances |
 
 > **Note:** `oci_public_ips` maps to the child module's `public_worker_ips` output. `gcp_witness_ipv6` maps to the child module's `witness_ipv6` output.

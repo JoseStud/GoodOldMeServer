@@ -14,8 +14,8 @@ Before deploying any stack, verify that all infrastructure layers are operationa
 | GlusterFS mounted | `df -h /mnt/swarm-shared` on OCI nodes | `mount -t glusterfs localhost:/swarm_data /mnt/swarm-shared` |
 | Docker Swarm initialized | `docker node ls` shows 3 managers (2 Ready + 1 Ready) | Re-run Ansible `swarm` role |
 | `traefik_proxy` network exists | `docker network ls \| grep traefik_proxy` | `docker network create --driver overlay --attachable traefik_proxy` |
-| Infisical Agent running | `systemctl status infisical-agent` | Check agent config, restart service |
-| `.env` files rendered | `ls /opt/stacks/*/env` or `cat stacks/<stack>/.env` | Restart Infisical Agent or create manually |
+| Infisical Agent running | `systemctl status infisical-agent` | See [Agent Installation](infisical-workflow.md#installing-the-agent) |
+| `.env` files rendered | `ls /opt/stacks/*/.env` | Restart Infisical Agent or create manually |
 
 ## Deployment Order
 
@@ -59,8 +59,9 @@ curl -I http://localhost:80
 ### Step 2: Auth
 
 ```bash
-# Ensure BASE_DOMAIN is set (no .env.tmpl — manual setup)
-echo "BASE_DOMAIN=example.com" > stacks/auth/.env
+# Auth .env is rendered by the Infisical Agent (stacks/auth/.env.tmpl)
+# If deploying before the Agent is running, manually create the .env:
+# echo "BASE_DOMAIN=example.com" > stacks/auth/.env
 docker stack deploy -c stacks/auth/docker-compose.yml auth
 ```
 
@@ -85,16 +86,18 @@ docker stack deploy -c stacks/management/docker-compose.yml management
 # Network
 docker stack deploy -c stacks/network/docker-compose.yml network
 
-# Observability (manual .env required)
-cat > stacks/observability/.env << 'EOF'
-BASE_DOMAIN=example.com
-GF_OIDC_CLIENT_ID=grafana
-GF_OIDC_CLIENT_SECRET=your-secure-secret
-EOF
+# Observability (.env rendered by Infisical Agent — stacks/observability/.env.tmpl)
+# If deploying before the Agent is running, manually create the .env:
+# cat > stacks/observability/.env << 'EOF'
+# BASE_DOMAIN=example.com
+# GF_OIDC_CLIENT_ID=grafana
+# GF_OIDC_CLIENT_SECRET=your-secure-secret
+# EOF
 docker stack deploy -c stacks/observability/docker-compose.yml observability
 
-# Media / AI Interface (manual .env required)
-cp stacks/media/ai-interface/.env.example stacks/media/ai-interface/.env
+# Media / AI Interface (.env rendered by Infisical Agent — stacks/media/ai-interface/.env.tmpl)
+# If deploying before the Agent is running:
+# cp stacks/media/ai-interface/.env.example stacks/media/ai-interface/.env
 # Edit .env to set ARCH_PC_IP and BASE_DOMAIN
 docker stack deploy -c stacks/media/ai-interface/docker-compose.yml ai-interface
 
