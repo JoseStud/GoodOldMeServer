@@ -338,7 +338,7 @@ jobs:
           fi
 
           if [[ "$RUN_ANSIBLE" == "true" ]]; then
-            infisical run --projectId=${{ vars.INFISICAL_PROJECT_ID }} --env=prod --path=/infrastructure -- bash -lc '[[ -n "${BASE_DOMAIN:-}" && -n "${TZ:-}" && -n "${TAILSCALE_OAUTH_CLIENT_ID:-}" ]]'
+            infisical run --projectId=${{ vars.INFISICAL_PROJECT_ID }} --env=prod --path=/infrastructure -- bash -lc '[[ -n "${BASE_DOMAIN:-}" && -n "${TZ:-}" && -n "${TAILSCALE_AUTH_KEY:-}" ]]'
             infisical run --projectId=${{ vars.INFISICAL_PROJECT_ID }} --env=prod --path=/stacks/management -- bash -lc '[[ -n "${HOMARR_SECRET_KEY:-}" && -n "${PORTAINER_ADMIN_PASSWORD:-}" && -n "${PORTAINER_AUTOMATION_ALLOWED_CIDRS:-}" ]]'
           fi
 
@@ -359,6 +359,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+      TFC_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
+      TFC_WORKSPACE_INFRA: ${{ vars.TFC_WORKSPACE_INFRA || 'goodoldme-infra' }}
+      TF_CLOUD_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
+      TF_WORKSPACE: ${{ vars.TFC_WORKSPACE_INFRA || 'goodoldme-infra' }}
 
     steps:
       - name: Checkout
@@ -371,15 +375,15 @@ jobs:
         uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.0
         id: tfc-run
         with:
-          workspace: ${{ vars.TFC_WORKSPACE_INFRA || 'goodoldme-infra' }}
+          workspace: ${{ env.TFC_WORKSPACE_INFRA }}
           configuration_version: ${{ github.sha }}
           message: "Meta pipeline infra apply (${{ needs.resolve-context.outputs.reason }})"
 
       - name: Wait for manual confirm/apply in Terraform Cloud
         env:
           RUN_ID: ${{ steps.tfc-run.outputs.run_id }}
-          TFC_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
-          TFC_WORKSPACE: ${{ vars.TFC_WORKSPACE_INFRA || 'goodoldme-infra' }}
+          TFC_ORGANIZATION: ${{ env.TFC_ORGANIZATION }}
+          TFC_WORKSPACE: ${{ env.TFC_WORKSPACE_INFRA }}
           WAIT_TIMEOUT_SECONDS: ${{ vars.TFC_INFRA_APPLY_WAIT_TIMEOUT_SECONDS || '7200' }}
         timeout-minutes: 125
         run: |

@@ -14,14 +14,19 @@ Welcome to the centralized GoodOldMeServer documentation. This repository manage
 ```mermaid
 flowchart TD
     subgraph IaC [Infrastructure Provisioning — Terraform]
-        TF[Terraform Root Module]
+        TFI[Infra Root<br/>terraform/infra]
+        TFP[Portainer Root<br/>terraform/portainer-root]
         INF_TF[Infisical Provider]
         GCP[GCP Module<br/>VPC + e2-micro witness]
         OCI[OCI Module<br/>VCN + 2× A1.Flex workers<br/>+ block volumes + NSGs]
-        TF --> INF_TF
-        INF_TF -->|Secrets| TF
-        TF --> GCP
-        TF --> OCI
+        PTN[Portainer Module<br/>GitOps stacks + webhooks]
+        TFI --> INF_TF
+        TFP --> INF_TF
+        INF_TF -->|Secrets| TFI
+        INF_TF -->|Secrets| TFP
+        TFI --> GCP
+        TFI --> OCI
+        TFP --> PTN
     end
 
     subgraph Config [Configuration Management — Ansible]
@@ -60,9 +65,8 @@ flowchart TD
 
 ### Infrastructure as Code (Terraform)
 
-*See also: [terraform-docs regeneration instructions](terraform/root.md#regenerating-docs)*
-
-- [Root Infrastructure](terraform/root.md) — Providers, Infisical integration, module orchestration
+- [Infra Root](../terraform/infra/main.tf) — Providers, Infisical integration, OCI/GCP module orchestration
+- [Portainer Root](../terraform/portainer-root/main.tf) — Portainer provider configuration and GitOps stack/webhook orchestration
 - [GCP Resources](terraform/gcp.md) — VPC, IPv6 subnet, Swarm witness instance
 - [OCI Resources](terraform/oci.md) — VCN, DMZ subnet, 2× A1.Flex workers, block volumes, NSGs
 

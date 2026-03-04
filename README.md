@@ -11,7 +11,7 @@ Personal homelab/cloud server infrastructure using a three-tier architecture:
 
 - [Terraform](https://www.terraform.io/) >= 1.5.0
 - [Ansible](https://docs.ansible.com/) with `cloud.terraform` collection
-- [Tailscale](https://tailscale.com/) account with OAuth client credentials
+- [Tailscale](https://tailscale.com/) account with an auth key
 - [Infisical](https://infisical.com/) account with project configured
 - OCI free-tier account (Ampere A1 instances + block volumes)
 - GCP free-tier account (e2-micro instance)

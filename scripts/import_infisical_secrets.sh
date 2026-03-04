@@ -11,7 +11,7 @@ infisical secrets set BASE_DOMAIN="example.com" --env=$ENV --path="/infrastructu
 infisical secrets set TZ="Etc/UTC" --env=$ENV --path="/infrastructure" || true
 infisical secrets set CLOUDFLARE_API_TOKEN="your_cloudflare_api_token_here" --env=$ENV --path="/infrastructure" || true
 infisical secrets set ZONE_ID="your_cloudflare_zone_id_here" --env=$ENV --path="/infrastructure" || true
-infisical secrets set TAILSCALE_OAUTH_CLIENT_ID="your_tailscale_oauth_client_id_here" --env=$ENV --path="/infrastructure" || true
+infisical secrets set TAILSCALE_AUTH_KEY="your_tailscale_auth_key_here" --env=$ENV --path="/infrastructure" || true
 
 echo "Creating secrets for folder: /management"
 infisical secrets set PORTAINER_URL="https://portainer.example.com" --env=$ENV --path="/management" || true
