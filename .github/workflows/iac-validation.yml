@@ -313,7 +313,7 @@ jobs:
         env:
           RUN_ID: ${{ steps.create-run.outputs.run_id }}
           WORKSPACE_NAME: ${{ steps.preflight.outputs.workspace_name }}
-          WAIT_TIMEOUT_SECONDS: ${{ vars.TFC_PLAN_WAIT_TIMEOUT_SECONDS || '1800' }}
+          WAIT_TIMEOUT_SECONDS: ${{ vars.TFC_PLAN_WAIT_TIMEOUT_SECONDS || '7200' }}
           POLL_INTERVAL_SECONDS: ${{ vars.TFC_PLAN_POLL_INTERVAL_SECONDS || '10' }}
         run: .github/scripts/wait_for_tfc_run.sh "${RUN_ID}" "${WORKSPACE_NAME}"
 
@@ -331,10 +331,16 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Install ansible-core and ansible-lint
+      - name: Install pipx
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install ansible-core ansible-lint
+          sudo apt-get update
+          sudo apt-get install -y pipx
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Install ansible-core and ansible-lint via pipx
+        run: |
+          pipx install ansible-core
+          pipx install ansible-lint
 
       - name: Install Ansible collections
         run: ansible-galaxy collection install -r ansible/requirements.yml --force-with-deps
