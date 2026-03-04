@@ -90,3 +90,10 @@
       ansible.builtin.include_role:
         name: swarm
       tags: [phase5_swarm]
+
+    # === Phase 6: Portainer bootstrap (management stack + API key for Terraform) ===
+    - name: Run portainer_bootstrap role
+      ansible.builtin.include_role:
+        name: portainer_bootstrap
+      when: inventory_hostname == groups['oci_nodes'][0]
+      tags: [phase6_portainer]

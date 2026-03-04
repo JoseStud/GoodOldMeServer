@@ -8,12 +8,15 @@ Infisical acts as the single source of truth for all secrets across Terraform, A
 
 ```mermaid
 flowchart LR
-    INF[Infisical Cloud] -->|SDK| TF[Terraform]
+    INF[Infisical Cloud] -->|SDK read| TF[Terraform]
     TF -->|/cloud-provider/oci| OCI[OCI Provider]
     TF -->|/cloud-provider/gcp| GCP[GCP Provider]
+    TF -->|/management| PORT[Portainer Provider]
+    PORT -->|creates stacks + webhooks| SWARM[Docker Swarm]
+    TF -->|SDK write /deployments| INF
     INF -->|Agent| ENV[.env files<br/>rendered on host]
     ENV -->|/infrastructure + /stacks/*| STACKS[Docker Stack Deploy]
-    INF -->|env vars| SCRIPTS[Scripts<br/>/infrastructure + /management]
+    INF -->|OIDC /deployments| GHA[GitHub Actions<br/>portainer-webhook.sh]
 ```
 
 ## Secret Organization
@@ -21,11 +24,12 @@ flowchart LR
 | Path | Consumer | Secrets |
 |------|----------|---------|
 | `/infrastructure` | Terraform, Ansible, Scripts | `BASE_DOMAIN`, `CLOUDFLARE_API_TOKEN`, `TAILSCALE_OAUTH_CLIENT_ID`, `TZ`, `ZONE_ID` |
-| `/management` | *(deprecated — webhook URLs in GitHub Secrets)* | — |
+| `/management` | Terraform (Portainer provider) | `PORTAINER_URL`, `PORTAINER_API_KEY` |
+| `/deployments` | GitHub Actions, Terraform (auto-written) | `PORTAINER_WEBHOOK_URLS`, `WEBHOOK_URL_*` |
 | `/security` | Terraform (cloud-init), GitHub Actions (SSH) | `SSH_CA_PUBLIC_KEY`, `SSH_HOST_CA_PUBKEY` |
 | `/stacks/gateway` | Traefik | `ACME_EMAIL`, `DOCKER_SOCKET_PROXY_URL` |
 | `/stacks/identity` | Authelia SSO | `AUTHELIA_JWT_SECRET`, `AUTHELIA_SESSION_SECRET`, `POSTGRES_PASSWORD` |
-| `/stacks/management` | Homarr | `HOMARR_SECRET_KEY` |
+| `/stacks/management` | Homarr + Portainer | `HOMARR_SECRET_KEY`, `PORTAINER_ADMIN_PASSWORD`, `PORTAINER_ADMIN_PASSWORD_HASH` |
 | `/stacks/network` | Vaultwarden, Pi-hole | `VW_DB_PASS`, `VW_ADMIN_TOKEN`, `PIHOLE_PASSWORD` |
 | `/stacks/observability` | Grafana | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET` |
 | `/stacks/ai-interface` | Open WebUI | `ARCH_PC_IP` |
@@ -42,16 +46,37 @@ flowchart LR
 
 | Variable | How to Get | Used By |
 |----------|-----------|---------|
-| `BASE_DOMAIN` | Your registered domain name (e.g. `example.com`) | Every stack (Traefik labels), scripts |
+| `BASE_DOMAIN` | Your registered domain name (e.g. `example.com`) | All stack composes except gateway (Traefik routing labels), scripts |
 | `TZ` | IANA timezone (e.g. `America/New_York`, `Etc/UTC`) | All stacks, Pi-hole |
 | `CLOUDFLARE_API_TOKEN` | Cloudflare dashboard → My Profile → API Tokens → Create Token → Zone:DNS:Edit | Traefik (ACME DNS challenge), `cloudflare-dns.sh` |
-| `ZONE_ID` | Cloudflare dashboard → select domain → Overview sidebar → Zone ID | `cloudflare-dns.sh` |
+| `ZONE_ID` | Cloudflare dashboard → select domain → Overview sidebar → Zone ID | `cloudflare-dns.sh` (also present in gateway `.env.tmpl` but not used by the compose) |
 | `TAILSCALE_OAUTH_CLIENT_ID` | Tailscale admin → Settings → OAuth clients → Generate client | Ansible provisioning (`tailscale up --authkey=...`) |
 
-### `/management` — Portainer *(no secrets needed)*
+### `/management` — Portainer
 
-> **Note:**  With native GitOps webhooks, these are no longer needed — the webhook URL (stored in GitHub Actions secrets as `PORTAINER_WEBHOOK_URLS`) is the only credential.
-The GitHub Actions pipeline now dynamically authenticates via OIDC and signs an ephemeral runner certificate using `infisical ssh sign --ca-id=$INFISICAL_SSH_CA_ID`.
+| Variable | How to Get | Used By |
+|----------|-----------|--------|
+| `PORTAINER_URL` | Auto-written by Ansible `portainer_bootstrap` role (or manually set) | Terraform Portainer provider `endpoint` |
+| `PORTAINER_API_KEY` | Auto-written by Ansible `portainer_bootstrap` role (or manually via Portainer → Access Tokens) | Terraform Portainer provider `api_key` |
+
+> **Note:** These credentials are written automatically by the Ansible `portainer_bootstrap` role during Phase 6 provisioning. Terraform reads them to authenticate against the Portainer API. The resulting webhook URLs are written automatically to `/deployments` by Terraform.
+
+### `/deployments` — Webhook URLs *(Terraform-managed)*
+
+These secrets are **created and updated automatically** by the `portainer` Terraform module. Do not edit them manually.
+
+The management stack (Portainer + Homarr) is deployed by Ansible, not Terraform, so it does not have a webhook URL here.
+
+| Variable | Source | Used By |
+|----------|--------|--------|
+| `PORTAINER_WEBHOOK_URLS` | Comma-separated list of all stack webhook URLs | `deploy.yml` → `portainer-webhook.sh` |
+| `WEBHOOK_URL_GATEWAY` | Individual webhook URL for the gateway stack | Direct API calls |
+| `WEBHOOK_URL_AUTH` | Individual webhook URL for the auth stack | Direct API calls |
+| `WEBHOOK_URL_NETWORK` | Individual webhook URL for the network stack | Direct API calls |
+| `WEBHOOK_URL_OBSERVABILITY` | Individual webhook URL for the observability stack | Direct API calls |
+| `WEBHOOK_URL_AI_INTERFACE` | Individual webhook URL for the ai-interface stack | Direct API calls |
+| `WEBHOOK_URL_UPTIME` | Individual webhook URL for the uptime stack | Direct API calls |
+| `WEBHOOK_URL_CLOUD` | Individual webhook URL for the cloud stack | Direct API calls |
 
 ### `/stacks/gateway` — Traefik
 
@@ -68,11 +93,13 @@ The GitHub Actions pipeline now dynamically authenticates via OIDC and signs an 
 | `AUTHELIA_SESSION_SECRET` | Generate: `openssl rand -base64 48` | Authelia session encryption |
 | `POSTGRES_PASSWORD` | Generate: `openssl rand -base64 32` | Authelia ↔ PostgreSQL storage backend |
 
-### `/stacks/management` — Homarr
+### `/stacks/management` — Homarr + Portainer
 
 | Variable | How to Get | Used By |
-|----------|-----------|---------|
+|----------|-----------|--------|
 | `HOMARR_SECRET_KEY` | Generate: `openssl rand -hex 32` | Homarr `SECRET_ENCRYPTION_KEY` |
+| `PORTAINER_ADMIN_PASSWORD` | Choose a strong password or generate: `openssl rand -base64 24` | Ansible `portainer_bootstrap` role — hashed to bcrypt at deploy time and passed to Portainer via `--admin-password`; plaintext used only for JWT auth to create API key |
+| `PORTAINER_ADMIN_PASSWORD_HASH` | **Auto-generated** by Ansible (`password_hash('bcrypt')`) at initial deploy; Ansible should write the hash to Infisical `/stacks/management` so the Infisical Agent can render it on subsequent redeploys — do not set manually | Portainer `--admin-password` CLI flag (set in `docker-compose.yml`) |
 
 ### `/stacks/network` — Vaultwarden + Pi-hole
 
@@ -127,7 +154,7 @@ The workflow authenticates to Infisical via **OIDC** (not Universal Auth), so no
 
 | Variable | How to Get | Used By |
 |----------|-----------|---------|
-| `PORTAINER_WEBHOOK_URLS` | Portainer → Stacks → Webhooks (comma-separated list) | `deploy.yml` → `portainer-webhook.sh` |
+| `PORTAINER_WEBHOOK_URLS` | *(Now managed by Terraform → Infisical `/deployments`)* — see [Portainer Integration](#terraform--portainer-integration) | `deploy.yml` → `portainer-webhook.sh` |
 
 ---
 
@@ -178,13 +205,52 @@ locals {
 
     # /cloud-provider/oci
     oci_compartment_id = data.infisical_secrets.oci.secrets["OCI_COMPARTMENT_OCID"].value
+    oci_image_ocid     = data.infisical_secrets.oci.secrets["OCI_IMAGE_OCID"].value
 
     # /cloud-provider/gcp
     gcp_project_id = data.infisical_secrets.gcp.secrets["GCP_PROJECT_ID"].value
-    # ...
+
+    # /management (Portainer)
+    portainer_url     = data.infisical_secrets.management.secrets["PORTAINER_URL"].value
+    portainer_api_key = data.infisical_secrets.management.secrets["PORTAINER_API_KEY"].value
   }
 }
 ```
+
+## Terraform → Portainer Integration
+
+The `portainer` Terraform module (`terraform/portainer/`) uses the [portainer/portainer](https://registry.terraform.io/providers/portainer/portainer) provider to declaratively manage the **application stacks** and their GitOps webhooks. Webhook URLs are written back to Infisical automatically, making it the single source of truth for deployment credentials.
+
+> **Boundary:** Ansible deploys the management stack (Portainer + Homarr) during Phase 6 and writes the API credentials to Infisical `/management`. Terraform then reads those credentials to manage everything else through the Portainer API.
+
+### How It Works
+
+1. **Ansible bootstraps** Portainer (Phase 6) → writes `PORTAINER_URL` + `PORTAINER_API_KEY` to Infisical `/management`
+2. **Terraform reads** `/management` from Infisical to authenticate the Portainer provider
+3. **Terraform creates** each application stack in Portainer via the API (`portainer_stack` with `deployment_type = "swarm"`, `method = "repository"`)
+4. **Portainer returns** a webhook URL per stack (enabled via `stack_webhook = true`)
+5. **Terraform writes** each webhook URL to Infisical under `/deployments` using `infisical_secret`
+6. **GitHub Actions** pulls `PORTAINER_WEBHOOK_URLS` from Infisical at runtime (via OIDC) — no more plaintext secrets in repo settings
+
+### Managed Stacks
+
+The management stack is **not** in this list — it is deployed by Ansible.
+
+| Stack | Compose Path in Repo |
+|-------|---------------------|
+| gateway | `stacks/gateway/docker-compose.yml` |
+| auth | `stacks/auth/docker-compose.yml` |
+| network | `stacks/network/docker-compose.yml` |
+| observability | `stacks/observability/docker-compose.yml` |
+| ai-interface | `stacks/media/ai-interface/docker-compose.yml` |
+| uptime | `stacks/uptime/docker-compose.yml` |
+| cloud | `stacks/cloud/docker-compose.yml` |
+
+### Adding a New Stack
+
+1. Create the `docker-compose.yml` under `stacks/<name>/`
+2. Add an entry to the `local.stacks` map in `terraform/portainer/main.tf`
+3. Run `terraform apply` — the stack, webhook, and Infisical secret are all created automatically
 
 ## Infisical Agent (Docker Swarm)
 
@@ -284,6 +350,8 @@ POSTGRES_PASSWORD={{ .POSTGRES_PASSWORD }}
 ```
 
 Stacks that only need globals (uptime, cloud) have a single `/infrastructure` block.
+
+> **Gateway exception:** The gateway `.env.tmpl` pulls `BASE_DOMAIN` and `ZONE_ID` from `/infrastructure` for completeness, but the gateway `docker-compose.yml` does not reference either variable. `CLOUDFLARE_API_TOKEN`, `ACME_EMAIL`, and `DOCKER_SOCKET_PROXY_URL` are the only variables the gateway compose actually substitutes.
 
 ### Template Inventory
 

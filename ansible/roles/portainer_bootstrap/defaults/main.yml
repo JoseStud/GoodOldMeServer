@@ -1,0 +1,31 @@
+---
+# Portainer base domain (e.g., example.com → portainer.example.com)
+portainer_base_domain: "{{ lookup('env', 'BASE_DOMAIN') | default('localhost', true) }}"
+
+# Compose file path (relative to repo root, on the host)
+portainer_compose_path: /opt/stacks/management/docker-compose.yml
+
+# Portainer env file path
+portainer_env_path: /opt/stacks/management/.env
+
+# Portainer API endpoint (local, since we run on a manager node)
+portainer_api_url: "http://localhost:9000/api"
+
+# How long to wait for Portainer to be healthy (seconds)
+portainer_health_timeout: 120
+
+# Initial admin username
+portainer_admin_user: admin
+
+# Initial admin password — MUST be overridden
+# Set via: --extra-vars, environment variable, or Infisical
+# The plaintext value is used only for JWT authentication (API key creation).
+# A bcrypt hash is generated at deploy time and passed to the Portainer
+# container via --admin-password so the password never travels over HTTP.
+portainer_admin_password: "{{ lookup('env', 'PORTAINER_ADMIN_PASSWORD') }}"
+
+# Bcrypt cost factor for hashing the admin password (10–14 recommended)
+portainer_bcrypt_rounds: 12
+
+# Infisical project ID for writing the API key
+infisical_project_id: "{{ lookup('env', 'INFISICAL_PROJECT_ID') | default('', true) }}"

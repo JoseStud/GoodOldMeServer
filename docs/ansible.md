@@ -45,6 +45,12 @@ sequenceDiagram
     PB->>OCI2: swarm role (join as manager)
     PB->>GCP: swarm role (join as witness manager)
     PB->>OCI1: Label nodes + create traefik_proxy network
+
+    Note over PB,GCP: Phase 6 — Portainer Bootstrap
+    PB->>OCI1: portainer_bootstrap role (deploy management stack)
+    PB->>OCI1: Wait for Portainer API health
+    PB->>OCI1: Init admin user + create API key
+    PB->>OCI1: Write PORTAINER_URL + API_KEY to Infisical /management
 ```
 
 ## Dynamic Inventory
@@ -83,7 +89,7 @@ This eliminates the need to distribute individual public keys to each node.
 
 ## Provisioning Lifecycle
 
-The `ansible/playbooks/provision.yml` playbook runs all 5 phases sequentially. It starts by waiting for SSH connectivity (up to 300s with 10s delay), gathering facts, and verifying with a ping.
+The `ansible/playbooks/provision.yml` playbook runs all 6 phases sequentially. It starts by waiting for SSH connectivity (up to 300s with 10s delay), gathering facts, and verifying with a ping.
 
 ### Phase 1: Base System Setup
 
@@ -170,6 +176,33 @@ All directories are owned by `media-srv:media-srv` (UID/GID 1500) with mode `075
 
 > See [Network Architecture](network-architecture.md#docker-swarm-topology) for the 3-manager quorum rationale.
 
+### Phase 6: Portainer Bootstrap
+
+**Applies to:** First OCI manager node only
+
+| Role | What It Does |
+|------|-------------|
+| `portainer_bootstrap` | Deploys the management stack (Portainer server + agent + Homarr) via `docker stack deploy`, waits for the Portainer API to be healthy, generates a bcrypt hash of the admin password and passes it via the `--admin-password` CLI flag, creates a Terraform-dedicated API key, and writes `PORTAINER_URL` + `PORTAINER_API_KEY` to Infisical `/management` |
+
+**Detailed flow:**
+1. Generate a bcrypt hash of `PORTAINER_ADMIN_PASSWORD` (Ansible `password_hash('bcrypt')` filter)
+2. Deploy the management stack using `docker stack deploy -c /opt/stacks/management/docker-compose.yml management`, passing `PORTAINER_ADMIN_PASSWORD_HASH` as an environment variable
+3. Wait for `http://localhost:9000/api/system/status` to return HTTP 200 (up to 120s)
+4. Admin user is initialized automatically by Portainer via the `--admin-password` CLI flag (bcrypt hash) — no API call needed. This is idempotent and avoids transmitting the plaintext password over HTTP
+5. Authenticate via `POST /api/auth` to get a JWT
+6. Check for existing API keys; create one labeled `terraform-managed` if absent
+7. Write `PORTAINER_URL` and `PORTAINER_API_KEY` to Infisical `/management` via the Infisical CLI
+8. Verify the API key works against the Portainer status endpoint
+
+**Why Ansible and not Terraform?** Portainer is the control plane that Terraform's Portainer provider talks to. Terraform cannot create the thing it depends on to authenticate. Ansible bootstraps Portainer as infrastructure, then Terraform manages the application stacks through it.
+
+> **Required environment variables:**
+> - `PORTAINER_ADMIN_PASSWORD` — initial admin password (hashed to bcrypt at deploy time; plaintext is used only for JWT auth to create the API key)
+> - `BASE_DOMAIN` — your domain (e.g., `example.com`)
+> - `INFISICAL_TOKEN` — Infisical auth token (for writing secrets)
+> - `INFISICAL_PROJECT_ID` — Infisical project ID
+> - `HOMARR_SECRET_KEY` — Homarr encryption key
+
 ## Structure
 
 ```
@@ -179,7 +212,7 @@ ansible/
 ├── inventory/
 │   └── terraform.yml                # Dynamic inventory from Terraform state
 ├── playbooks/
-│   └── provision.yml                # 5-phase provisioning playbook (with tags)
+│   └── provision.yml                # 6-phase provisioning playbook (with tags)
 └── roles/
     ├── system_user/
     │   ├── defaults/main.yml        # Parameterized user/group (service_user, service_uid)
@@ -192,9 +225,13 @@ ansible/
     │   └── tasks/main.yml           # APT repo install Docker, enable service
     ├── glusterfs/
     │   ├── defaults/main.yml        # (currently empty — values are inline in tasks)
-    ├── templates/               # (reserved for future Jinja2 templates)
+    │   ├── templates/               # (reserved for future Jinja2 templates)
     │   └── tasks/main.yml           # GlusterFS replica-3-arbiter-1 volume + shared dirs
-    └── swarm/tasks/main.yml         # 3-manager Swarm init + overlay network
+    ├── swarm/
+    │   └── tasks/main.yml           # 3-manager Swarm init + overlay network
+    └── portainer_bootstrap/
+        ├── defaults/main.yml        # Portainer URL, admin creds, Infisical project ID
+        └── tasks/main.yml           # Deploy management stack, init admin, create API key
 ```
 
 ## Running Ansible

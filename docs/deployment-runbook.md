@@ -9,7 +9,9 @@ Before deploying any stack, verify that all infrastructure layers are operationa
 | Prerequisite | How to Verify | Fix |
 |-------------|---------------|-----|
 | Terraform applied | `terraform output` shows IPs | `terraform apply` |
-| Ansible provisioning complete | SSH into nodes, verify Docker/Tailscale/GlusterFS | Re-run `ansible-playbook` |
+| Ansible provisioning complete | SSH into nodes, verify Docker/Tailscale/GlusterFS/Portainer | Re-run `ansible-playbook` |
+| Portainer running | `curl -s http://localhost:9000/api/system/status` returns HTTP 200 | Re-run Ansible `portainer_bootstrap` role |
+| `PORTAINER_ADMIN_PASSWORD` set | `echo $PORTAINER_ADMIN_PASSWORD` is non-empty | `export PORTAINER_ADMIN_PASSWORD='...'` (bcrypt-hashed by Ansible at deploy time) |
 | Tailscale mesh active | `tailscale status` on each node shows 3 peers | `tailscale up --authkey=...` |
 | GlusterFS mounted | `df -h /mnt/swarm-shared` on OCI nodes | `mount -t glusterfs localhost:/swarm_data /mnt/swarm-shared` |
 | Docker Swarm initialized | `docker node ls` shows 3 managers (2 Ready + 1 Ready) | Re-run Ansible `swarm` role |
@@ -23,22 +25,54 @@ Stacks have dependencies — deploy in this order:
 
 ```mermaid
 flowchart TD
-    GW[1. Gateway<br/>Traefik + Socket Proxy] --> AUTH[2. Auth<br/>Authelia SSO]
-    AUTH --> REST[3-8. Remaining Stacks<br/>any order]
-    REST --> MGMT[Management]
-    REST --> NET[Network]
-    REST --> OBS[Observability]
-    REST --> MEDIA[Media / AI]
-    REST --> UP[Uptime]
-    REST --> CLOUD[Cloud]
+    subgraph Ansible ["Ansible (Phase 6)"]
+        MGMT[Management<br/>Portainer + Homarr]
+    end
+    subgraph Terraform ["Terraform (portainer module)"]
+        GW[1. Gateway<br/>Traefik + Socket Proxy] --> AUTH[2. Auth<br/>Authelia SSO]
+        AUTH --> REST[3-7. Remaining Stacks<br/>any order]
+        REST --> NET[Network]
+        REST --> OBS[Observability]
+        REST --> MEDIA[Media / AI]
+        REST --> UP[Uptime]
+        REST --> CLOUD[Cloud]
+    end
+    MGMT -->|API key written to Infisical| Terraform
 ```
 
 **Why this order:**
-1. **Gateway first** — All stacks depend on `traefik_proxy` network and need Traefik running to route traffic
-2. **Auth second** — Most stacks reference `authelia@docker` middleware; Traefik will return 500 errors if the middleware service doesn't exist
-3. **Everything else** — No inter-dependencies among the remaining stacks
+1. **Management first (Ansible)** — Portainer is the control plane. Ansible bootstraps it during provisioning (Phase 6) because Terraform's Portainer provider needs the API to already exist
+2. **Gateway first (Terraform)** — All application stacks depend on `traefik_proxy` network and need Traefik running to route traffic
+3. **Auth second (Terraform)** — Most stacks reference `authelia@docker` middleware; Traefik will return 500 errors if the middleware service doesn't exist
+4. **Everything else** — No inter-dependencies among the remaining stacks
 
 ## Deploy Commands
+
+### Step 0: Management Stack (Ansible)
+
+The management stack (Portainer + Homarr) is deployed automatically by Ansible during Phase 6 of provisioning. If you need to deploy it manually:
+
+```bash
+# Deploy the management stack directly
+BASE_DOMAIN=example.com HOMARR_SECRET_KEY="your-key" TZ=Etc/UTC \
+  PORTAINER_ADMIN_PASSWORD_HASH='$2b$12$...' \
+  docker stack deploy -c stacks/management/docker-compose.yml management
+```
+
+> **Note:** `PORTAINER_ADMIN_PASSWORD_HASH` must be a valid bcrypt hash. Generate one with:
+> ```bash
+> htpasswd -nbB '' 'your-password' | cut -d: -f2
+> ```
+> The Ansible playbook generates this automatically from `PORTAINER_ADMIN_PASSWORD`.
+
+**Verify:**
+```bash
+docker stack services management
+# Expected: portainer-server (1/1), portainer-agent (mode: global), homarr (1/1)
+
+# Test Portainer API is responding
+curl -s http://localhost:9000/api/system/status | jq .
+```
 
 ### Step 1: Gateway
 
@@ -75,14 +109,18 @@ curl -I https://auth.example.com
 # Expected: HTTP 200 (Authelia login page)
 ```
 
-### Step 3+: Remaining Stacks
+### Step 3+: Remaining Stacks (Terraform-managed)
 
-For **auto-injected stacks** (management, network, uptime, cloud), the Infisical Agent handles deployment automatically via its `exec.command`. If deploying manually:
+After Ansible has bootstrapped Portainer, **Terraform manages all application stacks** via the Portainer provider. Running `terraform apply` will create each stack in Portainer with GitOps webhooks enabled and write the webhook URLs to Infisical `/deployments`.
 
 ```bash
-# Management
-docker stack deploy -c stacks/management/docker-compose.yml management
+# From the terraform/ directory
+terraform apply
+```
 
+For **manual deployment** (fallback), the Infisical Agent handles deployment automatically via its `exec.command`. Or deploy directly:
+
+```bash
 # Network
 docker stack deploy -c stacks/network/docker-compose.yml network
 
@@ -160,14 +198,15 @@ docker service update --image <new-image> <stack>_<service>
 docker service update --force <stack>_<service>
 ```
 
-### Setting Up Portainer GitOps for a New Stack
+### Setting Up Portainer GitOps for a New Stack (Terraform)
 
-1. In Portainer, go to **Stacks → Add Stack → Repository**
-2. Enter the Git repository URL and branch (`main`)
-3. Set the **Compose path** to the stack's `docker-compose.yml` (e.g., `stacks/gateway/docker-compose.yml`)
-4. Add any required environment variables (or let Infisical Agent handle `.env` injection on the host)
-5. Check **Enable Webhook** — Portainer generates a unique URL like `https://portainer.example.com/api/webhooks/<uuid>`
-6. Copy the URL and add it to the `PORTAINER_WEBHOOK_URLS` GitHub Actions secret (comma-separated with existing URLs)
+Stacks are now managed declaratively via the `portainer` Terraform module. To add a new stack:
+
+1. Create the `docker-compose.yml` under `stacks/<name>/`
+2. Add an entry to the `local.stacks` map in `terraform/portainer/main.tf`
+3. Run `terraform apply` — the stack, webhook, and Infisical secret are all created automatically
+
+The webhook URL is written to Infisical `/deployments` as `WEBHOOK_URL_<STACK_NAME>` and appended to the combined `PORTAINER_WEBHOOK_URLS` secret.
 
 ### Updating Secrets
 

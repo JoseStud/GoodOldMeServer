@@ -1,0 +1,197 @@
+---
+# Portainer Bootstrap Role
+# Deploys the management stack (Portainer + Homarr) via Docker Swarm,
+# then initializes Portainer's admin user and creates an API key for Terraform.
+#
+# This role runs ONLY on the first OCI manager node (the Swarm leader).
+# Prerequisites: Docker Swarm initialized, GlusterFS mounted, traefik_proxy network exists.
+
+# ──────────────────────────────────────────────
+# Deploy the management stack
+# ──────────────────────────────────────────────
+
+- name: Check if management stack is already deployed
+  ansible.builtin.command: docker stack services management --format "{{ '{{' }}.Name{{ '}}' }}"
+  register: management_stack_check
+  ignore_errors: true
+  changed_when: false
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+# ──────────────────────────────────────────────
+# Generate bcrypt hash for the admin password
+# ──────────────────────────────────────────────
+# Portainer's --admin-password flag accepts a bcrypt hash at startup,
+# which is safer than POST-ing the plaintext to /api/users/admin/init
+# because the password never travels over HTTP (even on localhost).
+
+- name: Generate bcrypt hash of admin password
+  ansible.builtin.set_fact:
+    portainer_admin_password_hash: "{{ portainer_admin_password | password_hash('bcrypt', rounds=portainer_bcrypt_rounds) }}"
+  when: inventory_hostname == groups['oci_nodes'][0]
+  no_log: true
+
+- name: Deploy management stack (Portainer + Homarr)
+  ansible.builtin.command: >
+    docker stack deploy
+    --compose-file {{ portainer_compose_path }}
+    --with-registry-auth
+    management
+  environment:
+    BASE_DOMAIN: "{{ portainer_base_domain }}"
+    HOMARR_SECRET_KEY: "{{ lookup('env', 'HOMARR_SECRET_KEY') | default('changeme', true) }}"
+    TZ: "{{ lookup('env', 'TZ') | default('Etc/UTC', true) }}"
+    PORTAINER_ADMIN_PASSWORD_HASH: "{{ portainer_admin_password_hash }}"
+  register: stack_deploy_result
+  changed_when: "'Creating service' in stack_deploy_result.stdout or 'Updating service' in stack_deploy_result.stdout"
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+# ──────────────────────────────────────────────
+# Wait for Portainer API to become ready
+# ──────────────────────────────────────────────
+
+- name: Wait for Portainer API to be reachable
+  ansible.builtin.uri:
+    url: "{{ portainer_api_url }}/system/status"
+    method: GET
+    status_code: 200
+    validate_certs: false
+  register: portainer_status
+  until: portainer_status.status == 200
+  retries: "{{ (portainer_health_timeout / 5) | int }}"
+  delay: 5
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+# ──────────────────────────────────────────────
+# Admin user initialization
+# ──────────────────────────────────────────────
+# The admin password is set via the --admin-password CLI flag (bcrypt
+# hash) in the docker-compose.yml, so no API call is needed.
+# Portainer applies the hash on every container start, making this
+# idempotent and avoiding plaintext transmission over HTTP.
+
+# ──────────────────────────────────────────────
+# Authenticate and create an API key for Terraform
+# ──────────────────────────────────────────────
+
+- name: Authenticate to Portainer API
+  ansible.builtin.uri:
+    url: "{{ portainer_api_url }}/auth"
+    method: POST
+    body_format: json
+    body:
+      Username: "{{ portainer_admin_user }}"
+      Password: "{{ portainer_admin_password }}"
+    status_code: 200
+    validate_certs: false
+  register: portainer_auth
+  when: inventory_hostname == groups['oci_nodes'][0]
+  no_log: true
+
+- name: Set JWT token fact
+  ansible.builtin.set_fact:
+    portainer_jwt: "{{ portainer_auth.json.jwt }}"
+  when: inventory_hostname == groups['oci_nodes'][0]
+  no_log: true
+
+- name: Check for existing Terraform API key
+  ansible.builtin.uri:
+    url: "{{ portainer_api_url }}/users/1/tokens"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ portainer_jwt }}"
+    status_code: 200
+    validate_certs: false
+  register: existing_tokens
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Determine if Terraform API key already exists
+  ansible.builtin.set_fact:
+    terraform_token_exists: "{{ existing_tokens.json | selectattr('description', 'equalto', 'terraform-managed') | list | length > 0 }}"
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Create Portainer API key for Terraform
+  ansible.builtin.uri:
+    url: "{{ portainer_api_url }}/users/1/tokens"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ portainer_jwt }}"
+    body_format: json
+    body:
+      description: "terraform-managed"
+    status_code: 200
+    validate_certs: false
+  register: api_key_result
+  when:
+    - inventory_hostname == groups['oci_nodes'][0]
+    - not terraform_token_exists
+  no_log: true
+
+- name: Set API key fact
+  ansible.builtin.set_fact:
+    portainer_api_key: "{{ api_key_result.json.rawAPIKey }}"
+  when:
+    - inventory_hostname == groups['oci_nodes'][0]
+    - api_key_result is not skipped
+  no_log: true
+
+# ──────────────────────────────────────────────
+# Write credentials to Infisical /management
+# ──────────────────────────────────────────────
+
+- name: Write PORTAINER_URL to Infisical
+  ansible.builtin.command: >
+    infisical secrets set PORTAINER_URL=https://portainer.{{ portainer_base_domain }}
+    --env=prod
+    --path=/management
+    --projectId={{ infisical_project_id }}
+  environment:
+    INFISICAL_TOKEN: "{{ lookup('env', 'INFISICAL_TOKEN') }}"
+  register: infisical_url_result
+  changed_when: infisical_url_result.rc == 0
+  when:
+    - inventory_hostname == groups['oci_nodes'][0]
+    - infisical_project_id | length > 0
+    - portainer_base_domain != 'localhost'
+
+- name: Write PORTAINER_API_KEY to Infisical
+  ansible.builtin.command: >
+    infisical secrets set PORTAINER_API_KEY={{ portainer_api_key }}
+    --env=prod
+    --path=/management
+    --projectId={{ infisical_project_id }}
+  environment:
+    INFISICAL_TOKEN: "{{ lookup('env', 'INFISICAL_TOKEN') }}"
+  register: infisical_key_result
+  changed_when: infisical_key_result.rc == 0
+  when:
+    - inventory_hostname == groups['oci_nodes'][0]
+    - infisical_project_id | length > 0
+    - portainer_api_key is defined
+  no_log: true
+
+# ──────────────────────────────────────────────
+# Verify
+# ──────────────────────────────────────────────
+
+- name: Verify Portainer is healthy and API key works
+  ansible.builtin.uri:
+    url: "{{ portainer_api_url }}/system/status"
+    method: GET
+    headers:
+      X-API-Key: "{{ portainer_api_key | default(omit) }}"
+    status_code: 200
+    validate_certs: false
+  register: final_health_check
+  when:
+    - inventory_hostname == groups['oci_nodes'][0]
+    - portainer_api_key is defined
+
+- name: Display Portainer bootstrap summary
+  ansible.builtin.debug:
+    msg: |
+      Portainer bootstrap complete:
+        URL:        https://portainer.{{ portainer_base_domain }}
+        API Key:    {{ 'written to Infisical /management' if (infisical_project_id | length > 0) else 'MANUAL — set PORTAINER_API_KEY in Infisical /management' }}
+        Stack:      management (portainer-server + portainer-agent + homarr)
+        Health:     {{ 'OK' if (final_health_check is defined and final_health_check.status == 200) else 'SKIPPED' }}
+  when: inventory_hostname == groups['oci_nodes'][0]
