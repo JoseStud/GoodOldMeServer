@@ -88,7 +88,8 @@ docker stack deploy -c stacks/network/docker-compose.yml network
 # Observability (manual .env required)
 cat > stacks/observability/.env << 'EOF'
 BASE_DOMAIN=example.com
-GF_ADMIN_PASSWORD=your-secure-password
+GF_OIDC_CLIENT_ID=grafana
+GF_OIDC_CLIENT_SECRET=your-secure-secret
 EOF
 docker stack deploy -c stacks/observability/docker-compose.yml observability
 

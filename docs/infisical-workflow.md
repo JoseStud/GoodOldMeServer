@@ -21,19 +21,19 @@ flowchart LR
 
 | Path | Consumer | Secrets |
 |------|----------|---------|
-| `/infrastructure` | Terraform, Ansible, Scripts, **all stacks** (global) | `BASE_DOMAIN`, `CLOUDFLARE_API_TOKEN`, `TAILSCALE_AUTHKEY`, `TZ`, `ZONE_ID`, `ACME_EMAIL` |
+| `/infrastructure` | Terraform, Ansible, Scripts | `BASE_DOMAIN`, `CLOUDFLARE_API_TOKEN`, `TAILSCALE_OAUTH_CLIENT_ID`, `TAILSCALE_OAUTH_CLIENT_SECRET`, `TZ`, `ZONE_ID`, `ACME_EMAIL` |
 | `/management` | Portainer deploy script | `ENDPOINT_ID`, `PORTAINER_TOKEN`, `PORTAINER_URL` |
 | `/security` | Terraform (cloud-init), Ansible (SSH CA) | `SSH_CA_PRIVATE_KEY`, `SSH_CA_PUBLIC_KEY`, `SSH_HOST_CA_PUBKEY` |
-| `/stacks/gateway` | Traefik | `DOCKER_SOCKET_PROXY_URL` |
+| `/stacks/gateway` | Traefik | `ACME_EMAIL`, `DOCKER_SOCKET_PROXY_URL` |
 | `/stacks/identity` | Authelia SSO | `AUTHELIA_JWT_SECRET`, `AUTHELIA_SESSION_SECRET`, `POSTGRES_PASSWORD` |
 | `/stacks/management` | Homarr | `HOMARR_SECRET_KEY` |
 | `/stacks/network` | Vaultwarden, Pi-hole | `VW_DB_PASS`, `VW_ADMIN_TOKEN`, `PIHOLE_PASSWORD` |
-| `/stacks/observability` | Grafana | `GF_ADMIN_PASSWORD` |
+| `/stacks/observability` | Grafana | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET` |
 | `/stacks/ai-interface` | Open WebUI, OpenClaw | *(none yet — add `ARCH_PC_IP` when ready)* |
-| `/cloud-provider/gcp` | Terraform (GCP provider) | `GCP_SERVICE_ACCOUNT_KEY` |
-| `/cloud-provider/oci` | Terraform (OCI provider) | `OCI_FINGERPRINT`, `OCI_PRIVATE_KEY`, `OCI_TENANCY_OCID`, `OCI_USER_OCID` |
+| `/cloud-provider/gcp` | Terraform (GCP provider) | `GCP_PROJECT_ID` |
+| `/cloud-provider/oci` | Terraform (OCI provider) | `OCI_COMPARTMENT_OCID`, `OCI_IMAGE_OCID` |
 
-> **Global injection:** Every `.env.tmpl` pulls `BASE_DOMAIN` and `TZ` from `/infrastructure` via a `{{- with secret "/infrastructure" }}` block — no need to duplicate these in each stack's Infisical path.
+> **Global injection:** `BASE_DOMAIN` is used in almost every `.env.tmpl` via a `{{- with secret "/infrastructure" }}` block, as Traefik requires it for routing labels. Other variables like `TZ` or `CLOUDFLARE_API_TOKEN` are only pulled into the specific stacks that need them.
 
 ---
 
@@ -47,7 +47,8 @@ flowchart LR
 | `TZ` | IANA timezone (e.g. `America/New_York`, `Etc/UTC`) | All stacks, Pi-hole |
 | `CLOUDFLARE_API_TOKEN` | Cloudflare dashboard → My Profile → API Tokens → Create Token → Zone:DNS:Edit | Traefik (ACME DNS challenge), `cloudflare-dns.sh` |
 | `ZONE_ID` | Cloudflare dashboard → select domain → Overview sidebar → Zone ID | `cloudflare-dns.sh` |
-| `TAILSCALE_AUTHKEY` | Tailscale admin → Settings → Keys → Generate auth key (reusable, ephemeral) | Ansible provisioning (`tailscale up --authkey=...`) |
+| `TAILSCALE_OAUTH_CLIENT_ID` | Tailscale admin → Settings → OAuth clients → Generate client | Ansible / Provisioning (Client ID) |
+| `TAILSCALE_OAUTH_CLIENT_SECRET` | Tailscale admin → Settings → OAuth clients → Generated secret (with tags) | Ansible provisioning (`tailscale up --authkey=...`) |
 | `ACME_EMAIL` | Any valid email — Let's Encrypt sends expiry warnings here | Traefik cert resolver |
 
 ### `/management` — Portainer Deploy Script
@@ -98,7 +99,8 @@ flowchart LR
 
 | Variable | How to Get | Used By |
 |----------|-----------|---------|
-| `GF_ADMIN_PASSWORD` | Choose or generate: `openssl rand -base64 24` | Grafana `admin` user initial password |
+| `GF_OIDC_CLIENT_ID` | Configured in Authelia OIDC clients (e.g. `grafana`) | Grafana SSO setup |
+| `GF_OIDC_CLIENT_SECRET` | Configured in Authelia OIDC clients | Grafana SSO setup |
 
 ### `/stacks/ai-interface` — Open WebUI *(future)*
 
@@ -110,16 +112,14 @@ flowchart LR
 
 | Variable | How to Get | Used By |
 |----------|-----------|---------|
-| `OCI_TENANCY_OCID` | OCI Console → Profile → Tenancy → OCID | Terraform OCI provider |
-| `OCI_USER_OCID` | OCI Console → Profile → My Profile → OCID | Terraform OCI provider |
-| `OCI_FINGERPRINT` | OCI Console → Profile → API Keys → fingerprint column | Terraform OCI provider |
-| `OCI_PRIVATE_KEY` | The PEM private key you uploaded to OCI API Keys | Terraform OCI provider |
+| `OCI_COMPARTMENT_OCID` | Compartments → View Details → Copy OCID | Resources grouping |
+| `OCI_IMAGE_OCID` | Compute → Images → Custom/Canonical Image OCID | Terraform compute module |
 
 ### `/cloud-provider/gcp` — GCP Terraform
 
 | Variable | How to Get | Used By |
 |----------|-----------|---------|
-| `GCP_SERVICE_ACCOUNT_KEY` | GCP Console → IAM → Service Accounts → Keys → Create Key (JSON) — paste full JSON | Terraform Google provider `credentials` |
+| `GCP_PROJECT_ID` | GCP Console → Top Navigation (e.g., `goodoldmeserver-123`) | Terraform Google provider `project` |
 
 ---
 
@@ -170,11 +170,10 @@ locals {
     ssh_ca_public_key = data.infisical_secrets.security.secrets["SSH_CA_PUBLIC_KEY"].value
 
     # /cloud-provider/oci
-    oci_tenancy_ocid = data.infisical_secrets.oci.secrets["OCI_TENANCY_OCID"].value
-    oci_user_ocid    = data.infisical_secrets.oci.secrets["OCI_USER_OCID"].value
+    oci_compartment_id = data.infisical_secrets.oci.secrets["OCI_COMPARTMENT_OCID"].value
 
     # /cloud-provider/gcp
-    gcp_service_account_key = data.infisical_secrets.gcp.secrets["GCP_SERVICE_ACCOUNT_KEY"].value
+    gcp_project_id = data.infisical_secrets.gcp.secrets["GCP_PROJECT_ID"].value
     # ...
   }
 }

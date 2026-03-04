@@ -36,13 +36,7 @@ OCI steps (console or CLI)
   - allow dynamic-group tfc-dynamic-group to manage virtual-network-family in compartment MyCompartment
 
 4) Configure Terraform Cloud
-- If Terraform Cloud supports registering an external OIDC provider for workspace remote runs, add the TFC client configuration and audience there and map the OCI trust accordingly.
-- Alternatively, add the needed OCI credentials as TFC workspace Environment variables (sensitive) or Variable Set for remote runs (fallback). Required variables for OCI provider typically include:
-  - `OCI_TENANCY_OCID` (env)
-  - `OCI_USER_OCID` (env)
-  - `OCI_FINGERPRINT` (sensitive)
-  - `OCI_PRIVATE_KEY` (sensitive, multi-line)
-  - `OCI_REGION` (env)
+- If Terraform Cloud supports registering an external OIDC provider for workspace remote runs, add the TFC client configuration and audience there and map the OCI trust accordingly. Required environment variable is typically just `OCI_CLI_AUTH="security_token"`.
 
 Verification
 - Trigger a TFC run and check cloud logs.

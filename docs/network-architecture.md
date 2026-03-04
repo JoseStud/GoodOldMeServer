@@ -57,7 +57,7 @@ All 3 nodes (2 OCI workers + 1 GCP witness) are connected via a [Tailscale](http
 ### How It's Provisioned
 
 1. Ansible Phase 3 installs Tailscale on every node via the official install script
-2. Each node authenticates with `tailscale up --authkey=$TAILSCALE_AUTHKEY --ssh`
+2. Each node authenticates with `tailscale up --authkey=$TAILSCALE_OAUTH_CLIENT_SECRET --ssh`
 3. After authentication, nodes discover each other through Tailscale's coordination server
 4. Direct WireGuard tunnels are established (or relayed through Tailscale DERP if direct connectivity isn't possible)
 

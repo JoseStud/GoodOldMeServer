@@ -8,8 +8,8 @@ The root module orchestrates all cloud infrastructure by pulling secrets from In
 2. Four `infisical_secrets` data sources fetch secrets from their respective paths:
    - `/infrastructure` — `BASE_DOMAIN`, `TZ`
    - `/security` — `SSH_CA_PUBLIC_KEY`
-   - `/cloud-provider/oci` — `OCI_TENANCY_OCID`, `OCI_USER_OCID`, `OCI_FINGERPRINT`, `OCI_PRIVATE_KEY`, `OCI_COMPARTMENT_OCID`, `OCI_IMAGE_OCID`
-   - `/cloud-provider/gcp` — `GCP_SERVICE_ACCOUNT_KEY`
+   - `/cloud-provider/oci` — `OCI_COMPARTMENT_OCID`, `OCI_IMAGE_OCID`
+   - `/cloud-provider/gcp` — `GCP_PROJECT_ID`
 3. The OCI and GCP providers are configured directly from Infisical secrets (OCI credentials, GCP service account key)
 4. Secrets are passed as variables to the child modules; outputs (worker IPs, witness IPv6) are re-exported for Ansible's dynamic inventory
 

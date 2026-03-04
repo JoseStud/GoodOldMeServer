@@ -28,17 +28,18 @@ provider "infisical" {
 }
 
 provider "oci" {
-  tenancy_ocid = local.secrets.oci_tenancy_ocid
-  user_ocid    = local.secrets.oci_user_ocid
-  fingerprint  = local.secrets.oci_fingerprint
-  private_key  = local.secrets.oci_private_key
-  region       = var.oci_region
+  # Authenticate via OCI Workload Identity Authentication (OIDC)
+  auth = "SecurityToken"
+
+  # Optional but recommended based on deployment CI
+  region = var.oci_region
 }
 
 provider "google" {
-  credentials = local.secrets.gcp_service_account_key
-  project     = jsondecode(local.secrets.gcp_service_account_key).project_id
-  region      = "us-central1"
+  # Authenticate via GCP Workload Identity Federation (WIF)
+  # Requires `GOOGLE_CREDENTIALS` or `GOOGLE_APPLICATION_CREDENTIALS` in the environment
+  project = local.secrets.gcp_project_id
+  region  = "us-central1"
 }
 
 # ──────────────────────────────────────────────────
@@ -80,15 +81,11 @@ locals {
     ssh_ca_public_key = data.infisical_secrets.security.secrets["SSH_CA_PUBLIC_KEY"].value
 
     # /cloud-provider/oci
-    oci_tenancy_ocid    = data.infisical_secrets.oci.secrets["OCI_TENANCY_OCID"].value
-    oci_user_ocid       = data.infisical_secrets.oci.secrets["OCI_USER_OCID"].value
-    oci_fingerprint     = data.infisical_secrets.oci.secrets["OCI_FINGERPRINT"].value
-    oci_private_key     = data.infisical_secrets.oci.secrets["OCI_PRIVATE_KEY"].value
     oci_compartment_id  = data.infisical_secrets.oci.secrets["OCI_COMPARTMENT_OCID"].value
     oci_image_ocid      = data.infisical_secrets.oci.secrets["OCI_IMAGE_OCID"].value
 
     # /cloud-provider/gcp
-    gcp_service_account_key = data.infisical_secrets.gcp.secrets["GCP_SERVICE_ACCOUNT_KEY"].value
+    gcp_project_id      = data.infisical_secrets.gcp.secrets["GCP_PROJECT_ID"].value
   }
 }
 
@@ -120,7 +117,7 @@ module "oci" {
 
 module "gcp" {
   source      = "./gcp"
-  gcp_project = jsondecode(local.secrets.gcp_service_account_key).project_id
+  gcp_project = local.secrets.gcp_project_id
 }
 
 # ──────────────────────────────────────────────────
