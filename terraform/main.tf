@@ -75,7 +75,6 @@ locals {
   secrets = {
     # /infrastructure
     base_domain = data.infisical_secrets.infra.secrets["BASE_DOMAIN"].value
-    tz          = data.infisical_secrets.infra.secrets["TZ"].value
 
     # /security
     ssh_ca_public_key = data.infisical_secrets.security.secrets["SSH_CA_PUBLIC_KEY"].value

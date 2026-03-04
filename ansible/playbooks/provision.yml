@@ -63,8 +63,8 @@
       when: tailscale_status.rc != 0 or 'BackendState' not in (tailscale_status.stdout | default(''))
       tags: [phase3_tailscale]
 
-    - name: Authenticate Tailscale (Requires TAILSCALE_OAUTH_CLIENT_SECRET env)
-      ansible.builtin.command: tailscale up --authkey={{ lookup('env', 'TAILSCALE_OAUTH_CLIENT_SECRET') }} --ssh
+    - name: Authenticate Tailscale (Requires TAILSCALE_OAUTH_CLIENT_ID env)
+      ansible.builtin.command: tailscale up --authkey={{ lookup('env', 'TAILSCALE_OAUTH_CLIENT_ID') }} --ssh
       register: tailscale_result
       when: >
         tailscale_status.rc != 0 or

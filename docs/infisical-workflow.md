@@ -21,15 +21,15 @@ flowchart LR
 
 | Path | Consumer | Secrets |
 |------|----------|---------|
-| `/infrastructure` | Terraform, Ansible, Scripts | `BASE_DOMAIN`, `CLOUDFLARE_API_TOKEN`, `TAILSCALE_OAUTH_CLIENT_ID`, `TAILSCALE_OAUTH_CLIENT_SECRET`, `TZ`, `ZONE_ID`, `ACME_EMAIL` |
+| `/infrastructure` | Terraform, Ansible, Scripts | `BASE_DOMAIN`, `CLOUDFLARE_API_TOKEN`, `TAILSCALE_OAUTH_CLIENT_ID`, `TZ`, `ZONE_ID` |
 | `/management` | *(deprecated — webhook URLs in GitHub Secrets)* | — |
-| `/security` | Terraform (cloud-init), Ansible (SSH CA) | `SSH_CA_PRIVATE_KEY`, `SSH_CA_PUBLIC_KEY`, `SSH_HOST_CA_PUBKEY` |
+| `/security` | Terraform (cloud-init), GitHub Actions (SSH) | `SSH_CA_PUBLIC_KEY`, `SSH_HOST_CA_PUBKEY` |
 | `/stacks/gateway` | Traefik | `ACME_EMAIL`, `DOCKER_SOCKET_PROXY_URL` |
 | `/stacks/identity` | Authelia SSO | `AUTHELIA_JWT_SECRET`, `AUTHELIA_SESSION_SECRET`, `POSTGRES_PASSWORD` |
 | `/stacks/management` | Homarr | `HOMARR_SECRET_KEY` |
 | `/stacks/network` | Vaultwarden, Pi-hole | `VW_DB_PASS`, `VW_ADMIN_TOKEN`, `PIHOLE_PASSWORD` |
 | `/stacks/observability` | Grafana | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET` |
-| `/stacks/ai-interface` | Open WebUI, OpenClaw | *(none yet — add `ARCH_PC_IP` when ready)* |
+| `/stacks/ai-interface` | Open WebUI | `ARCH_PC_IP` |
 | `/cloud-provider/gcp` | Terraform (GCP provider) | `GCP_PROJECT_ID` |
 | `/cloud-provider/oci` | Terraform (OCI provider) | `OCI_COMPARTMENT_OCID`, `OCI_IMAGE_OCID` |
 
@@ -47,9 +47,8 @@ flowchart LR
 | `TZ` | IANA timezone (e.g. `America/New_York`, `Etc/UTC`) | All stacks, Pi-hole |
 | `CLOUDFLARE_API_TOKEN` | Cloudflare dashboard → My Profile → API Tokens → Create Token → Zone:DNS:Edit | Traefik (ACME DNS challenge), `cloudflare-dns.sh` |
 | `ZONE_ID` | Cloudflare dashboard → select domain → Overview sidebar → Zone ID | `cloudflare-dns.sh` |
-| `TAILSCALE_OAUTH_CLIENT_ID` | Tailscale admin → Settings → OAuth clients → Generate client | Ansible / Provisioning (Client ID) |
-| `TAILSCALE_OAUTH_CLIENT_SECRET` | Tailscale admin → Settings → OAuth clients → Generated secret (with tags) | Ansible provisioning (`tailscale up --authkey=...`) |
-| `ACME_EMAIL` | Any valid email — Let's Encrypt sends expiry warnings here | Traefik cert resolver |
+| `TAILSCALE_OAUTH_CLIENT_ID` | Tailscale admin → Settings → OAuth clients → Generate client | Ansible provisioning (`tailscale up --authkey=...`) |
+| ~~`ACME_EMAIL`~~ | ~~Moved to `/stacks/gateway`~~ | ~~See gateway section below~~ |
 
 ### `/management` — Portainer *(no secrets needed)*
 
@@ -59,14 +58,14 @@ flowchart LR
 
 | Variable | How to Get | Used By |
 |----------|-----------|---------|
-| `SSH_CA_PUBLIC_KEY` | `ssh-keygen -t ed25519 -f ssh_ca` → contents of `ssh_ca.pub` | Terraform cloud-init (OCI instances), Ansible |
-| `SSH_CA_PRIVATE_KEY` | Contents of the generated `ssh_ca` private key file | Ansible (signing host/user certs) |
-| `SSH_HOST_CA_PUBKEY` | Same CA or a separate host CA — public key for host cert verification | SSH client `known_hosts` (`@cert-authority *`) |
+| `SSH_CA_PUBLIC_KEY` | `ssh-keygen -t ed25519 -f ssh_ca` → contents of `ssh_ca.pub` | Terraform cloud-init (OCI instances trust this CA) |
+| `SSH_HOST_CA_PUBKEY` | `ssh-keygen -t ed25519 -f ssh_host_ca` → contents of `ssh_host_ca.pub` (or reuse `SSH_CA_PUBLIC_KEY` if using one CA for both) | GitHub Actions `deploy.yml` (`@cert-authority *` in `known_hosts`) |
 
 ### `/stacks/gateway` — Traefik
 
 | Variable | How to Get | Used By |
 |----------|-----------|---------|
+| `ACME_EMAIL` | Any valid email — Let's Encrypt sends expiry warnings here | Traefik cert resolver (`certificatesresolvers.letsencrypt.acme.email`) |
 | `DOCKER_SOCKET_PROXY_URL` | Usually `tcp://socket-proxy:2375` (default in compose) — override only if using a remote socket proxy | Traefik `--providers.docker.endpoint` |
 
 ### `/stacks/identity` — Authelia
@@ -95,10 +94,10 @@ flowchart LR
 
 | Variable | How to Get | Used By |
 |----------|-----------|---------|
-| `GF_OIDC_CLIENT_ID` | Configured in Authelia OIDC clients (e.g. `grafana`) | Grafana SSO setup |
-| `GF_OIDC_CLIENT_SECRET` | Configured in Authelia OIDC clients | Grafana SSO setup |
+| `GF_OIDC_CLIENT_ID` | Choose a client ID (e.g., `grafana`) to define in Authelia's config | Grafana SSO setup |
+| `GF_OIDC_CLIENT_SECRET` | Generate plaintext: `openssl rand -hex 32` (Must be hashed using `authelia crypto hash` for Authelia's config) | Grafana SSO setup |
 
-### `/stacks/ai-interface` — Open WebUI *(future)*
+### `/stacks/ai-interface` — Open WebUI
 
 | Variable | How to Get | Used By |
 |----------|-----------|---------|
@@ -117,40 +116,59 @@ flowchart LR
 |----------|-----------|---------|
 | `GCP_PROJECT_ID` | GCP Console → Top Navigation (e.g., `goodoldmeserver-123`) | Terraform Google provider `project` |
 
+### GitHub Actions Variables & Secrets
+
+While Infisical manages infrastructure and application secrets, a few bootstrap values must be stored directly in GitHub (Settings → Security → Secrets and variables → Actions) for CI/CD pipelines.
+
+The workflow authenticates to Infisical via **OIDC** (not Universal Auth), so no client ID/secret pair is needed.
+
+#### Variables (`vars.*`)
+
+| Variable | How to Get | Used By |
+|----------|-----------|---------|
+| `INFISICAL_MACHINE_IDENTITY_ID` | Infisical → Access Control → Machine Identities → OIDC Auth → Identity ID | `deploy.yml` OIDC login (`infisical login --method=oidc`) |
+| `INFISICAL_PROJECT_ID` | Infisical → Project Settings → Project ID | `deploy.yml` PKI signing, secret fetching |
+| `TFC_WORKSPACE` | Terraform Cloud → Workspaces → workspace name | `deploy.yml` Terraform apply step |
+
+#### Secrets (`secrets.*`)
+
+| Variable | How to Get | Used By |
+|----------|-----------|---------|
+| `PORTAINER_WEBHOOK_URLS` | Portainer → Stacks → Webhooks (pipe-separated list) | `deploy.yml` → `portainer-webhook.sh` |
+
 ---
 
 ## Terraform Integration
 
-The root Terraform module uses the `infisical/infisical` provider to fetch secrets at plan/apply time:
+The root Terraform module uses the `infisical/infisical` provider to fetch secrets at plan/apply time. Authentication is handled via environment variables injected by Terraform Cloud (OIDC workload identity), so the provider block needs only the host:
 
 ```hcl
 provider "infisical" {
-  client_id     = var.infisical_client_id
-  client_secret = var.infisical_client_secret
+  host = "https://app.infisical.com"
 }
 
 data "infisical_secrets" "infra" {
-  env_slug    = "prod"
-  folder_path = "/infrastructure"
-  workspace_id = var.infisical_workspace_id
+  env_slug     = "prod"
+  folder_path  = "/infrastructure"
+  workspace_id = var.infisical_project_id
 }
 
 data "infisical_secrets" "security" {
-  env_slug    = "prod"
-  folder_path = "/security"
-  workspace_id = var.infisical_workspace_id
+  env_slug     = "prod"
+  folder_path  = "/security"
+  workspace_id = var.infisical_project_id
 }
 
 data "infisical_secrets" "oci" {
-  env_slug    = "prod"
-  folder_path = "/cloud-provider/oci"
-  workspace_id = var.infisical_workspace_id
+  env_slug     = "prod"
+  folder_path  = "/cloud-provider/oci"
+  workspace_id = var.infisical_project_id
 }
 
 data "infisical_secrets" "gcp" {
-  env_slug    = "prod"
-  folder_path = "/cloud-provider/gcp"
-  workspace_id = var.infisical_workspace_id
+  env_slug     = "prod"
+  folder_path  = "/cloud-provider/gcp"
+  workspace_id = var.infisical_project_id
 }
 ```
 
@@ -208,7 +226,7 @@ Stacks that only need globals (uptime, cloud) have a single `/infrastructure` bl
 | management | `stacks/management/.env.tmpl` | `/infrastructure` + `/stacks/management` |
 | network | `stacks/network/.env.tmpl` | `/infrastructure` + `/stacks/network` |
 | observability | `stacks/observability/.env.tmpl` | `/infrastructure` + `/stacks/observability` |
-| ai-interface | `stacks/media/ai-interface/.env.tmpl` | `/infrastructure` (+ `/stacks/ai-interface` when needed) |
+| ai-interface | `stacks/media/ai-interface/.env.tmpl` | `/infrastructure` + `/stacks/ai-interface` |
 | uptime | `stacks/uptime/.env.tmpl` | `/infrastructure` |
 | cloud | `stacks/cloud/.env.tmpl` | `/infrastructure` |
 

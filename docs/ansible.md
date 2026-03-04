@@ -107,12 +107,12 @@ The `ansible/playbooks/provision.yml` playbook runs all 5 phases sequentially. I
 **Applies to:** All nodes (inline tasks, no role)
 
 1. **Install Tailscale** — Adds the official Tailscale APT repository (GPG key + apt source), installs the `tailscale` package
-2. **Authenticate** — Checks `tailscale status --json` for existing connection; only runs `tailscale up --authkey=$TAILSCALE_OAUTH_CLIENT_SECRET --ssh` if not already authenticated
+2. **Authenticate** — Checks `tailscale status --json` for existing connection; only runs `tailscale up --authkey=$TAILSCALE_OAUTH_CLIENT_ID --ssh` if not already authenticated
 3. **Verify** — Asserts exit code 0; fails with descriptive message if auth key is invalid
 
 After this phase, all 3 nodes (2 OCI + 1 GCP) can communicate over Tailscale's encrypted mesh using private IPs, regardless of cloud provider or network topology.
 
-> **Important:** The `TAILSCALE_OAUTH_CLIENT_SECRET` must be set as an environment variable before running the playbook. Generate an OAuth client with appropriate read/write tags from the Tailscale admin console.
+> **Important:** The `TAILSCALE_OAUTH_CLIENT_ID` must be set as an environment variable before running the playbook. Generate an OAuth client with appropriate read/write tags from the Tailscale admin console.
 
 ### Phase 4: GlusterFS Distributed Storage
 
@@ -201,7 +201,6 @@ ansible/
 ```bash
 # Set the Tailscale OAuth credentials (required for Phase 3)
 export TAILSCALE_OAUTH_CLIENT_ID="..."
-export TAILSCALE_OAUTH_CLIENT_SECRET="tskey-client-..."
 
 # Run the full provisioning playbook
 ansible-playbook -i inventory/terraform.yml playbooks/provision.yml
