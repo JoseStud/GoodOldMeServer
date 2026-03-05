@@ -20,13 +20,7 @@ FAIL_IF_AUTO_APPLY="${FAIL_IF_AUTO_APPLY:-false}"
 SUCCESS_STATUSES="${SUCCESS_STATUSES:-planned_and_finished,applied}"
 TERMINAL_FAILURE_STATUSES="${TERMINAL_FAILURE_STATUSES:-errored,canceled,discarded,force_canceled}"
 
-to_bool() {
-  local value="${1:-}"
-  case "${value,,}" in
-    true|1|yes) echo "true" ;;
-    *) echo "false" ;;
-  esac
-}
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/workflow_common.sh"
 
 trim_csv_item() {
   local value="$1"

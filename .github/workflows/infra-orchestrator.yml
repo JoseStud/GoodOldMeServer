@@ -202,7 +202,10 @@ jobs:
         env:
           CLOUD_STATIC_RUNNER_LABEL: ${{ vars.CLOUD_STATIC_RUNNER_LABEL }}
           INFISICAL_TOKEN: ${{ secrets.INFISICAL_TOKEN }}
-        run: .github/scripts/stages/cloud_runner_guard.sh
+        run: |
+          : "${CLOUD_STATIC_RUNNER_LABEL:?Missing required variable: CLOUD_STATIC_RUNNER_LABEL}"
+          : "${INFISICAL_TOKEN:?Missing required secret: INFISICAL_TOKEN}"
+          echo "runner_label=${CLOUD_STATIC_RUNNER_LABEL}" >> "${GITHUB_OUTPUT}"
 
   stacks-sha-trust:
     needs: [project-plan]
@@ -327,7 +330,8 @@ jobs:
       - name: Render deterministic Ansible inventory
         env:
           OUTPUT_FILE: inventory-ci.yml
-        run: .github/scripts/stages/inventory_handover.sh
+          TFC_WORKSPACE_INFRA: ${{ env.TFC_WORKSPACE_INFRA }}
+        run: .github/scripts/tfc/render_inventory_from_tfc_outputs.sh "${TFC_WORKSPACE_INFRA}" "${OUTPUT_FILE}"
 
       - name: Upload CI inventory artifact
         uses: actions/upload-artifact@v4
@@ -362,8 +366,10 @@ jobs:
           NETWORK_ACCESS_POLICY_JSON: ${{ needs.network-policy-sync.outputs.network_access_policy_json }}
           RUN_ANSIBLE: ${{ needs.project-plan.outputs.run_ansible_bootstrap }}
           RUN_CONFIG: ${{ needs.project-plan.outputs.run_config_sync }}
+          RUN_HEALTH: "false"
+          RUN_PORTAINER: "false"
           INVENTORY_FILE: inventory-ci.yml
-        run: .github/scripts/stages/network_preflight_ssh.sh
+        run: .github/scripts/network/preflight_network_access.sh
 
   ansible-bootstrap:
     needs: [project-plan, stacks-sha-trust, secret-validation, cloud-runner-guard, network-preflight-ssh, inventory-handover]
@@ -394,7 +400,7 @@ jobs:
         env:
           STACKS_SHA: ${{ needs.project-plan.outputs.stacks_sha }}
           INVENTORY_FILE: inventory-ci.yml
-        run: .github/scripts/stages/ansible_bootstrap.sh
+        run: .github/scripts/stages/ansible_run.sh
 
   post-bootstrap-secret-check:
     needs: [project-plan, ansible-bootstrap]
@@ -495,7 +501,8 @@ jobs:
         env:
           STACKS_SHA: ${{ needs.project-plan.outputs.stacks_sha }}
           INVENTORY_FILE: inventory-ci.yml
-        run: .github/scripts/stages/config_sync.sh
+          ANSIBLE_TAGS: sync-configs
+        run: .github/scripts/stages/ansible_run.sh
 
   health-gated-redeploy:
     needs: [project-plan, stacks-sha-trust, secret-validation, cloud-runner-guard, portainer-api-preflight, portainer-apply, config-sync]

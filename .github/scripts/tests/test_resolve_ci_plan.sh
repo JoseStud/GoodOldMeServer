@@ -17,6 +17,7 @@ trap 'rm -rf "${TMP_DIR}"' EXIT
 PASS_COUNT=0
 FAIL_COUNT=0
 HEAD_SHA="$(git -C "${ROOT_DIR}" rev-parse HEAD)"
+STACKS_SHA="$(git -C "${ROOT_DIR}" rev-parse HEAD:stacks 2>/dev/null || echo "${HEAD_SHA}")"
 
 read_output() {
   local file="$1"
@@ -73,7 +74,7 @@ run_plan_case() {
     export CI_PLAN_MODE="${mode}"
     export EVENT_NAME="${event_name}"
     "${SCRIPT}"
-  )
+  ) >&2
 
   echo "${out_file}"
 }
@@ -91,7 +92,7 @@ run_plan_case_expect_fail() {
     export CI_PLAN_MODE="${mode}"
     export EVENT_NAME="${event_name}"
     "${SCRIPT}"
-  ); then
+  ) >&2 2>&1; then
     fail "${case_name}: expected failure but script succeeded"
   else
     pass "${case_name}: failed as expected"
@@ -103,7 +104,9 @@ write_env_file() {
   shift
   : > "${file}"
   while [[ $# -gt 0 ]]; do
-    echo "export $1" >> "${file}"
+    local key="${1%%=*}"
+    local value="${1#*=}"
+    printf 'export %s=%q\n' "${key}" "${value}" >> "${file}"
     shift
   done
 }
@@ -118,10 +121,10 @@ write_env_file "${case1_env}" \
   "META_ANSIBLE_CHANGED=false" \
   "META_PORTAINER_CHANGED=false"
 case1_out="$(run_plan_case "meta_push_infra_filter" "meta" "push" "${case1_env}")"
-assert_eq "meta_push_infra_filter" "run_infra_apply" "true" "$(read_output "${case1_out}" "run_infra_apply")"
-assert_eq "meta_push_infra_filter" "run_ansible_bootstrap" "true" "$(read_output "${case1_out}" "run_ansible_bootstrap")"
-assert_eq "meta_push_infra_filter" "run_portainer_apply" "true" "$(read_output "${case1_out}" "run_portainer_apply")"
-assert_eq "meta_push_infra_filter" "run_health_redeploy" "false" "$(read_output "${case1_out}" "run_health_redeploy")"
+assert_eq "meta_push_infra_filter" "run_infra_apply" "true" "$(read_plan_json_field "${case1_out}" '.meta.run_infra_apply')"
+assert_eq "meta_push_infra_filter" "run_ansible_bootstrap" "true" "$(read_plan_json_field "${case1_out}" '.meta.run_ansible_bootstrap')"
+assert_eq "meta_push_infra_filter" "run_portainer_apply" "true" "$(read_plan_json_field "${case1_out}" '.meta.run_portainer_apply')"
+assert_eq "meta_push_infra_filter" "run_health_redeploy" "false" "$(read_plan_json_field "${case1_out}" '.meta.run_health_redeploy')"
 assert_eq "meta_push_infra_filter" "plan_schema_version" "ci-plan-v1" "$(read_plan_json_field "${case1_out}" '.plan_schema_version')"
 
 # Case 2: meta push ansible filter -> ansible implies portainer
@@ -134,9 +137,9 @@ write_env_file "${case2_env}" \
   "META_ANSIBLE_CHANGED=true" \
   "META_PORTAINER_CHANGED=false"
 case2_out="$(run_plan_case "meta_push_ansible_filter" "meta" "push" "${case2_env}")"
-assert_eq "meta_push_ansible_filter" "run_infra_apply" "false" "$(read_output "${case2_out}" "run_infra_apply")"
-assert_eq "meta_push_ansible_filter" "run_ansible_bootstrap" "true" "$(read_output "${case2_out}" "run_ansible_bootstrap")"
-assert_eq "meta_push_ansible_filter" "run_portainer_apply" "true" "$(read_output "${case2_out}" "run_portainer_apply")"
+assert_eq "meta_push_ansible_filter" "run_infra_apply" "false" "$(read_plan_json_field "${case2_out}" '.meta.run_infra_apply')"
+assert_eq "meta_push_ansible_filter" "run_ansible_bootstrap" "true" "$(read_plan_json_field "${case2_out}" '.meta.run_ansible_bootstrap')"
+assert_eq "meta_push_ansible_filter" "run_portainer_apply" "true" "$(read_plan_json_field "${case2_out}" '.meta.run_portainer_apply')"
 
 # Case 3: meta push portainer-only filter
 case3_env="${TMP_DIR}/case3.env"
@@ -148,9 +151,9 @@ write_env_file "${case3_env}" \
   "META_ANSIBLE_CHANGED=false" \
   "META_PORTAINER_CHANGED=true"
 case3_out="$(run_plan_case "meta_push_portainer_filter" "meta" "push" "${case3_env}")"
-assert_eq "meta_push_portainer_filter" "run_infra_apply" "false" "$(read_output "${case3_out}" "run_infra_apply")"
-assert_eq "meta_push_portainer_filter" "run_ansible_bootstrap" "false" "$(read_output "${case3_out}" "run_ansible_bootstrap")"
-assert_eq "meta_push_portainer_filter" "run_portainer_apply" "true" "$(read_output "${case3_out}" "run_portainer_apply")"
+assert_eq "meta_push_portainer_filter" "run_infra_apply" "false" "$(read_plan_json_field "${case3_out}" '.meta.run_infra_apply')"
+assert_eq "meta_push_portainer_filter" "run_ansible_bootstrap" "false" "$(read_plan_json_field "${case3_out}" '.meta.run_ansible_bootstrap')"
+assert_eq "meta_push_portainer_filter" "run_portainer_apply" "true" "$(read_plan_json_field "${case3_out}" '.meta.run_portainer_apply')"
 
 # Case 4: meta repository_dispatch structural change
 case4_env="${TMP_DIR}/case4.env"
@@ -166,9 +169,9 @@ write_env_file "${case4_env}" \
   "PAYLOAD_SOURCE_REPO=example/stacks" \
   "PAYLOAD_SOURCE_RUN_ID=12345"
 case4_out="$(run_plan_case "meta_repo_dispatch_structural" "meta" "repository_dispatch" "${case4_env}")"
-assert_eq "meta_repo_dispatch_structural" "run_portainer_apply" "true" "$(read_output "${case4_out}" "run_portainer_apply")"
-assert_eq "meta_repo_dispatch_structural" "run_health_redeploy" "true" "$(read_output "${case4_out}" "run_health_redeploy")"
-assert_eq "meta_repo_dispatch_structural" "run_config_sync" "false" "$(read_output "${case4_out}" "run_config_sync")"
+assert_eq "meta_repo_dispatch_structural" "run_portainer_apply" "true" "$(read_plan_json_field "${case4_out}" '.meta.run_portainer_apply')"
+assert_eq "meta_repo_dispatch_structural" "run_health_redeploy" "true" "$(read_plan_json_field "${case4_out}" '.meta.run_health_redeploy')"
+assert_eq "meta_repo_dispatch_structural" "run_config_sync" "false" "$(read_plan_json_field "${case4_out}" '.meta.run_config_sync')"
 
 # Case 5: meta repository_dispatch config-only path
 case5_env="${TMP_DIR}/case5.env"
@@ -184,9 +187,9 @@ write_env_file "${case5_env}" \
   "PAYLOAD_SOURCE_REPO=example/stacks" \
   "PAYLOAD_SOURCE_RUN_ID=12345"
 case5_out="$(run_plan_case "meta_repo_dispatch_config" "meta" "repository_dispatch" "${case5_env}")"
-assert_eq "meta_repo_dispatch_config" "changed_stacks" "auth" "$(read_output "${case5_out}" "changed_stacks")"
-assert_eq "meta_repo_dispatch_config" "run_config_sync" "true" "$(read_output "${case5_out}" "run_config_sync")"
-assert_eq "meta_repo_dispatch_config" "run_health_redeploy" "true" "$(read_output "${case5_out}" "run_health_redeploy")"
+assert_eq "meta_repo_dispatch_config" "changed_stacks" "auth" "$(read_plan_json_field "${case5_out}" '.meta.changed_stacks')"
+assert_eq "meta_repo_dispatch_config" "run_config_sync" "true" "$(read_plan_json_field "${case5_out}" '.meta.run_config_sync')"
+assert_eq "meta_repo_dispatch_config" "run_health_redeploy" "true" "$(read_plan_json_field "${case5_out}" '.meta.run_health_redeploy')"
 
 # Case 6: meta repository_dispatch no-op
 case6_env="${TMP_DIR}/case6.env"
@@ -199,8 +202,8 @@ write_env_file "${case6_env}" \
   "PAYLOAD_REASON=no-op" \
   "PAYLOAD_CHANGED_PATHS_JSON=[]"
 case6_out="$(run_plan_case "meta_repo_dispatch_noop" "meta" "repository_dispatch" "${case6_env}")"
-assert_eq "meta_repo_dispatch_noop" "has_work" "false" "$(read_output "${case6_out}" "has_work")"
-assert_eq "meta_repo_dispatch_noop" "run_health_redeploy" "false" "$(read_output "${case6_out}" "run_health_redeploy")"
+assert_eq "meta_repo_dispatch_noop" "has_work" "false" "$(read_plan_json_field "${case6_out}" '.meta.has_work')"
+assert_eq "meta_repo_dispatch_noop" "run_health_redeploy" "false" "$(read_plan_json_field "${case6_out}" '.meta.run_health_redeploy')"
 
 # Case 7: meta workflow_dispatch infra only
 case7_env="${TMP_DIR}/case7.env"
@@ -215,9 +218,9 @@ write_env_file "${case7_env}" \
   "INPUT_REASON=manual-dispatch" \
   "INPUT_CHANGED_PATHS_JSON=[]"
 case7_out="$(run_plan_case "meta_manual_infra_only" "meta" "workflow_dispatch" "${case7_env}")"
-assert_eq "meta_manual_infra_only" "run_infra_apply" "true" "$(read_output "${case7_out}" "run_infra_apply")"
-assert_eq "meta_manual_infra_only" "run_ansible_bootstrap" "false" "$(read_output "${case7_out}" "run_ansible_bootstrap")"
-assert_eq "meta_manual_infra_only" "run_portainer_apply" "false" "$(read_output "${case7_out}" "run_portainer_apply")"
+assert_eq "meta_manual_infra_only" "run_infra_apply" "true" "$(read_plan_json_field "${case7_out}" '.meta.run_infra_apply')"
+assert_eq "meta_manual_infra_only" "run_ansible_bootstrap" "false" "$(read_plan_json_field "${case7_out}" '.meta.run_ansible_bootstrap')"
+assert_eq "meta_manual_infra_only" "run_portainer_apply" "false" "$(read_plan_json_field "${case7_out}" '.meta.run_portainer_apply')"
 
 # Case 8: meta workflow_dispatch stacks config+content
 case8_env="${TMP_DIR}/case8.env"
@@ -232,9 +235,9 @@ write_env_file "${case8_env}" \
   "INPUT_REASON=manual-dispatch" \
   "INPUT_CHANGED_PATHS_JSON=[\"auth/config/configuration.yml\"]"
 case8_out="$(run_plan_case "meta_manual_stack_paths" "meta" "workflow_dispatch" "${case8_env}")"
-assert_eq "meta_manual_stack_paths" "changed_stacks" "auth,gateway" "$(read_output "${case8_out}" "changed_stacks")"
-assert_eq "meta_manual_stack_paths" "run_config_sync" "true" "$(read_output "${case8_out}" "run_config_sync")"
-assert_eq "meta_manual_stack_paths" "run_health_redeploy" "true" "$(read_output "${case8_out}" "run_health_redeploy")"
+assert_eq "meta_manual_stack_paths" "changed_stacks" "auth,gateway" "$(read_plan_json_field "${case8_out}" '.meta.changed_stacks')"
+assert_eq "meta_manual_stack_paths" "run_config_sync" "true" "$(read_plan_json_field "${case8_out}" '.meta.run_config_sync')"
+assert_eq "meta_manual_stack_paths" "run_health_redeploy" "true" "$(read_plan_json_field "${case8_out}" '.meta.run_health_redeploy')"
 
 # Case 9: meta invalid stacks SHA should fail
 case9_env="${TMP_DIR}/case9.env"
@@ -263,11 +266,11 @@ case10_env="${TMP_DIR}/case10.env"
 write_env_file "${case10_env}" \
   "GITHUB_SHA_CURRENT=${HEAD_SHA}"
 case10_out="$(run_plan_case "iac_dispatch_all" "iac" "workflow_dispatch" "${case10_env}")"
-assert_eq "iac_dispatch_all" "infra_workspace_changed" "true" "$(read_output "${case10_out}" "infra_workspace_changed")"
-assert_eq "iac_dispatch_all" "portainer_workspace_changed" "true" "$(read_output "${case10_out}" "portainer_workspace_changed")"
-assert_eq "iac_dispatch_all" "ansible_changed" "true" "$(read_output "${case10_out}" "ansible_changed")"
-assert_eq "iac_dispatch_all" "stacks_gitlink_changed" "true" "$(read_output "${case10_out}" "stacks_gitlink_changed")"
-assert_eq "iac_dispatch_all" "changed_tf_roots_json" '["terraform/infra","terraform/oci","terraform/gcp","terraform/portainer-root","terraform/portainer"]' "$(read_output "${case10_out}" "changed_tf_roots_json")"
+assert_eq "iac_dispatch_all" "infra_workspace_changed" "true" "$(read_plan_json_field "${case10_out}" '.iac.infra_workspace_changed')"
+assert_eq "iac_dispatch_all" "portainer_workspace_changed" "true" "$(read_plan_json_field "${case10_out}" '.iac.portainer_workspace_changed')"
+assert_eq "iac_dispatch_all" "ansible_changed" "true" "$(read_plan_json_field "${case10_out}" '.iac.ansible_changed')"
+assert_eq "iac_dispatch_all" "stacks_gitlink_changed" "true" "$(read_plan_json_field "${case10_out}" '.iac.stacks_gitlink_changed')"
+assert_eq "iac_dispatch_all" "changed_tf_roots_json" '["terraform/infra","terraform/oci","terraform/gcp","terraform/portainer-root","terraform/portainer"]' "$(read_plan_json_field "${case10_out}" '.iac.changed_tf_roots | tojson')"
 assert_eq "iac_dispatch_all" "plan_schema_version" "ci-plan-v1" "$(read_plan_json_field "${case10_out}" '.plan_schema_version')"
 
 # Case 11: iac pull_request filter booleans
@@ -284,10 +287,10 @@ write_env_file "${case11_env}" \
   "IAC_TF_PORTAINER_ROOT=false" \
   "IAC_TF_PORTAINER=false"
 case11_out="$(run_plan_case "iac_pr_flags" "iac" "pull_request" "${case11_env}")"
-assert_eq "iac_pr_flags" "infra_workspace_changed" "true" "$(read_output "${case11_out}" "infra_workspace_changed")"
-assert_eq "iac_pr_flags" "ansible_changed" "true" "$(read_output "${case11_out}" "ansible_changed")"
-assert_eq "iac_pr_flags" "changed_tf_roots_json" '["terraform/infra","terraform/oci"]' "$(read_output "${case11_out}" "changed_tf_roots_json")"
-assert_eq "iac_pr_flags" "tfc_workspace_matrix_json" '[{"workspace_key":"infra","config_directory":"terraform/infra"}]' "$(read_output "${case11_out}" "tfc_workspace_matrix_json")"
+assert_eq "iac_pr_flags" "infra_workspace_changed" "true" "$(read_plan_json_field "${case11_out}" '.iac.infra_workspace_changed')"
+assert_eq "iac_pr_flags" "ansible_changed" "true" "$(read_plan_json_field "${case11_out}" '.iac.ansible_changed')"
+assert_eq "iac_pr_flags" "changed_tf_roots_json" '["terraform/infra","terraform/oci"]' "$(read_plan_json_field "${case11_out}" '.iac.changed_tf_roots | tojson')"
+assert_eq "iac_pr_flags" "tfc_workspace_matrix_json" '[{"workspace_key":"infra","config_directory":"terraform/infra"}]' "$(read_plan_json_field "${case11_out}" '.iac.tfc_workspace_matrix | tojson')"
 
 # Case 12: iac push path-filter mode with stacks gitlink
 case12_env="${TMP_DIR}/case12.env"
@@ -304,11 +307,11 @@ write_env_file "${case12_env}" \
   "IAC_TF_PORTAINER_ROOT=true" \
   "IAC_TF_PORTAINER=true"
 case12_out="$(run_plan_case "iac_push_portainer_gitlink" "iac" "push" "${case12_env}")"
-assert_eq "iac_push_portainer_gitlink" "portainer_workspace_changed" "true" "$(read_output "${case12_out}" "portainer_workspace_changed")"
-assert_eq "iac_push_portainer_gitlink" "stacks_gitlink_changed" "true" "$(read_output "${case12_out}" "stacks_gitlink_changed")"
-assert_eq "iac_push_portainer_gitlink" "changed_tf_roots_json" '["terraform/portainer-root","terraform/portainer"]' "$(read_output "${case12_out}" "changed_tf_roots_json")"
-assert_eq "iac_push_portainer_gitlink" "stacks_sha" "${HEAD_SHA}" "$(read_output "${case12_out}" "stacks_sha")"
-assert_eq "iac_push_portainer_gitlink" "tfc_workspace_matrix_json" '[]' "$(read_output "${case12_out}" "tfc_workspace_matrix_json")"
+assert_eq "iac_push_portainer_gitlink" "portainer_workspace_changed" "true" "$(read_plan_json_field "${case12_out}" '.iac.portainer_workspace_changed')"
+assert_eq "iac_push_portainer_gitlink" "stacks_gitlink_changed" "true" "$(read_plan_json_field "${case12_out}" '.iac.stacks_gitlink_changed')"
+assert_eq "iac_push_portainer_gitlink" "changed_tf_roots_json" '["terraform/portainer-root","terraform/portainer"]' "$(read_plan_json_field "${case12_out}" '.iac.changed_tf_roots | tojson')"
+assert_eq "iac_push_portainer_gitlink" "stacks_sha" "${STACKS_SHA}" "$(read_plan_json_field "${case12_out}" '.iac.stacks_sha')"
+assert_eq "iac_push_portainer_gitlink" "tfc_workspace_matrix_json" '[]' "$(read_plan_json_field "${case12_out}" '.iac.tfc_workspace_matrix | tojson')"
 
 # Additional validator failure check for non-v3 dispatch schema
 if (

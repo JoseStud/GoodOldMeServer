@@ -86,69 +86,6 @@ on:
       plan_json:
         value: ${{ jobs.resolve.outputs.plan_json }}
 
-      # Deprecated compatibility outputs. Prefer projecting from plan_json.
-      infra_workspace_changed:
-        value: ${{ jobs.resolve.outputs.infra_workspace_changed }}
-      portainer_workspace_changed:
-        value: ${{ jobs.resolve.outputs.portainer_workspace_changed }}
-      ansible_changed:
-        value: ${{ jobs.resolve.outputs.ansible_changed }}
-      stacks_gitlink_changed:
-        value: ${{ jobs.resolve.outputs.stacks_gitlink_changed }}
-      stacks_sha:
-        value: ${{ jobs.resolve.outputs.stacks_sha }}
-      changed_tf_roots_json:
-        value: ${{ jobs.resolve.outputs.changed_tf_roots_json }}
-      tfc_workspace_matrix_json:
-        value: ${{ jobs.resolve.outputs.tfc_workspace_matrix_json }}
-
-      run_infra_apply:
-        value: ${{ jobs.resolve.outputs.run_infra_apply }}
-      run_ansible_bootstrap:
-        value: ${{ jobs.resolve.outputs.run_ansible_bootstrap }}
-      run_portainer_apply:
-        value: ${{ jobs.resolve.outputs.run_portainer_apply }}
-      run_config_sync:
-        value: ${{ jobs.resolve.outputs.run_config_sync }}
-      run_health_redeploy:
-        value: ${{ jobs.resolve.outputs.run_health_redeploy }}
-      has_work:
-        value: ${{ jobs.resolve.outputs.has_work }}
-      changed_stacks:
-        value: ${{ jobs.resolve.outputs.changed_stacks }}
-      config_stacks:
-        value: ${{ jobs.resolve.outputs.config_stacks }}
-      structural_change:
-        value: ${{ jobs.resolve.outputs.structural_change }}
-      reason:
-        value: ${{ jobs.resolve.outputs.reason }}
-      changed_paths:
-        value: ${{ jobs.resolve.outputs.changed_paths }}
-      stage_cloud_runner_guard:
-        value: ${{ jobs.resolve.outputs.stage_cloud_runner_guard }}
-      stage_secret_validation:
-        value: ${{ jobs.resolve.outputs.stage_secret_validation }}
-      stage_network_policy_sync:
-        value: ${{ jobs.resolve.outputs.stage_network_policy_sync }}
-      stage_infra_apply:
-        value: ${{ jobs.resolve.outputs.stage_infra_apply }}
-      stage_inventory_handover:
-        value: ${{ jobs.resolve.outputs.stage_inventory_handover }}
-      stage_network_preflight_ssh:
-        value: ${{ jobs.resolve.outputs.stage_network_preflight_ssh }}
-      stage_ansible_bootstrap:
-        value: ${{ jobs.resolve.outputs.stage_ansible_bootstrap }}
-      stage_post_bootstrap_secret_check:
-        value: ${{ jobs.resolve.outputs.stage_post_bootstrap_secret_check }}
-      stage_portainer_api_preflight:
-        value: ${{ jobs.resolve.outputs.stage_portainer_api_preflight }}
-      stage_portainer_apply:
-        value: ${{ jobs.resolve.outputs.stage_portainer_apply }}
-      stage_config_sync:
-        value: ${{ jobs.resolve.outputs.stage_config_sync }}
-      stage_health_gated_redeploy:
-        value: ${{ jobs.resolve.outputs.stage_health_gated_redeploy }}
-
 permissions:
   contents: read
 
@@ -157,39 +94,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       plan_json: ${{ steps.resolve.outputs.plan_json || '' }}
-
-      # Deprecated compatibility outputs. Prefer projecting from plan_json.
-      infra_workspace_changed: ${{ steps.resolve.outputs.infra_workspace_changed || '' }}
-      portainer_workspace_changed: ${{ steps.resolve.outputs.portainer_workspace_changed || '' }}
-      ansible_changed: ${{ steps.resolve.outputs.ansible_changed || '' }}
-      stacks_gitlink_changed: ${{ steps.resolve.outputs.stacks_gitlink_changed || '' }}
-      stacks_sha: ${{ steps.resolve.outputs.stacks_sha || '' }}
-      changed_tf_roots_json: ${{ steps.resolve.outputs.changed_tf_roots_json || '[]' }}
-      tfc_workspace_matrix_json: ${{ steps.resolve.outputs.tfc_workspace_matrix_json || '[]' }}
-
-      run_infra_apply: ${{ steps.resolve.outputs.run_infra_apply || '' }}
-      run_ansible_bootstrap: ${{ steps.resolve.outputs.run_ansible_bootstrap || '' }}
-      run_portainer_apply: ${{ steps.resolve.outputs.run_portainer_apply || '' }}
-      run_config_sync: ${{ steps.resolve.outputs.run_config_sync || '' }}
-      run_health_redeploy: ${{ steps.resolve.outputs.run_health_redeploy || '' }}
-      has_work: ${{ steps.resolve.outputs.has_work || '' }}
-      changed_stacks: ${{ steps.resolve.outputs.changed_stacks || '' }}
-      config_stacks: ${{ steps.resolve.outputs.config_stacks || '' }}
-      structural_change: ${{ steps.resolve.outputs.structural_change || '' }}
-      reason: ${{ steps.resolve.outputs.reason || '' }}
-      changed_paths: ${{ steps.resolve.outputs.changed_paths || '' }}
-      stage_cloud_runner_guard: ${{ steps.resolve.outputs.stage_cloud_runner_guard || '' }}
-      stage_secret_validation: ${{ steps.resolve.outputs.stage_secret_validation || '' }}
-      stage_network_policy_sync: ${{ steps.resolve.outputs.stage_network_policy_sync || '' }}
-      stage_infra_apply: ${{ steps.resolve.outputs.stage_infra_apply || '' }}
-      stage_inventory_handover: ${{ steps.resolve.outputs.stage_inventory_handover || '' }}
-      stage_network_preflight_ssh: ${{ steps.resolve.outputs.stage_network_preflight_ssh || '' }}
-      stage_ansible_bootstrap: ${{ steps.resolve.outputs.stage_ansible_bootstrap || '' }}
-      stage_post_bootstrap_secret_check: ${{ steps.resolve.outputs.stage_post_bootstrap_secret_check || '' }}
-      stage_portainer_api_preflight: ${{ steps.resolve.outputs.stage_portainer_api_preflight || '' }}
-      stage_portainer_apply: ${{ steps.resolve.outputs.stage_portainer_apply || '' }}
-      stage_config_sync: ${{ steps.resolve.outputs.stage_config_sync || '' }}
-      stage_health_gated_redeploy: ${{ steps.resolve.outputs.stage_health_gated_redeploy || '' }}
 
     steps:
       - name: Checkout

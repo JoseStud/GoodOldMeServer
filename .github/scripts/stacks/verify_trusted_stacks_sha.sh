@@ -21,13 +21,7 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-to_bool() {
-  local value="${1:-}"
-  case "${value,,}" in
-    true|1|yes) echo "true" ;;
-    *) echo "false" ;;
-  esac
-}
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/workflow_common.sh"
 
 WAIT_FOR_SUCCESS="$(to_bool "${WAIT_FOR_SUCCESS}")"
 

@@ -2,12 +2,90 @@
 
 set -euo pipefail
 
+PLAN_SCHEMA_VERSION="ci-plan-v1"
+
 to_bool() {
   local value="${1:-}"
   case "${value,,}" in
     true|1|yes) echo "true" ;;
     *) echo "false" ;;
   esac
+}
+
+emit_output() {
+  local key="$1"
+  local value="$2"
+  echo "${key}=${value}" >> "${GITHUB_OUTPUT}"
+}
+
+normalize_nullable() {
+  local value="${1:-}"
+  if [[ -z "${value}" || "${value}" == "null" ]]; then
+    echo ""
+    return
+  fi
+  echo "${value}"
+}
+
+normalize_csv() {
+  local input="${1:-}"
+  input="$(echo "${input}" | tr -d '\r')"
+  if [[ -z "${input}" || "${input}" == "null" ]]; then
+    echo ""
+    return
+  fi
+
+  IFS=',' read -ra parts <<< "${input}"
+  if [[ ${#parts[@]} -eq 0 ]]; then
+    echo ""
+    return
+  fi
+
+  printf '%s\n' "${parts[@]}" \
+    | awk '{$1=$1; print}' \
+    | awk 'NF > 0' \
+    | awk '!seen[$0]++' \
+    | sort \
+    | paste -sd, -
+}
+
+normalize_json_array_to_csv() {
+  local input="${1:-}"
+  local item_regex="${2:-.*}"
+  local field_name="${3:-json_array}"
+
+  if [[ -z "${input}" || "${input}" == "null" ]]; then
+    echo ""
+    return
+  fi
+
+  if ! jq -e --arg re "${item_regex}" '
+      type == "array"
+      and all(.[]; type == "string" and test($re))
+    ' <<<"${input}" >/dev/null; then
+    echo "Invalid ${field_name}: expected JSON array of strings matching regex '${item_regex}'."
+    exit 1
+  fi
+
+  jq -r '.[]' <<<"${input}" \
+    | awk '{$1=$1; print}' \
+    | awk 'NF > 0' \
+    | awk '!seen[$0]++' \
+    | sort \
+    | paste -sd, -
+}
+
+append_unique() {
+  local value="$1"
+  shift
+  local -a current=("$@")
+  local existing=""
+  for existing in "${current[@]}"; do
+    if [[ "${existing}" == "${value}" ]]; then
+      return 1
+    fi
+  done
+  return 0
 }
 
 require_command() {
