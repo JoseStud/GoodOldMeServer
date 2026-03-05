@@ -9,7 +9,7 @@ Ansible bridges raw Terraform-provisioned infrastructure and the Docker Swarm wo
 ```mermaid
 sequenceDiagram
     participant TF as Terraform State
-    participant INV as Dynamic Inventory<br/>(terraform_provider plugin)
+    participant INV as Dynamic Inventory - terraform_provider plugin
     participant PB as provision.yml
     participant OCI1 as OCI Worker 1
     participant OCI2 as OCI Worker 2

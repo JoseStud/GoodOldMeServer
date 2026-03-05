@@ -63,7 +63,7 @@ flowchart TD
 
     subgraph Config [Configuration Management — Ansible]
         ANS[Ansible Playbook]
-        INV[Inventory Source<br/>terraform_provider (local)<br/>inventory-ci.yml (CI)]
+        INV["Inventory Source<br/>terraform_provider (local)<br/>inventory-ci.yml (CI)"]
         USR[system_user role]
         STR[storage role]
         DOCK[docker role]
