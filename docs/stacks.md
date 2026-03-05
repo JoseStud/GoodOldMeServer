@@ -37,7 +37,7 @@ See [Deployment Runbook](deployment-runbook.md) for step-by-step commands.
 
 ## Health Checks and Webhook Gate Behavior
 
-Health-gated redeploy behavior is driven by `stacks/stacks.yaml` and `.github/scripts/trigger_webhooks_with_gates.sh`.
+Health-gated redeploy behavior is driven by `stacks/stacks.yaml` and `.github/scripts/stacks/trigger_webhooks_with_gates.sh`.
 
 | Stack | Health endpoint | Expected status | Timeout | Dependency gate behavior | Post-trigger wait behavior |
 |-------|------------------|-----------------|---------|--------------------------|----------------------------|

@@ -214,7 +214,7 @@ The workflow authenticates to Infisical via **OIDC** (not Universal Auth), so no
 | Variable | How to Get | Used By |
 |----------|-----------|---------|
 | `INFISICAL_TOKEN` (infra repo) | Infisical service token with project read/write scope for automation paths | Required by cloud-runner guard and local `terraform/portainer-root` apply path |
-| `INFRA_REPO_DISPATCH_TOKEN` (stacks repo) | Fine-grained GitHub token with `contents:write` + repository dispatch access on this infra repo | `stacks/.github/workflows/private-redeploy.yml` dispatches `stacks-redeploy-requested` to this repo |
+| `INFRA_REPO_DISPATCH_TOKEN` (stacks repo) | Fine-grained GitHub token with `contents:write` + repository dispatch access on this infra repo | `stacks/.github/workflows/stacks-dispatch-redeploy.yml` dispatches `stacks-redeploy-requested` to this repo |
 | `TFC_TOKEN` (infra repo) | Terraform Cloud Team/API token with workspace run access | `meta-pipeline.yml` Terraform Cloud run/apply + state output inventory handover |
 
 ---
@@ -292,25 +292,31 @@ The management stack is **not** in this list.
 
 ## Private Webhook Automation
 
-Webhook triggers run from the stacks repo private workflow: `stacks/.github/workflows/private-redeploy.yml`.
+Webhook triggers run from stacks-repo workflows:
+
+- `stacks/.github/workflows/stacks-ci.yml` (compose + manifest validation)
+- `stacks/.github/workflows/stacks-dispatch-redeploy.yml` (payload planning + infra dispatch)
 
 Flow:
 
 1. Push to `main` in stacks repo
 2. Private cloud static runner computes affected stacks from changed paths
 3. Runner ignores non-deploy paths (for example docs/CI-only files)
-4. Runner dispatches a unified event (`stacks-redeploy-requested`) with changed stack metadata to this infra repo
+4. Runner dispatches a unified event (`stacks-redeploy-requested`) with schema `v2` payload to this infra repo
 5. Infra `meta-pipeline.yml` decides the ordered stages: secret validation -> optional Portainer apply -> optional config sync -> health-gated webhook redeploy
 
 ### `stacks-redeploy-requested` Dispatch Contract
 
 - Event type: `stacks-redeploy-requested`
+- Required `client_payload.schema_version`: `v2`
 - Required `client_payload.stacks_sha`: commit SHA from stacks repo
 - Required `client_payload.changed_stacks`: CSV list of changed stack names
 - Required `client_payload.config_stacks`: CSV list of config-sync stacks (`auth`, `observability`) or empty
 - Required `client_payload.structural_change`: boolean
 - Required `client_payload.reason`: `structural-change`, `manual-refresh`, or `content-change`
-- Optional `client_payload.changed_paths`: CSV list of structural compose paths for audit
+- Optional `client_payload.changed_paths`: CSV list of stack-relevant changed paths for audit
+- Required `client_payload.source_repo`: source repository (`owner/repo`)
+- Required `client_payload.source_run_id`: source workflow run id
 
 ## Infisical Agent (Docker Swarm)
 

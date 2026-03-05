@@ -14,7 +14,7 @@ These values are managed by automation after bootstrap and are not operator-owne
 | `/management/PORTAINER_API_URL` | Required | Platform | Written after Portainer bootstrap. Do not set manually. | [ ] |
 | `/management/PORTAINER_API_KEY` | Required | Platform | Repaired/rotated as needed during bootstrap. Do not set manually. | [ ] |
 | `/deployments/PORTAINER_WEBHOOK_URLS` + `/deployments/WEBHOOK_URL_*` | Required | Platform | Rewritten by Portainer Terraform apply. Do not edit manually. | [ ] |
-| `TF_VAR_network_access_policy` (TFC env var) | Required | Platform | Auto-updated by `.github/scripts/sync_network_access_policy.sh`. | [ ] |
+| `TF_VAR_network_access_policy` (TFC env var) | Required | Platform | Auto-updated by `.github/scripts/network/sync_network_access_policy.sh`. | [ ] |
 | `/stacks/management/PORTAINER_AUTOMATION_ALLOWED_CIDRS` | Required | Security | Auto-synced from `network_access_policy.portainer_api.source_ranges`. | [ ] |
 
 ## 1) Infra Repo: GitHub Actions Variables (`vars.*`)
@@ -29,6 +29,8 @@ These values are managed by automation after bootstrap and are not operator-owne
 | `TFC_WORKSPACE_INFRA` | Optional | Platform | Defaults to `goodoldme-infra` when unset. | [ ] |
 | `TFC_WORKSPACE_PORTAINER` | Optional | Platform | Defaults to `goodoldme-portainer` when unset. | [ ] |
 | `TFC_INFRA_APPLY_WAIT_TIMEOUT_SECONDS` | Optional | Operator | Defaults to `7200`. Manual confirm wait timeout. | [ ] |
+| `STACKS_SHA_TRUST_WAIT_TIMEOUT_SECONDS` | Optional | Platform | Defaults to `900`. Wait timeout for stacks check completion on dispatch. | [ ] |
+| `STACKS_SHA_TRUST_POLL_INTERVAL_SECONDS` | Optional | Platform | Defaults to `15`. Poll interval for stacks check completion on dispatch. | [ ] |
 
 ## 2) Infra Repo: GitHub Actions Secrets (`secrets.*`)
 
@@ -36,15 +38,18 @@ These values are managed by automation after bootstrap and are not operator-owne
 |------|-------------|-------|-------|----------|
 | `TFC_TOKEN` | Required | Platform | Terraform Cloud API/team token with run and state output access. | [ ] |
 | `INFISICAL_TOKEN` | Required | Security | Needed for local `terraform/portainer-root` apply path and runner guard. | [ ] |
+| `STACKS_REPO_READ_TOKEN` | Required | Security | Token used for trust verification of `stacks_sha` dispatch payloads. | [ ] |
 
-## 3) Stacks Repo (Only for cross-repo auto-dispatch)
+## 3) Stacks Repo (Dispatch-Only Stack Planning)
 
-Required for `stacks/.github/workflows/private-redeploy.yml` dispatching into this infra repo.
+Required for `stacks/.github/workflows/stacks-dispatch-redeploy.yml` dispatching into this infra repo.
 
 | Item | Requirement | Owner | Notes | Checkbox |
 |------|-------------|-------|-------|----------|
 | `vars.INFRA_REPO` | Optional | Platform | Optional when default `JoseStud/GoodOldMeServer` is correct. | [ ] |
 | `secrets.INFRA_REPO_DISPATCH_TOKEN` | Required | Security | Fine-grained token used for repository dispatch to infra repo. | [ ] |
+| `stacks/.github/workflows/stacks-ci.yml` active | Required | Platform | Stack compose validation and manifest sanity run in stacks repo. | [ ] |
+| Dispatch payload schema `v2` implemented | Required | Platform | Must include `schema_version`, `source_repo`, `source_run_id`, plus stack intent fields. | [ ] |
 
 ## 4) Terraform Cloud Workspace Variables
 
@@ -82,9 +87,9 @@ Required for `stacks/.github/workflows/private-redeploy.yml` dispatching into th
 
 | Item | Requirement | Owner | Notes | Checkbox |
 |------|-------------|-------|-------|----------|
-| Run `meta-pipeline-smoke.yml` (`workflow_dispatch`) | Required | Operator | Verify payload/context resolver outputs before real execution. | [ ] |
-| Verify `compose-validate` passes in `iac-validation.yml` | Required | Platform | Must pass for all stack compose files. | [ ] |
+| Trigger `meta-pipeline.yml` with `workflow_dispatch` + `dry_run=true` | Required | Operator | Validate planner outputs and non-mutating path without infra/apply mutations. | [ ] |
+| Verify `stacks-ci.yml` passes in stacks repo | Required | Platform | Compose validation and manifest sanity must pass before dispatching stack intent. | [ ] |
 | Verify cloud runner deterministic dual-stack egress | Required | Platform | `curl -4 https://api.ipify.org` and `curl -6 https://api64.ipify.org` from runner. | [ ] |
 | Run `meta-pipeline.yml` with `run_infra_apply=true` | Required | Operator | Starts infra run sequence. | [ ] |
 | Confirm/apply infra run in Terraform Cloud UI when prompted | Required | Operator | Required because Auto Apply is disabled. | [ ] |
-| Confirm downstream jobs start only after infra status `applied` (or no-change complete) | Required | Platform | Validate job gating and sequencing behavior. | [ ] |
+| Confirm dispatch path validates `schema_version=v2` and waits for trusted `stacks_sha` checks | Required | Platform | `stacks-sha-trust` should pass before stack SHA is consumed by later stages. | [ ] |

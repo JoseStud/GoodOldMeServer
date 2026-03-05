@@ -9,7 +9,6 @@ on:
       - ".github/workflows/**"
       - ".github/scripts/**"
       - "stacks"
-      - "stacks/**"
       - ".ansible-lint"
   push:
     paths:
@@ -19,7 +18,6 @@ on:
       - ".github/workflows/**"
       - ".github/scripts/**"
       - "stacks"
-      - "stacks/**"
       - ".ansible-lint"
   workflow_dispatch:
 
@@ -37,6 +35,7 @@ jobs:
   detect-impact:
     runs-on: ubuntu-latest
     outputs:
+      plan_json: ${{ steps.detect.outputs.plan_json }}
       infra_workspace_changed: ${{ steps.detect.outputs.infra_workspace_changed }}
       portainer_workspace_changed: ${{ steps.detect.outputs.portainer_workspace_changed }}
       ansible_changed: ${{ steps.detect.outputs.ansible_changed }}
@@ -52,9 +51,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install impact detection dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq
+        run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Load path filters config
         id: filter-config
@@ -77,6 +74,7 @@ jobs:
       - name: Detect impact
         id: detect
         env:
+          CI_PLAN_MODE: iac
           EVENT_NAME: ${{ github.event_name }}
           PUSH_BEFORE_SHA: ${{ github.event.before }}
           GITHUB_SHA_CURRENT: ${{ github.sha }}
@@ -89,17 +87,7 @@ jobs:
           IAC_TF_GCP: ${{ steps.path-filter.outputs.iac_tf_gcp }}
           IAC_TF_PORTAINER_ROOT: ${{ steps.path-filter.outputs.iac_tf_portainer_root }}
           IAC_TF_PORTAINER: ${{ steps.path-filter.outputs.iac_tf_portainer }}
-        run: .github/scripts/detect_iac_impact.sh
-
-      - name: Print impact outputs
-        run: |
-          echo "infra_workspace_changed=${{ steps.detect.outputs.infra_workspace_changed }}"
-          echo "portainer_workspace_changed=${{ steps.detect.outputs.portainer_workspace_changed }}"
-          echo "ansible_changed=${{ steps.detect.outputs.ansible_changed }}"
-          echo "stacks_gitlink_changed=${{ steps.detect.outputs.stacks_gitlink_changed }}"
-          echo "stacks_sha=${{ steps.detect.outputs.stacks_sha }}"
-          echo "changed_tf_roots_json=${{ steps.detect.outputs.changed_tf_roots_json }}"
-          echo "tfc_workspace_matrix_json=${{ steps.detect.outputs.tfc_workspace_matrix_json }}"
+        run: .github/scripts/plan/resolve_ci_plan.sh
 
   terraform-fmt:
     runs-on: ubuntu-latest
@@ -107,11 +95,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install Terraform Cloud polling dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -162,41 +145,10 @@ jobs:
       - name: Resolve workspace and validate required inputs
         id: preflight
         env:
+          WORKSPACE_KEY: ${{ matrix.workspace.workspace_key }}
           TFC_WORKSPACE_INFRA: ${{ vars.TFC_WORKSPACE_INFRA }}
           TFC_WORKSPACE_PORTAINER: ${{ vars.TFC_WORKSPACE_PORTAINER }}
-        run: |
-          set -euo pipefail
-
-          if [[ -z "${TFC_TOKEN:-}" ]]; then
-            echo "Missing required secret: TFC_TOKEN"
-            exit 1
-          fi
-
-          if [[ -z "${TFC_ORGANIZATION:-}" ]]; then
-            echo "Missing required variable: TFC_ORGANIZATION (or fallback TFC_ORG)."
-            exit 1
-          fi
-
-          workspace_name=""
-          case "${{ matrix.workspace.workspace_key }}" in
-            infra)
-              workspace_name="${TFC_WORKSPACE_INFRA:-}"
-              ;;
-            portainer)
-              workspace_name="${TFC_WORKSPACE_PORTAINER:-}"
-              ;;
-            *)
-              echo "Unknown workspace key: ${{ matrix.workspace.workspace_key }}"
-              exit 1
-              ;;
-          esac
-
-          if [[ -z "${workspace_name}" ]]; then
-            echo "Missing required workspace variable for '${{ matrix.workspace.workspace_key }}'."
-            exit 1
-          fi
-
-          echo "workspace_name=${workspace_name}" >> "${GITHUB_OUTPUT}"
+        run: .github/scripts/stages/tfc_speculative_preflight.sh
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -223,7 +175,7 @@ jobs:
           WORKSPACE_NAME: ${{ steps.preflight.outputs.workspace_name }}
           WAIT_TIMEOUT_SECONDS: ${{ vars.TFC_PLAN_WAIT_TIMEOUT_SECONDS || '7200' }}
           POLL_INTERVAL_SECONDS: ${{ vars.TFC_PLAN_POLL_INTERVAL_SECONDS || '10' }}
-        run: .github/scripts/wait_for_tfc_run.sh "${RUN_ID}" "${WORKSPACE_NAME}"
+        run: .github/scripts/tfc/wait_for_tfc_run.sh "${RUN_ID}" "${WORKSPACE_NAME}"
 
   ansible-validate:
     needs: detect-impact
@@ -239,19 +191,14 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Install pipx
+      - name: Install Ansible tooling
         run: |
           sudo apt-get update
           sudo apt-get install -y pipx
           echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
-
-      - name: Install ansible-core and ansible-lint via pipx
-        run: |
           pipx install ansible-core
           pipx install ansible-lint
-
-      - name: Install Ansible collections
-        run: ansible-galaxy collection install -r ansible/requirements.yml --force-with-deps
+          ansible-galaxy collection install -r ansible/requirements.yml --force-with-deps
 
       - name: Run ansible-lint
         run: ansible-lint -c .ansible-lint ansible
@@ -269,59 +216,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           STACKS_REPO_READ_TOKEN: ${{ secrets.STACKS_REPO_READ_TOKEN }}
-        run: .github/scripts/verify_trusted_stacks_sha.sh "${{ needs.detect-impact.outputs.stacks_sha }}"
-
-  compose-validate:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Create stub environment for compose validation
-        run: |
-          cat > /tmp/.env.ci << 'EOF'
-          BASE_DOMAIN=ci.example.com
-          TZ=Etc/UTC
-          CLOUDFLARE_API_TOKEN=stub
-          ACME_EMAIL=ci@example.com
-          DOCKER_SOCKET_PROXY_URL=tcp://socket-proxy:2375
-          AUTHELIA_JWT_SECRET=stub
-          AUTHELIA_SESSION_SECRET=stub
-          POSTGRES_PASSWORD=stub
-          AUTHELIA_NOTIFIER_SMTP_USERNAME=stub
-          AUTHELIA_NOTIFIER_SMTP_PASSWORD=stub
-          AUTHELIA_NOTIFIER_SMTP_SENDER=stub
-          AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET=stub
-          AUTHELIA_IDENTITY_PROVIDERS_OIDC_JWKS_0_KEY=stub
-          AUTHELIA_SESSION_COOKIES_0_DOMAIN=ci.example.com
-          AUTHELIA_SESSION_COOKIES_0_AUTHELIA_URL=https://auth.ci.example.com
-          AUTHELIA_SESSION_COOKIES_0_DEFAULT_REDIRECTION_URL=https://home.ci.example.com
-          AUTHELIA_TOTP_ISSUER=ci.example.com
-          HOMARR_SECRET_KEY=stub
-          PORTAINER_ADMIN_PASSWORD_HASH=stub
-          PORTAINER_AUTOMATION_ALLOWED_CIDRS=127.0.0.1/32
-          VW_DB_PASS=stub
-          VW_ADMIN_TOKEN=stub
-          PIHOLE_PASSWORD=stub
-          GF_OIDC_CLIENT_ID=grafana
-          GF_OIDC_CLIENT_SECRET=stub
-          ALERTMANAGER_WEBHOOK_URL=https://hooks.example.com/stub
-          ARCH_PC_IP=127.0.0.1
-          EOF
-
-      - name: Validate all Docker Compose files
-        run: |
-          set -euo pipefail
-          exit_code=0
-          for compose_file in $(find stacks -name 'docker-compose.yml' -type f | sort); do
-            echo "::group::Validating ${compose_file}"
-            if docker compose --env-file /tmp/.env.ci -f "${compose_file}" config -q 2>&1; then
-              echo "✓ ${compose_file}"
-            else
-              echo "::error file=${compose_file}::Docker Compose validation failed for ${compose_file}"
-              exit_code=1
-            fi
-            echo "::endgroup::"
-          done
-          exit ${exit_code}
+        run: .github/scripts/stacks/verify_trusted_stacks_sha.sh "${{ needs.detect-impact.outputs.stacks_sha }}"

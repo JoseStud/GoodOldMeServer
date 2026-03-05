@@ -270,8 +270,8 @@ Every stack is linked to the `JoseStud/stacks` Git repository in Portainer with 
 
 **Automatic (private automation):**
 
-1. Push to `main` in the stacks repo triggers `stacks/.github/workflows/private-redeploy.yml` on the cloud static runner.
-2. The workflow computes changed stacks from `stacks.yaml` and dispatches one event (`stacks-redeploy-requested`) to this infra repo.
+1. Push to `main` in the stacks repo triggers `stacks/.github/workflows/stacks-ci.yml` and `stacks/.github/workflows/stacks-dispatch-redeploy.yml`.
+2. The dispatch workflow computes changed stacks from `stacks.yaml`, then dispatches one `stacks-redeploy-requested` event (schema `v2`) to this infra repo.
 3. Infra `meta-pipeline.yml` validates secrets, runs Portainer apply when `structural_change=true`, runs config sync when `config_stacks` is non-empty, then triggers health-gated webhooks.
 4. Health gates use manifest dependencies: Gateway is checked first (`gateway-health.<BASE_DOMAIN>/healthz`) before Auth and downstream stacks.
 

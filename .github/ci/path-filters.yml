@@ -43,6 +43,3 @@ meta_ansible:
 meta_portainer:
   - "terraform/portainer/**"
   - "terraform/portainer-root/**"
-  - ".github/workflows/**"
-  - ".github/scripts/**"
-  - ".github/ci/**"
