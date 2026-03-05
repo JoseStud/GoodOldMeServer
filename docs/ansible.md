@@ -195,6 +195,8 @@ All directories are owned by `media-srv:media-srv` (UID/GID 1500) with mode `075
 8. Write `PORTAINER_URL`, `PORTAINER_API_URL`, and `PORTAINER_API_KEY` to Infisical `/management` via the Infisical CLI
 9. Verify the API key works against the Portainer status endpoint
 
+> Ownership note: `PORTAINER_ADMIN_PASSWORD_HASH`, `PORTAINER_URL`, `PORTAINER_API_URL`, and `PORTAINER_API_KEY` become automation-managed after bootstrap. See [Infisical Workflow](infisical-workflow.md#variable-ownership--mutability).
+
 **Why Ansible and not Terraform?** Portainer is the control plane that Terraform's Portainer provider talks to. Terraform cannot create the thing it depends on to authenticate. Ansible bootstraps Portainer as infrastructure, then Terraform manages the application stacks through it.
 
 > **Required environment variables:**

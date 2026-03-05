@@ -149,7 +149,7 @@ Per-stack secrets are in their own Infisical paths:
 | uptime | `stacks/uptime/.env.tmpl` | — | *(globals only)* |
 | cloud | `stacks/cloud/.env.tmpl` | — | *(globals only)* |
 
-See [Infisical Workflow](infisical-workflow.md) for the full variable reference with generation commands.
+See [Infisical Workflow](infisical-workflow.md) for the full variable reference, variable ownership/mutability, and generation commands.
 
 ## Config File Sync
 

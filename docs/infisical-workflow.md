@@ -43,6 +43,20 @@ flowchart LR
 
 ## Complete Variable Reference
 
+### Variable Ownership & Mutability
+
+Use this as the source of truth for whether a value is operator-managed or automation-managed.
+
+| Variable / Path | Owner | Mutability |
+|-----------------|-------|------------|
+| `/stacks/management/PORTAINER_ADMIN_PASSWORD_HASH` | Ansible `portainer_bootstrap` | Auto-generated/re-written each bootstrap run. Do not set manually. |
+| `/management/PORTAINER_URL`, `/management/PORTAINER_API_URL`, `/management/PORTAINER_API_KEY` | Ansible `portainer_bootstrap` | Auto-written after bootstrap (and API key may be rotated). |
+| `/deployments/PORTAINER_WEBHOOK_URLS` + `/deployments/WEBHOOK_URL_*` | Terraform `portainer` module | Auto-written on Portainer workspace apply. Do not edit manually. |
+| `TF_VAR_network_access_policy` (Terraform Cloud env var) | Meta pipeline `network-policy-sync` job | Auto-created/updated from canonical runner egress policy JSON. |
+| `/stacks/management/PORTAINER_AUTOMATION_ALLOWED_CIDRS` | Meta pipeline `network-policy-sync` job | Auto-synced from `network_access_policy.portainer_api.source_ranges`. |
+
+> For first-run setup and required GitHub/TFC inputs, see [Meta-Pipeline Cutover Checklist](meta-pipeline-cutover-checklist.md).
+
 ### `/infrastructure` — Global
 
 | Variable | How to Get | Used By |
@@ -108,7 +122,7 @@ The management stack (Portainer + Homarr) is deployed by Ansible, not Terraform,
 | `HOMARR_SECRET_KEY` | Generate: `openssl rand -hex 32` | Homarr `SECRET_ENCRYPTION_KEY` |
 | `PORTAINER_ADMIN_PASSWORD` | Choose a strong password or generate: `openssl rand -base64 24` | Ansible `portainer_bootstrap` role — hashed to bcrypt at deploy time and passed to Portainer via `--admin-password`; plaintext used only for JWT auth to create API key |
 | `PORTAINER_ADMIN_PASSWORD_HASH` | **Auto-generated and rewritten by Ansible on every bootstrap run** (`password_hash('bcrypt')`) and written to Infisical `/stacks/management` for Infisical Agent renders — do not set manually | Portainer `--admin-password` CLI flag (set in `docker-compose.yml`) |
-| `PORTAINER_AUTOMATION_ALLOWED_CIDRS` | CIDR list for trusted automation egress (cloud static runner IPv4/IPv6) | Traefik `ipAllowList` middleware on `portainer-api.<domain>` |
+| `PORTAINER_AUTOMATION_ALLOWED_CIDRS` | Auto-synced by the meta-pipeline network policy sync job (or manually seeded before first sync) | Traefik `ipAllowList` middleware on `portainer-api.<domain>` |
 
 ### `/stacks/network` — Vaultwarden + Pi-hole
 
@@ -158,14 +172,21 @@ The workflow authenticates to Infisical via **OIDC** (not Universal Auth), so no
 | `INFISICAL_MACHINE_IDENTITY_ID` | Infisical → Access Control → Machine Identities → OIDC Auth → Identity ID | `meta-pipeline.yml` OIDC login |
 | `INFISICAL_PROJECT_ID` | Infisical → Project Settings → Project ID | Terraform/Ansible workflows and webhook runner secret reads |
 | `INFISICAL_SSH_CA_ID` | Infisical → SSH Management → SSH CA details | `meta-pipeline.yml` ephemeral SSH cert signing |
-| `TFC_ORGANIZATION` | Terraform Cloud organization slug | `meta-pipeline.yml` inventory handover (`render_inventory_from_tfc_outputs.sh`) |
+| `TFC_ORGANIZATION` (or `TFC_ORG`) | Terraform Cloud organization slug | Meta pipeline + IaC validation Terraform Cloud API calls |
+| `CLOUD_STATIC_RUNNER_LABEL` | Label of your static-egress private runner | Meta pipeline jobs that require deterministic egress + private reachability |
 | `TFC_WORKSPACE_INFRA` | Terraform Cloud → Workspace name (`goodoldme-infra`) | Infra workspace apply (`terraform/infra`) |
 | `TFC_WORKSPACE_PORTAINER` | Terraform Cloud → Workspace name (`goodoldme-portainer`) | Portainer workspace apply (`terraform/portainer-root`) |
+| `TFC_INFRA_APPLY_WAIT_TIMEOUT_SECONDS` *(optional)* | Integer seconds (default `7200`) | Infra manual-confirm wait loop in meta pipeline |
+| `TFC_PLAN_WAIT_TIMEOUT_SECONDS` *(optional)* | Integer seconds (default `7200`) | IaC validation speculative-plan wait timeout |
+| `TFC_PLAN_POLL_INTERVAL_SECONDS` *(optional)* | Integer seconds (default `10`) | IaC validation speculative-plan polling interval |
+| `PORTAINER_ALLOWLIST_PROPAGATION_TIMEOUT_SECONDS` *(optional)* | Integer seconds (default `420`) | Portainer allowlist propagation wait timeout |
+| `PORTAINER_ALLOWLIST_PROPAGATION_POLL_INTERVAL_SECONDS` *(optional)* | Integer seconds (default `5`) | Portainer allowlist propagation polling interval |
 
 #### Secrets (`secrets.*`)
 
 | Variable | How to Get | Used By |
 |----------|-----------|---------|
+| `INFISICAL_TOKEN` (infra repo) | Infisical service token with project read/write scope for automation paths | Required by cloud-runner guard and local `terraform/portainer-root` apply path |
 | `INFRA_REPO_DISPATCH_TOKEN` (stacks repo) | Fine-grained GitHub token with `contents:write` + repository dispatch access on this infra repo | `stacks/.github/workflows/private-redeploy.yml` dispatches `stacks-redeploy-requested` to this repo |
 | `TFC_TOKEN` (infra repo) | Terraform Cloud Team/API token with workspace run access | `meta-pipeline.yml` Terraform Cloud run/apply + state output inventory handover |
 

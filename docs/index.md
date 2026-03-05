@@ -9,6 +9,14 @@ Welcome to the centralized GoodOldMeServer documentation. This repository manage
 
 > **Note:** The `stacks/` directory is a [Git submodule](https://github.com/JoseStud/stacks) tracking the `main` branch. Submodule update PRs are managed by Dependabot (`gitsubmodule` ecosystem).
 
+## Start Here (Cutover + Ownership)
+
+If you are bootstrapping or validating CI/CD for the first time, read these first:
+
+1. [**Meta-Pipeline Cutover Checklist**](meta-pipeline-cutover-checklist.md) — required GitHub variables/secrets, Terraform workspace settings, and first-run sequence.
+2. [**Infisical Workflow**](infisical-workflow.md#variable-ownership--mutability) — which variables are operator-managed vs auto-managed by Ansible, Terraform, or the meta-pipeline.
+3. [**Deployment Runbook Prerequisites**](deployment-runbook.md#prerequisites) — operational readiness checks before deploy/apply actions.
+
 ## High-Level Architecture
 
 ```mermaid
@@ -59,7 +67,7 @@ flowchart TD
 
 ### Core Documentation
 
-- [**Configuration Management (Ansible)**](ansible.md) — Playbooks, roles, dynamic inventory, and the 5-phase provisioning lifecycle
+- [**Configuration Management (Ansible)**](ansible.md) — Playbooks, roles, dynamic inventory, and the 6-phase provisioning lifecycle
 - [**Application Workloads (Stacks)**](stacks.md) — All Docker Swarm stack configurations: Gateway, Auth, Management, Network, Observability, Media/AI, Uptime, Cloud
 - [**Utilities (Scripts)**](scripts.md) — Helper scripts and manual execution wrappers
 
