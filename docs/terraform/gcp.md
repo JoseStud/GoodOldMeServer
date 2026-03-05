@@ -10,7 +10,7 @@ The module creates:
 - **Three firewall rules:**
   - `allow_icmp` — ICMPv4 ping from all IPv4 sources (`0.0.0.0/0`)
   - `allow_icmpv6` — ICMPv6 ping from all IPv6 sources (`::/0`)
-  - `allow_ssh` — TCP port 22 from explicit `ssh_allowed_cidrs` with `ssh-access` target tag
+  - `allow_ssh` — TCP port 22 from explicit IPv6 `ssh_allowed_cidrs` with `ssh-access` target tag (only when `ssh_enabled=true`)
 - A single **e2-micro** Debian 12 instance (`swarm-witness`) with dual-stack networking and premium-tier IPv6
 
 After provisioning, Ansible installs Tailscale on this instance and joins it to the Docker Swarm as a manager. The witness communicates with OCI workers over the Tailscale mesh — the IPv6 address is primarily used for initial Ansible connectivity.
@@ -57,7 +57,8 @@ No modules.
 | <a name="input_gcp_project"></a> [gcp\_project](#input\_gcp\_project) | GCP project ID (injected from Infisical) | `string` | n/a | yes |
 | <a name="input_gcp_region"></a> [gcp\_region](#input\_gcp\_region) | GCP region for the subnet and resources | `string` | `"us-central1"` | no |
 | <a name="input_gcp_zone"></a> [gcp\_zone](#input\_gcp\_zone) | GCP zone for the compute instance | `string` | `"us-central1-a"` | no |
-| <a name="input_ssh_allowed_cidrs"></a> [ssh\_allowed\_cidrs](#input\_ssh\_allowed\_cidrs) | List of CIDR blocks allowed to SSH into the witness instance | `list(string)` | n/a | yes |
+| <a name="input_ssh_allowed_cidrs"></a> [ssh\_allowed\_cidrs](#input\_ssh\_allowed\_cidrs) | List of IPv6 CIDR blocks allowed to SSH into the witness instance | `list(string)` | n/a | yes |
+| <a name="input_ssh_enabled"></a> [ssh\_enabled](#input\_ssh\_enabled) | Whether SSH ingress should be managed for the witness instance | `bool` | `true` | no |
 
 ## Outputs
 

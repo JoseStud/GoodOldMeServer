@@ -9,8 +9,8 @@
   ansible.builtin.copy:
     src: "{{ item.src }}"
     dest: "{{ item.dest }}"
-    owner: media-srv
-    group: media-srv
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
     mode: '0644'
   loop:
     - src: "{{ playbook_dir }}/../../stacks/auth/config/configuration.yml"
@@ -23,8 +23,8 @@
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../../stacks/observability/config/prometheus.yml"
     dest: /mnt/swarm-shared/observability/prometheus/prometheus.yml
-    owner: media-srv
-    group: media-srv
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
     mode: '0644'
   when: inventory_hostname == groups['oci_nodes'][0]
 
@@ -32,8 +32,8 @@
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../../stacks/observability/config/loki-config.yaml"
     dest: /mnt/swarm-shared/observability/loki/loki-config.yaml
-    owner: media-srv
-    group: media-srv
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
     mode: '0644'
   when: inventory_hostname == groups['oci_nodes'][0]
 
@@ -41,7 +41,25 @@
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../../stacks/observability/config/promtail.yml"
     dest: /mnt/swarm-shared/observability/promtail/promtail.yml
-    owner: media-srv
-    group: media-srv
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
+    mode: '0644'
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Sync Alertmanager configuration to GlusterFS
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../stacks/observability/config/alertmanager.yml"
+    dest: /mnt/swarm-shared/observability/alertmanager/alertmanager.yml
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
+    mode: '0644'
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Sync Prometheus alert rules to GlusterFS
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../stacks/observability/config/alert-rules.yml"
+    dest: /mnt/swarm-shared/observability/prometheus/alert-rules.yml
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
     mode: '0644'
   when: inventory_hostname == groups['oci_nodes'][0]

@@ -199,7 +199,7 @@ curl -H "Authorization: Bearer <api-key>" \
 
 ### Traefik ACME Certificates
 
-Let's Encrypt certificates are stored in the `traefik_acme` volume on GlusterFS. If lost, Traefik will automatically re-request certificates on the next start. No manual backup is strictly necessary, but be aware of Let's Encrypt rate limits (50 certificates per domain per week).
+Let's Encrypt certificates are stored in the GlusterFS-backed `traefik_acme` volume at `/mnt/swarm-shared/gateway/traefik_acme`. This data is replicated across both OCI nodes. If lost, Traefik will automatically re-request certificates on the next start, but be aware of Let's Encrypt rate limits (50 certificates per domain per week).
 
 ### Authelia Configuration
 

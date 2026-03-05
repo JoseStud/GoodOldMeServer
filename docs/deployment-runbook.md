@@ -9,8 +9,8 @@ Before deploying any stack, verify that all infrastructure layers are operationa
 | Prerequisite | How to Verify | Fix |
 |-------------|---------------|-----|
 | Terraform infra workspace applied | Terraform Cloud run for `goodoldme-infra` succeeds (or `terraform -chdir=terraform/infra output`) | Run `meta-pipeline.yml` with `run_infra_apply=true` or `terraform -chdir=terraform/infra apply` |
-| Terraform Portainer workspace applied | Terraform Cloud run for `goodoldme-portainer` succeeds (or `terraform -chdir=terraform/portainer-root output`) | Run `meta-pipeline.yml` with `run_portainer_apply=true` or `terraform -chdir=terraform/portainer-root apply` |
-| Terraform Cloud Agent pool active | Terraform Cloud workspace run settings show Agent execution (not managed workers) and at least one healthy agent | Start/reconnect agent host and re-run |
+| Terraform Portainer workspace applied | Local CI apply for `terraform/portainer-root` succeeds against TFC remote state (`goodoldme-portainer`) (or `terraform -chdir=terraform/portainer-root output`) | Run `meta-pipeline.yml` with `run_portainer_apply=true` or `terraform -chdir=terraform/portainer-root apply` |
+| Cloud static runner ready | `vars.CLOUD_STATIC_RUNNER_LABEL` is set and workflow logs show deterministic IPv4/IPv6 egress | Configure runner label and egress routing, then re-run |
 | Ansible provisioning complete | SSH into nodes, verify Docker/Tailscale/GlusterFS/Portainer | Re-run `ansible-playbook` |
 | Portainer running | `curl -s http://localhost:9000/api/system/status` returns HTTP 200 | Re-run Ansible `portainer_bootstrap` role |
 | `PORTAINER_ADMIN_PASSWORD` set | `echo $PORTAINER_ADMIN_PASSWORD` is non-empty | `export PORTAINER_ADMIN_PASSWORD='...'` (bcrypt-hashed by Ansible and written to `/stacks/management` during bootstrap) |
@@ -86,7 +86,7 @@ docker stack deploy -c stacks/gateway/docker-compose.yml gateway
 **Verify:**
 ```bash
 docker stack services gateway
-# Expected: socket-proxy (1/1), traefik (mode: global, 3/3 on managers)
+# Expected: socket-proxy (1/1), traefik (2/2 replicated on OCI workers)
 
 # Test Traefik is responding
 curl -I http://localhost:80
@@ -192,7 +192,9 @@ After Ansible has bootstrapped Portainer, **Terraform manages all application st
 1. `goodoldme-infra` (`terraform/infra`) provisions OCI/GCP and runs Ansible bootstrap.
 2. `goodoldme-portainer` (`terraform/portainer-root`) creates Git-backed Portainer stacks with webhooks and writes `/deployments` secrets.
 
-Runs should execute in a **Terraform Cloud Agent pool** so provider calls originate from trusted network CIDRs and use `PORTAINER_API_URL` (`https://portainer-api.<domain>`).
+Runs execute with a split model:
+- `goodoldme-infra`: Terraform Cloud managed workers (remote run/apply)
+- `goodoldme-portainer`: local Terraform CLI on the cloud static runner, backed by Terraform Cloud remote state (`operations=false`)
 
 ```bash
 # Local fallback (if not using Terraform Cloud workspaces)
@@ -253,7 +255,7 @@ Every stack is linked to the `JoseStud/stacks` Git repository in Portainer with 
 
 **Automatic (private automation):**
 
-1. Push to `main` in the stacks repo triggers `stacks/.github/workflows/private-redeploy.yml` on a self-hosted runner.
+1. Push to `main` in the stacks repo triggers `stacks/.github/workflows/private-redeploy.yml` on the cloud static runner.
 2. The workflow computes changed stacks from `stacks.yaml` and dispatches one event (`stacks-redeploy-requested`) to this infra repo.
 3. Infra `meta-pipeline.yml` validates secrets, runs Portainer apply when `structural_change=true`, runs config sync when `config_stacks` is non-empty, then triggers health-gated webhooks.
 4. Health gates use manifest dependencies: Gateway is checked first (`gateway-health.<BASE_DOMAIN>/healthz`) before Auth and downstream stacks.

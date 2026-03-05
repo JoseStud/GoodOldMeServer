@@ -77,12 +77,12 @@ Ansible connects using SSH certificate-based auth instead of password or key-pai
 
 ```ini
 [ssh_connection]
-ssh_args = -o CertificateFile=~/.ssh/id_rsa-cert.pub -o IdentityFile=~/.ssh/id_rsa
+ssh_args = -o CertificateFile=~/.ssh/id_ed25519-cert.pub -o IdentityFile=~/.ssh/id_ed25519
 ```
 
 **How it works:**
 1. Terraform's OCI module injects the SSH CA public key into each instance via cloud-init (`TrustedUserCAKeys /etc/ssh/trusted-user-ca-keys.pem`)
-2. The operator signs their SSH public key with the CA private key to generate `~/.ssh/id_rsa-cert.pub`
+2. The operator signs their ed25519 SSH public key with the CA private key to generate `~/.ssh/id_ed25519-cert.pub`
 3. Ansible presents the certificate on connection — the remote sshd validates it against the trusted CA
 
 This eliminates the need to distribute individual public keys to each node.
@@ -208,7 +208,7 @@ All directories are owned by `media-srv:media-srv` (UID/GID 1500) with mode `075
 
 ```
 ansible/
-├── ansible.cfg                      # SSH cert auth, inventory path, remote_user=ubuntu
+├── ansible.cfg                      # SSH cert auth (ed25519), inventory path, remote_user=ubuntu
 ├── requirements.yml                 # Galaxy collection dependencies
 ├── inventory/
 │   └── terraform.yml                # Dynamic inventory from Terraform state
@@ -225,7 +225,7 @@ ansible/
     │   ├── defaults/main.yml        # Parameterized user
     │   └── tasks/main.yml           # APT repo install Docker, enable service
     ├── glusterfs/
-    │   ├── defaults/main.yml        # (currently empty — values are inline in tasks)
+    │   ├── defaults/main.yml        # service_user / service_group (defaults: media-srv)
     │   ├── templates/               # (reserved for future Jinja2 templates)
     │   └── tasks/main.yml           # GlusterFS replica-3-arbiter-1 volume + shared dirs
     ├── swarm/

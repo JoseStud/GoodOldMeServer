@@ -16,9 +16,8 @@ Personal homelab/cloud server infrastructure using a three-tier architecture:
 - OCI free-tier account (Ampere A1 instances + block volumes)
 - GCP free-tier account (e2-micro instance)
 - SSH CA key pair for certificate-based authentication
-- Terraform Cloud workspace variables for SSH allowlists:
-  - `oci_ssh_allowed_cidr`
-  - `gcp_ssh_allowed_cidrs`
+- Terraform Cloud workspace variable for network policy:
+  - `TF_VAR_network_access_policy` (JSON object with OCI SSH IPv4, GCP SSH IPv6, Portainer API allowlists)
 
 ## Quick Start
 
@@ -43,6 +42,7 @@ docker stack deploy -c stacks/auth/docker-compose.yml auth
 
 For the full deployment procedure, see the [Deployment Runbook](docs/deployment-runbook.md).
 For first-time pipeline setup, use the [Meta-Pipeline Cutover Checklist](docs/meta-pipeline-cutover-checklist.md).
+For CI change-detection behavior, see the [CI Impact Rules](docs/ci-impact-rules.md).
 
 ## Documentation
 

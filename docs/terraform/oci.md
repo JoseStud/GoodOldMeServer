@@ -6,10 +6,12 @@ This module provisions the primary application infrastructure on Oracle Cloud In
 
 The module creates:
 - A **VCN** (`production-vcn`, `10.0.0.0/16`) with a **DMZ subnet** (`10.0.1.0/24`)
-- **2× VM.Standard.A1.Flex instances** (`app-worker-1`, `app-worker-2`) — each with 2 OCPUs, 12 GB RAM, and 50 GB boot volume
+- **2\u00d7 VM.Standard.A1.Flex instances** (`app-worker-1`, `app-worker-2`) \u2014 each with 2 OCPUs, 12 GB RAM, and 50 GB boot volume. Instances are spread across availability domains using `count.index % length(ads)` for AD-level resilience
 - A **Gateway NSG** with ingress rules allowing TCP port 80 (HTTP) and 443 (HTTPS) from `0.0.0.0/0`
-- **2× 50 GB block volumes** (`worker-volume-0`, `worker-volume-1`) attached via paravirtualized interface
+- **2\u00d7 50 GB block volumes** (`worker-volume-0`, `worker-volume-1`) co-located in the same AD as their attached instance
 - **Silver backup policy** assignments on both block volumes (daily backups, 5 retention)
+
+> **OCI Free Tier caveat:** A1.Flex capacity may only be available in a single AD per tenancy. If provisioning fails due to capacity limits in AD-2, consider temporarily overriding to a single AD or retrying until capacity is available.
 
 ### SSH CA Integration
 
@@ -76,7 +78,8 @@ No modules.
 |------|-------------|------|---------|:--------:|
 | <a name="input_oci_compartment_ocid"></a> [oci\_compartment\_ocid](#input\_oci\_compartment\_ocid) | OCI compartment OCID where all resources will be created | `string` | n/a | yes |
 | <a name="input_oci_image_ocid"></a> [oci\_image\_ocid](#input\_oci\_image\_ocid) | OCI image OCID for the worker instances (Ubuntu aarch64) | `string` | n/a | yes |
-| <a name="input_ssh_allowed_cidr"></a> [ssh\_allowed\_cidr](#input\_ssh\_allowed\_cidr) | CIDR block allowed to SSH into instances (restrict to your IP or VPN range) | `string` | n/a | yes |
+| <a name="input_ssh_allowed_cidrs"></a> [ssh\_allowed\_cidrs](#input\_ssh\_allowed\_cidrs) | IPv4 CIDR blocks allowed to SSH into instances (restrict to deterministic runner egress) | `list(string)` | n/a | yes |
+| <a name="input_ssh_enabled"></a> [ssh\_enabled](#input\_ssh\_enabled) | Whether SSH ingress should be managed for OCI worker instances | `bool` | `true` | no |
 | <a name="input_ssh_ca_public_key"></a> [ssh\_ca\_public\_key](#input\_ssh\_ca\_public\_key) | SSH CA public key injected into instances via cloud-init for certificate-based auth | `string` | n/a | yes |
 
 ## Outputs

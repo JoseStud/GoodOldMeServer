@@ -35,13 +35,22 @@ variable "oci_image_ocid" {
   }
 }
 
-variable "ssh_allowed_cidr" {
-  description = "CIDR block allowed to SSH into instances (restrict to your IP or VPN range)"
-  type        = string
+variable "ssh_enabled" {
+  description = "Whether SSH ingress should be managed for OCI worker instances"
+  type        = bool
+  default     = true
+}
+
+variable "ssh_allowed_cidrs" {
+  description = "IPv4 CIDR blocks allowed to SSH into instances (restrict to deterministic runner egress)"
+  type        = list(string)
 
   validation {
-    condition     = can(cidrhost(var.ssh_allowed_cidr, 0))
-    error_message = "ssh_allowed_cidr must be a valid IPv4 or IPv6 CIDR."
+    condition = (
+      alltrue([for cidr in var.ssh_allowed_cidrs : can(cidrhost(cidr, 0)) && !strcontains(cidr, ":")]) &&
+      (!var.ssh_enabled || length(var.ssh_allowed_cidrs) > 0)
+    )
+    error_message = "ssh_allowed_cidrs must contain valid IPv4 CIDRs and must be non-empty when ssh_enabled=true."
   }
 }
 
@@ -102,7 +111,7 @@ data "oci_identity_availability_domains" "ads" {
 
 resource "oci_core_instance" "app_worker" {
   count               = 2
-  availability_domain = data.oci_identity_availability_domains.ads.availability_domains[0].name
+  availability_domain = data.oci_identity_availability_domains.ads.availability_domains[count.index % length(data.oci_identity_availability_domains.ads.availability_domains)].name
   compartment_id      = var.oci_compartment_ocid
   shape               = "VM.Standard.A1.Flex"
   display_name        = "app-worker-${count.index + 1}"
@@ -178,12 +187,13 @@ resource "oci_core_network_security_group_security_rule" "gateway_https" {
 }
 
 resource "oci_core_network_security_group_security_rule" "ssh" {
+  for_each                  = toset(var.ssh_enabled ? var.ssh_allowed_cidrs : [])
   network_security_group_id = oci_core_network_security_group.gateway_nsg.id
   direction                 = "INGRESS"
   protocol                  = "6" # TCP
-  source                    = var.ssh_allowed_cidr
+  source                    = each.value
   source_type               = "CIDR_BLOCK"
-  description               = "SSH access — restrict source CIDR in production"
+  description               = "SSH access — restricted to approved runner CIDRs"
   tcp_options {
     destination_port_range {
       max = 22
@@ -198,7 +208,7 @@ resource "oci_core_network_security_group_security_rule" "ssh" {
 
 resource "oci_core_volume" "worker_volume" {
   count               = 2
-  availability_domain = data.oci_identity_availability_domains.ads.availability_domains[0].name
+  availability_domain = data.oci_identity_availability_domains.ads.availability_domains[count.index % length(data.oci_identity_availability_domains.ads.availability_domains)].name
   compartment_id      = var.oci_compartment_ocid
   display_name        = "worker-volume-${count.index}"
   size_in_gbs         = 50

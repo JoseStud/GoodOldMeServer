@@ -40,8 +40,8 @@
   ansible.builtin.file:
     path: /mnt/app_data/gluster_brick
     state: directory
-    owner: media-srv
-    group: media-srv
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
     mode: '0755'
   when: inventory_hostname in groups['oci_nodes']
 
@@ -104,8 +104,8 @@
   ansible.builtin.file:
     path: /mnt/swarm-shared
     state: directory
-    owner: media-srv
-    group: media-srv
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
     mode: '0755'
   when: inventory_hostname in groups['oci_nodes']
 
@@ -123,8 +123,8 @@
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
-    owner: media-srv
-    group: media-srv
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
     mode: '0755'
   loop:
     # Auth
@@ -139,6 +139,8 @@
     - /mnt/swarm-shared/observability/prometheus
     - /mnt/swarm-shared/observability/loki
     - /mnt/swarm-shared/observability/promtail
+    - /mnt/swarm-shared/observability/alertmanager
+    - /mnt/swarm-shared/observability/alertmanager_data
     # Gateway
     - /mnt/swarm-shared/gateway/traefik_acme
     # Management

@@ -17,7 +17,7 @@ flowchart LR
     TFP -->|SDK write /deployments| INF
     INF -->|Agent| ENV[.env files<br/>rendered on host]
     ENV -->|/infrastructure + /stacks/*| STACKS[Docker Stack Deploy]
-    INF -->|/deployments| AUTO[Private Automation<br/>Stacks repo self-hosted runner]
+    INF -->|/deployments| AUTO[Private Automation<br/>Stacks repo cloud static runner]
 ```
 
 ## Secret Organization
@@ -26,13 +26,13 @@ flowchart LR
 |------|----------|---------|
 | `/infrastructure` | Terraform, Ansible, Scripts | `BASE_DOMAIN`, `CLOUDFLARE_API_TOKEN`, `TAILSCALE_AUTH_KEY`, `TZ`, `ZONE_ID` |
 | `/management` | Terraform (Portainer provider), Operators | `PORTAINER_URL`, `PORTAINER_API_URL`, `PORTAINER_API_KEY`, `PORTAINER_LICENSE_KEY` |
-| `/deployments` | Terraform (auto-written), Stacks repo private runner | `PORTAINER_WEBHOOK_URLS`, `WEBHOOK_URL_*` |
+| `/deployments` | Terraform (auto-written), Stacks repo cloud static runner | `PORTAINER_WEBHOOK_URLS`, `WEBHOOK_URL_*` |
 | `/security` | Terraform (cloud-init), GitHub Actions (SSH) | `SSH_CA_PUBLIC_KEY`, `SSH_HOST_CA_PUBKEY` |
 | `/stacks/gateway` | Traefik | `ACME_EMAIL`, `DOCKER_SOCKET_PROXY_URL` |
 | `/stacks/identity` | Authelia SSO | `AUTHELIA_JWT_SECRET`, `AUTHELIA_SESSION_SECRET`, `POSTGRES_PASSWORD`, `AUTHELIA_NOTIFIER_SMTP_USERNAME`, `AUTHELIA_NOTIFIER_SMTP_PASSWORD`, `AUTHELIA_NOTIFIER_SMTP_SENDER`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_JWKS_0_KEY` |
 | `/stacks/management` | Homarr + Portainer | `HOMARR_SECRET_KEY`, `PORTAINER_ADMIN_PASSWORD`, `PORTAINER_ADMIN_PASSWORD_HASH`, `PORTAINER_AUTOMATION_ALLOWED_CIDRS` |
 | `/stacks/network` | Vaultwarden, Pi-hole | `VW_DB_PASS`, `VW_ADMIN_TOKEN`, `PIHOLE_PASSWORD` |
-| `/stacks/observability` | Grafana | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET` |
+| `/stacks/observability` | Grafana | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET`, `ALERTMANAGER_WEBHOOK_URL` |
 | `/stacks/ai-interface` | Open WebUI | `ARCH_PC_IP` |
 | `/cloud-provider/gcp` | Terraform (GCP provider) | `GCP_PROJECT_ID` |
 | `/cloud-provider/oci` | Terraform (OCI provider) | `OCI_COMPARTMENT_OCID`, `OCI_IMAGE_OCID` |
@@ -108,7 +108,7 @@ The management stack (Portainer + Homarr) is deployed by Ansible, not Terraform,
 | `HOMARR_SECRET_KEY` | Generate: `openssl rand -hex 32` | Homarr `SECRET_ENCRYPTION_KEY` |
 | `PORTAINER_ADMIN_PASSWORD` | Choose a strong password or generate: `openssl rand -base64 24` | Ansible `portainer_bootstrap` role — hashed to bcrypt at deploy time and passed to Portainer via `--admin-password`; plaintext used only for JWT auth to create API key |
 | `PORTAINER_ADMIN_PASSWORD_HASH` | **Auto-generated and rewritten by Ansible on every bootstrap run** (`password_hash('bcrypt')`) and written to Infisical `/stacks/management` for Infisical Agent renders — do not set manually | Portainer `--admin-password` CLI flag (set in `docker-compose.yml`) |
-| `PORTAINER_AUTOMATION_ALLOWED_CIDRS` | CIDR list for trusted automation egress (e.g., Terraform Cloud Agent host) | Traefik `ipAllowList` middleware on `portainer-api.<domain>` |
+| `PORTAINER_AUTOMATION_ALLOWED_CIDRS` | CIDR list for trusted automation egress (cloud static runner IPv4/IPv6) | Traefik `ipAllowList` middleware on `portainer-api.<domain>` |
 
 ### `/stacks/network` — Vaultwarden + Pi-hole
 
@@ -118,12 +118,13 @@ The management stack (Portainer + Homarr) is deployed by Ansible, not Terraform,
 | `VW_ADMIN_TOKEN` | Generate: `openssl rand -base64 48` — or use `vaultwarden` CLI to create an Argon2 hash | Vaultwarden `/admin` panel |
 | `PIHOLE_PASSWORD` | Choose or generate: `openssl rand -base64 16` | Pi-hole web UI + Orbital Sync |
 
-### `/stacks/observability` — Grafana
+### `/stacks/observability` — Grafana + Alertmanager
 
 | Variable | How to Get | Used By |
-|----------|-----------|---------|
+|----------|-----------|--------|
 | `GF_OIDC_CLIENT_ID` | Choose a client ID (e.g., `grafana`) to define in Authelia's config | Grafana SSO setup |
 | `GF_OIDC_CLIENT_SECRET` | Generate plaintext: `openssl rand -hex 32` (Must be hashed using `authelia crypto hash` for Authelia's config) | Grafana SSO setup |
+| `ALERTMANAGER_WEBHOOK_URL` | Slack/Discord incoming webhook URL for alert notifications | Alertmanager webhook receiver |
 
 ### `/stacks/ai-interface` — Open WebUI
 
@@ -248,7 +249,7 @@ Webhook triggers run from the stacks repo private workflow: `stacks/.github/work
 Flow:
 
 1. Push to `main` in stacks repo
-2. Private self-hosted runner computes affected stacks from changed paths
+2. Private cloud static runner computes affected stacks from changed paths
 3. Runner ignores non-deploy paths (for example docs/CI-only files)
 4. Runner dispatches a unified event (`stacks-redeploy-requested`) with changed stack metadata to this infra repo
 5. Infra `meta-pipeline.yml` decides the ordered stages: secret validation -> optional Portainer apply -> optional config sync -> health-gated webhook redeploy
@@ -284,11 +285,11 @@ sudo mkdir -p /etc/infisical
 sudo cp stacks/infisical-agent.yaml /etc/infisical/agent.yaml
 ```
 
-3. **Bootstrap Universal Auth credentials** — these are the only secrets stored outside Infisical. Edit the agent config to set `client-id` and `client-secret`:
+3. **Bootstrap Universal Auth credentials** — these are the only secrets stored outside Infisical. Edit the agent config to replace the `<INJECTED_BY_ANSIBLE>` placeholders with real values:
 
 ```bash
 sudo nano /etc/infisical/agent.yaml
-# Set auth.config.client-id and auth.config.client-secret
+# Replace <INJECTED_BY_ANSIBLE> with actual client-id and client-secret
 ```
 
 > Generate these credentials in Infisical: **Access Control → Machine Identities → Create Identity → Universal Auth**. Grant the identity read access to the project.

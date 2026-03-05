@@ -63,14 +63,33 @@ variable "oci_region" {
   default     = "us-ashburn-1"
 }
 
-variable "oci_ssh_allowed_cidr" {
-  description = "CIDR block allowed to SSH into OCI worker nodes"
-  type        = string
-}
+variable "network_access_policy" {
+  description = "Canonical network access policy for OCI SSH (IPv4), GCP SSH (IPv6), and Portainer API allowlist (dual-stack)"
+  type = object({
+    oci_ssh = object({
+      enabled       = bool
+      source_ranges = list(string)
+    })
+    gcp_ssh = object({
+      enabled       = bool
+      source_ranges = list(string)
+    })
+    portainer_api = object({
+      source_ranges = list(string)
+    })
+  })
 
-variable "gcp_ssh_allowed_cidrs" {
-  description = "CIDR blocks allowed to SSH into the GCP witness node"
-  type        = list(string)
+  validation {
+    condition = (
+      alltrue([for cidr in var.network_access_policy.oci_ssh.source_ranges : can(cidrhost(cidr, 0)) && !strcontains(cidr, ":")]) &&
+      alltrue([for cidr in var.network_access_policy.gcp_ssh.source_ranges : can(cidrhost(cidr, 0)) && strcontains(cidr, ":")]) &&
+      alltrue([for cidr in var.network_access_policy.portainer_api.source_ranges : can(cidrhost(cidr, 0))]) &&
+      (!var.network_access_policy.oci_ssh.enabled || length(var.network_access_policy.oci_ssh.source_ranges) > 0) &&
+      (!var.network_access_policy.gcp_ssh.enabled || length(var.network_access_policy.gcp_ssh.source_ranges) > 0) &&
+      length(var.network_access_policy.portainer_api.source_ranges) > 0
+    )
+    error_message = "network_access_policy is invalid: oci_ssh must use IPv4 CIDRs, gcp_ssh must use IPv6 CIDRs, portainer_api must include at least one valid CIDR."
+  }
 }
 
 # Modules
@@ -79,13 +98,15 @@ module "oci" {
   oci_compartment_ocid = local.secrets.oci_compartment_id
   ssh_ca_public_key    = local.secrets.ssh_ca_public_key
   oci_image_ocid       = local.secrets.oci_image_ocid
-  ssh_allowed_cidr     = var.oci_ssh_allowed_cidr
+  ssh_enabled          = var.network_access_policy.oci_ssh.enabled
+  ssh_allowed_cidrs    = var.network_access_policy.oci_ssh.source_ranges
 }
 
 module "gcp" {
   source            = "../gcp"
   gcp_project       = local.secrets.gcp_project_id
-  ssh_allowed_cidrs = var.gcp_ssh_allowed_cidrs
+  ssh_enabled       = var.network_access_policy.gcp_ssh.enabled
+  ssh_allowed_cidrs = var.network_access_policy.gcp_ssh.source_ranges
 }
 
 # Outputs

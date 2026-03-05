@@ -1,6 +1,8 @@
 terraform {
   required_version = ">= 1.5.0"
 
+  backend "remote" {}
+
   required_providers {
     infisical = { source = "Infisical/infisical", version = ">= 0.8.0" }
     portainer = { source = "portainer/portainer", version = "~> 1.0" }

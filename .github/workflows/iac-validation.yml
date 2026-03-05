@@ -5,17 +5,21 @@ on:
     paths:
       - "terraform/**"
       - "ansible/**"
+      - ".github/ci/**"
       - ".github/workflows/**"
       - ".github/scripts/**"
       - "stacks"
+      - "stacks/**"
       - ".ansible-lint"
   push:
     paths:
       - "terraform/**"
       - "ansible/**"
+      - ".github/ci/**"
       - ".github/workflows/**"
       - ".github/scripts/**"
       - "stacks"
+      - "stacks/**"
       - ".ansible-lint"
   workflow_dispatch:
 
@@ -23,6 +27,7 @@ permissions:
   contents: read
   checks: read
   statuses: read
+  pull-requests: read
 
 concurrency:
   group: iac-validation-${{ github.ref_name || github.event.repository.default_branch || 'main' }}
@@ -46,147 +51,45 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install impact detection dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Load path filters config
+        id: filter-config
+        run: |
+          {
+            echo "filters<<EOF"
+            cat .github/ci/path-filters.yml
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Detect changed paths
+        id: path-filter
+        if: ${{ github.event_name != 'workflow_dispatch' && !(github.event_name == 'push' && github.event.before == '0000000000000000000000000000000000000000') }}
+        uses: dorny/paths-filter@v3
+        with:
+          filters: ${{ steps.filter-config.outputs.filters }}
+          base: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
       - name: Detect impact
         id: detect
         env:
           EVENT_NAME: ${{ github.event_name }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PUSH_BEFORE_SHA: ${{ github.event.before }}
           GITHUB_SHA_CURRENT: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-
-          EMPTY_TREE_SHA="4b825dc642cb6eb9a060e54bf8d69288fbee4904"
-
-          infra_workspace_changed="false"
-          portainer_workspace_changed="false"
-          ansible_changed="false"
-          stacks_gitlink_changed="false"
-          stacks_sha=""
-
-          changed_files=""
-          raw_stacks_diff=""
-
-          declare -a changed_tf_roots=()
-          declare -a tfc_matrix_rows=()
-
-          append_tf_root_if_changed() {
-            local root="$1"
-            local pattern="$2"
-            if grep -Eq "$pattern" <<<"${changed_files}"; then
-              changed_tf_roots+=("${root}")
-            fi
-          }
-
-          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
-            infra_workspace_changed="true"
-            portainer_workspace_changed="true"
-            ansible_changed="true"
-            stacks_sha="$(git rev-parse HEAD:stacks 2>/dev/null || true)"
-
-            changed_tf_roots=(
-              "terraform/infra"
-              "terraform/oci"
-              "terraform/gcp"
-              "terraform/portainer-root"
-              "terraform/portainer"
-            )
-
-            tfc_matrix_rows=(
-              '{"workspace_key":"infra","config_directory":"terraform/infra"}'
-              '{"workspace_key":"portainer","config_directory":"terraform/portainer-root"}'
-            )
-          else
-            base_sha=""
-            head_sha="${GITHUB_SHA_CURRENT}"
-
-            if [[ "${EVENT_NAME}" == "pull_request" ]]; then
-              base_sha="${PR_BASE_SHA}"
-              head_sha="${PR_HEAD_SHA}"
-
-              if ! git cat-file -e "${head_sha}^{commit}" 2>/dev/null; then
-                head_sha="${GITHUB_SHA_CURRENT}"
-              fi
-
-              if ! git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
-                echo "Unable to resolve PR base SHA '${base_sha}' locally."
-                exit 1
-              fi
-
-              changed_files="$(git diff --name-only "${base_sha}" "${head_sha}" || true)"
-              raw_stacks_diff="$(git diff --raw --abbrev=40 "${base_sha}" "${head_sha}" -- stacks || true)"
-            elif [[ "${EVENT_NAME}" == "push" ]]; then
-              base_sha="${PUSH_BEFORE_SHA}"
-
-              if [[ "${base_sha}" =~ ^0+$ ]]; then
-                changed_files="$(git show --name-only --pretty='' "${head_sha}" || true)"
-                raw_stacks_diff="$(git diff --raw --abbrev=40 "${EMPTY_TREE_SHA}" "${head_sha}" -- stacks || true)"
-              else
-                changed_files="$(git diff --name-only "${base_sha}" "${head_sha}" || true)"
-                raw_stacks_diff="$(git diff --raw --abbrev=40 "${base_sha}" "${head_sha}" -- stacks || true)"
-              fi
-            fi
-
-            if grep -Eq '^terraform/(infra|oci|gcp)/' <<<"${changed_files}"; then
-              infra_workspace_changed="true"
-            fi
-
-            if grep -Eq '^terraform/(portainer-root|portainer)/' <<<"${changed_files}"; then
-              portainer_workspace_changed="true"
-            fi
-
-            if grep -Eq '(^ansible/|^\.ansible-lint$)' <<<"${changed_files}"; then
-              ansible_changed="true"
-            fi
-
-            append_tf_root_if_changed "terraform/infra" '^terraform/infra/'
-            append_tf_root_if_changed "terraform/oci" '^terraform/oci/'
-            append_tf_root_if_changed "terraform/gcp" '^terraform/gcp/'
-            append_tf_root_if_changed "terraform/portainer-root" '^terraform/portainer-root/'
-            append_tf_root_if_changed "terraform/portainer" '^terraform/portainer/'
-
-            stack_raw_line="$(printf '%s\n' "${raw_stacks_diff}" | awk '$0 ~ /(^:|^::)/ && ($0 ~ /\tstacks$/ || $0 ~ / stacks$/) {print; exit}')"
-            if [[ -n "${stack_raw_line}" ]]; then
-              stacks_gitlink_changed="true"
-              parsed_new_sha="$(awk '{print $4}' <<<"${stack_raw_line}")"
-              if [[ "${parsed_new_sha}" =~ ^[0-9a-f]{40}$ ]]; then
-                stacks_sha="${parsed_new_sha}"
-              fi
-            fi
-
-            if [[ "${infra_workspace_changed}" == "true" ]]; then
-              tfc_matrix_rows+=(
-                '{"workspace_key":"infra","config_directory":"terraform/infra"}'
-              )
-            fi
-
-            if [[ "${portainer_workspace_changed}" == "true" ]]; then
-              tfc_matrix_rows+=(
-                '{"workspace_key":"portainer","config_directory":"terraform/portainer-root"}'
-              )
-            fi
-          fi
-
-          if (( ${#changed_tf_roots[@]} == 0 )); then
-            changed_tf_roots_json='[]'
-          else
-            changed_tf_roots_json="$(printf '%s\n' "${changed_tf_roots[@]}" | jq -R . | jq -s -c .)"
-          fi
-
-          if (( ${#tfc_matrix_rows[@]} == 0 )); then
-            tfc_workspace_matrix_json='[]'
-          else
-            tfc_workspace_matrix_json="$(printf '%s\n' "${tfc_matrix_rows[@]}" | jq -s -c .)"
-          fi
-
-          echo "infra_workspace_changed=${infra_workspace_changed}" >> "${GITHUB_OUTPUT}"
-          echo "portainer_workspace_changed=${portainer_workspace_changed}" >> "${GITHUB_OUTPUT}"
-          echo "ansible_changed=${ansible_changed}" >> "${GITHUB_OUTPUT}"
-          echo "stacks_gitlink_changed=${stacks_gitlink_changed}" >> "${GITHUB_OUTPUT}"
-          echo "stacks_sha=${stacks_sha}" >> "${GITHUB_OUTPUT}"
-          echo "changed_tf_roots_json=${changed_tf_roots_json}" >> "${GITHUB_OUTPUT}"
-          echo "tfc_workspace_matrix_json=${tfc_workspace_matrix_json}" >> "${GITHUB_OUTPUT}"
+          IAC_WORKSPACE_INFRA: ${{ steps.path-filter.outputs.iac_workspace_infra }}
+          IAC_WORKSPACE_PORTAINER: ${{ steps.path-filter.outputs.iac_workspace_portainer }}
+          IAC_ANSIBLE: ${{ steps.path-filter.outputs.iac_ansible }}
+          IAC_STACKS_GITLINK_CHANGED: ${{ steps.path-filter.outputs.iac_stacks_gitlink }}
+          IAC_TF_INFRA: ${{ steps.path-filter.outputs.iac_tf_infra }}
+          IAC_TF_OCI: ${{ steps.path-filter.outputs.iac_tf_oci }}
+          IAC_TF_GCP: ${{ steps.path-filter.outputs.iac_tf_gcp }}
+          IAC_TF_PORTAINER_ROOT: ${{ steps.path-filter.outputs.iac_tf_portainer_root }}
+          IAC_TF_PORTAINER: ${{ steps.path-filter.outputs.iac_tf_portainer }}
+        run: .github/scripts/detect_iac_impact.sh
 
       - name: Print impact outputs
         run: |
@@ -204,6 +107,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install Terraform Cloud polling dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -362,3 +270,58 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           STACKS_REPO_READ_TOKEN: ${{ secrets.STACKS_REPO_READ_TOKEN }}
         run: .github/scripts/verify_trusted_stacks_sha.sh "${{ needs.detect-impact.outputs.stacks_sha }}"
+
+  compose-validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create stub environment for compose validation
+        run: |
+          cat > /tmp/.env.ci << 'EOF'
+          BASE_DOMAIN=ci.example.com
+          TZ=Etc/UTC
+          CLOUDFLARE_API_TOKEN=stub
+          ACME_EMAIL=ci@example.com
+          DOCKER_SOCKET_PROXY_URL=tcp://socket-proxy:2375
+          AUTHELIA_JWT_SECRET=stub
+          AUTHELIA_SESSION_SECRET=stub
+          POSTGRES_PASSWORD=stub
+          AUTHELIA_NOTIFIER_SMTP_USERNAME=stub
+          AUTHELIA_NOTIFIER_SMTP_PASSWORD=stub
+          AUTHELIA_NOTIFIER_SMTP_SENDER=stub
+          AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET=stub
+          AUTHELIA_IDENTITY_PROVIDERS_OIDC_JWKS_0_KEY=stub
+          AUTHELIA_SESSION_COOKIES_0_DOMAIN=ci.example.com
+          AUTHELIA_SESSION_COOKIES_0_AUTHELIA_URL=https://auth.ci.example.com
+          AUTHELIA_SESSION_COOKIES_0_DEFAULT_REDIRECTION_URL=https://home.ci.example.com
+          AUTHELIA_TOTP_ISSUER=ci.example.com
+          HOMARR_SECRET_KEY=stub
+          PORTAINER_ADMIN_PASSWORD_HASH=stub
+          PORTAINER_AUTOMATION_ALLOWED_CIDRS=127.0.0.1/32
+          VW_DB_PASS=stub
+          VW_ADMIN_TOKEN=stub
+          PIHOLE_PASSWORD=stub
+          GF_OIDC_CLIENT_ID=grafana
+          GF_OIDC_CLIENT_SECRET=stub
+          ALERTMANAGER_WEBHOOK_URL=https://hooks.example.com/stub
+          ARCH_PC_IP=127.0.0.1
+          EOF
+
+      - name: Validate all Docker Compose files
+        run: |
+          set -euo pipefail
+          exit_code=0
+          for compose_file in $(find stacks -name 'docker-compose.yml' -type f | sort); do
+            echo "::group::Validating ${compose_file}"
+            if docker compose --env-file /tmp/.env.ci -f "${compose_file}" config -q 2>&1; then
+              echo "✓ ${compose_file}"
+            else
+              echo "::error file=${compose_file}::Docker Compose validation failed for ${compose_file}"
+              exit_code=1
+            fi
+            echo "::endgroup::"
+          done
+          exit ${exit_code}

@@ -5,10 +5,12 @@ on:
     branches:
       - main
     paths:
+      - ".github/ci/**"
       - ".github/workflows/**"
       - ".github/dependabot.yml"
   pull_request:
     paths:
+      - ".github/ci/**"
       - ".github/workflows/**"
       - ".github/dependabot.yml"
   workflow_dispatch:
@@ -61,7 +63,7 @@ jobs:
         run: |
           yamllint \
             -d "{extends: default, rules: {truthy: disable, line-length: disable, document-start: disable}}" \
-            .github/workflows .github/dependabot.yml
+            .github/ci .github/workflows .github/dependabot.yml
 
       - name: Run yq parse checks
         run: |

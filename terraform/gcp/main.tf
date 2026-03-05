@@ -19,13 +19,22 @@ variable "gcp_zone" {
   default     = "us-central1-a"
 }
 
+variable "ssh_enabled" {
+  description = "Whether SSH ingress should be managed for the witness instance"
+  type        = bool
+  default     = true
+}
+
 variable "ssh_allowed_cidrs" {
-  description = "List of CIDR blocks allowed to SSH into the witness instance"
+  description = "List of IPv6 CIDR blocks allowed to SSH into the witness instance"
   type        = list(string)
 
   validation {
-    condition     = length(var.ssh_allowed_cidrs) > 0 && alltrue([for cidr in var.ssh_allowed_cidrs : can(cidrhost(cidr, 0))])
-    error_message = "ssh_allowed_cidrs must contain at least one valid CIDR."
+    condition = (
+      alltrue([for cidr in var.ssh_allowed_cidrs : can(cidrhost(cidr, 0)) && strcontains(cidr, ":")]) &&
+      (!var.ssh_enabled || length(var.ssh_allowed_cidrs) > 0)
+    )
+    error_message = "ssh_allowed_cidrs must contain valid IPv6 CIDRs and must be non-empty when ssh_enabled=true."
   }
 }
 
@@ -81,6 +90,7 @@ resource "google_compute_firewall" "allow_icmpv6" {
 
 # Allow SSH for initial Ansible connectivity
 resource "google_compute_firewall" "allow_ssh" {
+  count   = var.ssh_enabled ? 1 : 0
   name    = "allow-ssh"
   network = google_compute_network.vpc_network.name
 

@@ -111,7 +111,7 @@ Labels are applied by the Ansible `swarm` role and used in `deploy.placement.con
 |-------|-------|-----------|---------|
 | `location` | `cloud` | OCI workers | Identifies workload-eligible nodes |
 | `role` | `witness` | GCP instance | Identifies quorum-only node |
-| *(built-in)* | `node.role == manager` | All 3 nodes | Traefik, socket-proxy, Portainer server |
+| *(built-in)* | `node.role == manager` | All 3 nodes | socket-proxy, Portainer server |
 | *(built-in)* | `node.role == worker` | OCI workers | All application stacks |
 | *(built-in)* | `node.hostname` | Per-instance | Pi-hole pinning (`app-worker-1`, `app-worker-2`) |
 
@@ -209,7 +209,6 @@ flowchart TD
     R -->|files.domain| FB[Filebrowser :80]
 
     HOM -.->|Forward Auth| AUTH
-    VW -.->|Forward Auth| AUTH
     UK -.->|Forward Auth| AUTH
     FB -.->|Forward Auth| AUTH
 ```

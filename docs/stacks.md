@@ -18,11 +18,11 @@ All workloads are constrained to `node.labels.location == cloud` (OCI nodes). Th
 
 | Stack | Services | Constraint | Depends On |
 |-------|----------|------------|------------|
-| **gateway** | traefik, socket-proxy | `node.role == manager` (global) | — |
+| **gateway** | traefik, socket-proxy | `location == cloud` (replicated: 2) | — |
 | **auth** | authelia, authelia-db | `location == cloud` | gateway |
 | **management** | homarr, portainer-server, portainer-agent | `location == cloud` (homarr), `node.role == manager` (server), global (agent) | gateway, auth |
 | **network** | vaultwarden, vaultwarden-db, pihole-1, pihole-2, orbital-sync | `location == cloud` | gateway, auth |
-| **observability** | prometheus, loki, promtail, node-exporter, grafana | `location == cloud` (stateful), global (promtail, node-exporter) | gateway, auth |
+| **observability** | prometheus, loki, promtail, node-exporter, grafana, alertmanager | `location == cloud` (stateful), global (promtail, node-exporter) | gateway, auth |
 | **media** | open-webui, openclaw-gateway, openclaw-cli | `location == cloud` | gateway, auth |
 | **uptime** | uptime-kuma | `location == cloud` | gateway, auth |
 | **cloud** | filebrowser | `location == cloud` | gateway |
@@ -45,6 +45,7 @@ All stacks follow these conventions:
 - **Auth**: `authelia@docker` middleware on routes requiring SSO
 - **Domains**: All hostnames use `${BASE_DOMAIN}` variable (injected by Infisical Agent)
 - **Update policy**: `order: start-first` (zero-downtime rolling updates)
+- **Image versioning**: Critical infrastructure and data services (Prometheus, Loki, Grafana, Vaultwarden, Authelia, socket-proxy, Alertmanager) are pinned to specific versions. Utility/dashboard services (Homarr, Pi-hole, Orbital Sync, OpenClaw) may use `:latest`
 - **Resources**: Memory limits on every service to prevent OOM
 - **Logging**: json-file driver with 10 MB rotation, 3 files max
 - **Storage**: Persistent data on GlusterFS at `/mnt/swarm-shared/<stack>/`
@@ -53,10 +54,10 @@ All stacks follow these conventions:
 
 ### Gateway
 
-- **Traefik v3** — Reverse proxy, runs globally on all managers
+- **Traefik v3** — Reverse proxy, runs as 2 replicas on OCI workers
 - **docker-socket-proxy** — Read-only proxy to the Docker socket (Traefik connects here instead of directly to `/var/run/docker.sock`)
 - HTTP→HTTPS redirect on all traffic
-- ACME certificates stored in a named Docker volume `traefik_acme` (local driver, mounted at `/etc/traefik/acme` inside the container)
+- ACME certificates stored in a GlusterFS-backed bind-mount volume `traefik_acme` at `/mnt/swarm-shared/gateway/traefik_acme`, shared between both replicas
 - Prometheus metrics exposed on a dedicated entrypoint (`:8082/metrics`)
 - **No config files required** — fully configured via CLI flags
 
@@ -92,7 +93,7 @@ All stacks follow these conventions:
 
 ### Network
 
-- **Vaultwarden** — Bitwarden-compatible password manager with PostgreSQL backend
+- **Vaultwarden** — Bitwarden-compatible password manager with PostgreSQL backend. Uses its own native authentication (master password + optional 2FA) without Authelia ForwardAuth to ensure compatibility with Bitwarden client apps (desktop, mobile, browser extension)
 - **Pi-hole ×2** — DNS ad-blocking (node1 on OCI Worker 1, node2 on OCI Worker 2 via hostname constraint)
 - **Orbital Sync** — Syncs Pi-hole configs between instances every 30 minutes
 
@@ -103,6 +104,7 @@ All stacks follow these conventions:
 - **Promtail** — Log shipper (global — runs on every node, Docker socket discovery)
 - **Node Exporter** — Host metrics (global)
 - **Grafana** — Dashboards and visualization (Authelia OIDC SSO, login form disabled)
+- **Alertmanager** — Alert routing and notifications via webhook (Slack/Discord). Receives alerts from Prometheus based on defined rules (instance down, high memory/disk/CPU, Traefik error rates)
 
 Data volumes are bind-mounted to GlusterFS for persistence and replication.
 
@@ -111,8 +113,10 @@ Data volumes are bind-mounted to GlusterFS for persistence and replication.
 | File | GlusterFS Path | Purpose |
 |------|---------------|---------|
 | `prometheus.yml` | `/mnt/swarm-shared/observability/prometheus/prometheus.yml` | Scrape targets: self, node-exporter, traefik, loki |
+| `alert-rules.yml` | `/mnt/swarm-shared/observability/prometheus/alert-rules.yml` | Alert rules: instance down, high memory/disk/CPU, Traefik error rates |
 | `loki-config.yaml` | `/mnt/swarm-shared/observability/loki/loki-config.yaml` | Loki storage, schema, retention, compactor |
 | `promtail.yml` | `/mnt/swarm-shared/observability/promtail/promtail.yml` | Docker SD log collection, label extraction, JSON pipeline |
+| `alertmanager.yml` | `/mnt/swarm-shared/observability/alertmanager/alertmanager.yml` | Alertmanager routing, webhook receiver, inhibition rules |
 
 ### Media / AI Interface
 
@@ -140,7 +144,7 @@ Per-stack secrets are in their own Infisical paths:
 | auth | `stacks/auth/.env.tmpl` | `/stacks/identity` | `AUTHELIA_JWT_SECRET`, `AUTHELIA_SESSION_SECRET`, `POSTGRES_PASSWORD`, `AUTHELIA_NOTIFIER_SMTP_USERNAME`, `AUTHELIA_NOTIFIER_SMTP_PASSWORD`, `AUTHELIA_NOTIFIER_SMTP_SENDER`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_JWKS_0_KEY` |
 | management | `stacks/management/.env.tmpl` | `/stacks/management` | `HOMARR_SECRET_KEY` |
 | network | `stacks/network/.env.tmpl` | `/stacks/network` | `VW_DB_PASS`, `VW_ADMIN_TOKEN`, `PIHOLE_PASSWORD` |
-| observability | `stacks/observability/.env.tmpl` | `/stacks/observability` | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET` |
+| observability | `stacks/observability/.env.tmpl` | `/stacks/observability` | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET`, `ALERTMANAGER_WEBHOOK_URL` |
 | ai-interface | `stacks/media/ai-interface/.env.tmpl` | `/stacks/ai-interface` | `ARCH_PC_IP` |
 | uptime | `stacks/uptime/.env.tmpl` | — | *(globals only)* |
 | cloud | `stacks/cloud/.env.tmpl` | — | *(globals only)* |
