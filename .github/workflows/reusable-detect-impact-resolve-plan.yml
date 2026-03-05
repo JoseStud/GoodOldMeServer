@@ -32,9 +32,6 @@ on:
       run_portainer_apply:
         required: false
         type: boolean
-      dry_run:
-        required: false
-        type: boolean
       stacks_sha:
         required: false
         type: string
@@ -51,9 +48,6 @@ on:
         required: false
         type: string
       changed_paths_json:
-        required: false
-        type: string
-      break_glass_policy_json:
         required: false
         type: string
 
@@ -92,6 +86,7 @@ on:
       plan_json:
         value: ${{ jobs.resolve.outputs.plan_json }}
 
+      # Deprecated compatibility outputs. Prefer projecting from plan_json.
       infra_workspace_changed:
         value: ${{ jobs.resolve.outputs.infra_workspace_changed }}
       portainer_workspace_changed:
@@ -163,6 +158,7 @@ jobs:
     outputs:
       plan_json: ${{ steps.resolve.outputs.plan_json || '' }}
 
+      # Deprecated compatibility outputs. Prefer projecting from plan_json.
       infra_workspace_changed: ${{ steps.resolve.outputs.infra_workspace_changed || '' }}
       portainer_workspace_changed: ${{ steps.resolve.outputs.portainer_workspace_changed || '' }}
       ansible_changed: ${{ steps.resolve.outputs.ansible_changed || '' }}
@@ -254,7 +250,6 @@ jobs:
           INPUT_RUN_INFRA: ${{ inputs.run_infra_apply }}
           INPUT_RUN_ANSIBLE: ${{ inputs.run_ansible_bootstrap }}
           INPUT_RUN_PORTAINER: ${{ inputs.run_portainer_apply }}
-          INPUT_DRY_RUN: ${{ inputs.dry_run }}
           INPUT_STACKS_SHA: ${{ inputs.stacks_sha }}
           INPUT_CHANGED_STACKS_JSON: ${{ inputs.changed_stacks_json }}
           INPUT_CONFIG_STACKS_JSON: ${{ inputs.config_stacks_json }}
@@ -269,9 +264,6 @@ jobs:
           PAYLOAD_STRUCTURAL_CHANGE: ${{ inputs.dispatch_structural_change }}
           PAYLOAD_REASON: ${{ inputs.dispatch_reason }}
           PAYLOAD_CHANGED_PATHS_JSON: ${{ inputs.dispatch_changed_paths_json }}
-          PAYLOAD_SOURCE_REPO: ${{ inputs.dispatch_source_repo }}
-          PAYLOAD_SOURCE_RUN_ID: ${{ inputs.dispatch_source_run_id }}
-          PAYLOAD_SOURCE_SHA: ${{ inputs.dispatch_source_sha }}
 
           META_FILTER_APPLIED: ${{ steps.path-filter.outcome == 'success' && 'true' || 'false' }}
           META_INFRA_CHANGED: ${{ steps.path-filter.outputs.meta_infra }}

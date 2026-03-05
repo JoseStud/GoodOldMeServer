@@ -51,6 +51,26 @@ Required for `stacks/.github/workflows/stacks-dispatch-redeploy.yml` dispatching
 | `stacks/.github/workflows/stacks-ci.yml` active | Required | Platform | Stack compose validation and manifest sanity run in stacks repo. | [ ] |
 | Dispatch payload schema `v3` implemented | Required | Platform | Must include typed JSON arrays (`changed_stacks`, `config_stacks`, optional `changed_paths`) plus `schema_version`, `source_repo`, `source_run_id`, `source_sha`, and `stacks_sha`. | [ ] |
 
+Expected dispatch payload example:
+
+```json
+{
+  "event_type": "stacks-redeploy-intent-v3",
+  "client_payload": {
+    "schema_version": "v3",
+    "stacks_sha": "0123456789abcdef0123456789abcdef01234567",
+    "source_sha": "0123456789abcdef0123456789abcdef01234567",
+    "changed_stacks": ["gateway", "auth"],
+    "config_stacks": ["auth"],
+    "structural_change": false,
+    "reason": "content-change",
+    "changed_paths": ["gateway/docker-compose.yml"],
+    "source_repo": "owner/stacks",
+    "source_run_id": 123456789
+  }
+}
+```
+
 ## 4) Terraform Cloud Workspace Variables
 
 ### Workspace: `goodoldme-infra` (`terraform/infra`)
@@ -94,3 +114,4 @@ Required for `stacks/.github/workflows/stacks-dispatch-redeploy.yml` dispatching
 | Confirm/apply infra run in Terraform Cloud UI when prompted | Required | Operator | Required because Auto Apply is disabled. | [ ] |
 | Confirm dispatch path validates `schema_version=v3` and waits for trusted `stacks_sha` checks | Required | Platform | `stacks-sha-trust` should pass before stack SHA is consumed by later stages. | [ ] |
 | Update branch protection required checks after workflow rename | Required | Platform | Replace old `IaC Validation` / `Meta Pipeline` checks with `Infrastructure Validation` / `Infrastructure Orchestrator`. | [ ] |
+| Ensure CI governance checks are required | Required | Platform | Include `Lint GitHub Actions` and shell contract tests (`Infrastructure Validation / planner-contract-tests`) in required PR checks. | [ ] |

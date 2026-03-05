@@ -16,6 +16,8 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
+PLAN_SCHEMA_VERSION="ci-plan-v1"
+
 emit_output() {
   local key="$1"
   local value="$2"
@@ -282,6 +284,7 @@ resolve_meta_mode() {
 
   plan_json="$(
     jq -cn \
+      --arg plan_schema_version "${PLAN_SCHEMA_VERSION}" \
       --arg mode "${CI_PLAN_MODE}" \
       --arg event_name "${EVENT_NAME}" \
       --arg run_infra_apply "${run_infra_apply}" \
@@ -309,6 +312,7 @@ resolve_meta_mode() {
       --arg stage_config_sync "${stage_config_sync}" \
       --arg stage_health_gated_redeploy "${stage_health_gated_redeploy}" \
       '{
+        plan_schema_version: $plan_schema_version,
         mode: $mode,
         event_name: $event_name,
         meta: {
@@ -493,6 +497,7 @@ resolve_iac_mode() {
 
   plan_json="$(
     jq -cn \
+      --arg plan_schema_version "${PLAN_SCHEMA_VERSION}" \
       --arg mode "${CI_PLAN_MODE}" \
       --arg event_name "${EVENT_NAME}" \
       --arg infra_workspace_changed "${infra_workspace_changed}" \
@@ -503,6 +508,7 @@ resolve_iac_mode() {
       --arg changed_tf_roots_json "${changed_tf_roots_json}" \
       --arg tfc_workspace_matrix_json "${tfc_workspace_matrix_json}" \
       '{
+        plan_schema_version: $plan_schema_version,
         mode: $mode,
         event_name: $event_name,
         iac: {

@@ -107,6 +107,7 @@ flowchart TD
 - [**Network Architecture**](network-architecture.md) — Tailscale mesh, 3-manager Swarm topology, GlusterFS replication, overlay networks, DNS & ingress flow. Last reviewed: `2026-03-05`.
 - [**Infisical Secrets Workflow**](infisical-workflow.md) — Agent config, `.env.tmpl` templating, secret injection pipeline. Last reviewed: `2026-03-05`.
 - [**CI Impact Rules**](ci-impact-rules.md) — Centralized path filters and workflow impact-output mapping. Last reviewed: `2026-03-05`.
+- [**CI Plan Contract**](ci-plan-contract.md) — Canonical `plan_json` schema and projection/deprecation rules. Last reviewed: `2026-03-05`.
 - [**Meta-Pipeline Cutover Checklist**](meta-pipeline-cutover-checklist.md) — Minimal first-run checklist (GitHub vars/secrets + Terraform workspace vars). Last reviewed: `2026-03-05`.
 - [**Deployment Runbook**](deployment-runbook.md) — Stack ordering, deploy commands, verification, rollback procedures. Last reviewed: `2026-03-05`.
 - [**Backup Strategy**](backup-strategy.md) — OCI Silver backup policy, GlusterFS redundancy, application-level backups, recovery. Last reviewed: `2026-03-05`.

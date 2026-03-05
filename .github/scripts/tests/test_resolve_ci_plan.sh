@@ -26,6 +26,14 @@ read_output() {
   echo "${value}"
 }
 
+read_plan_json_field() {
+  local file="$1"
+  local jq_expr="$2"
+  local plan_json
+  plan_json="$(read_output "${file}" "plan_json")"
+  jq -r "${jq_expr}" <<<"${plan_json}"
+}
+
 pass() {
   local message="$1"
   echo "[PASS] ${message}"
@@ -114,6 +122,7 @@ assert_eq "meta_push_infra_filter" "run_infra_apply" "true" "$(read_output "${ca
 assert_eq "meta_push_infra_filter" "run_ansible_bootstrap" "true" "$(read_output "${case1_out}" "run_ansible_bootstrap")"
 assert_eq "meta_push_infra_filter" "run_portainer_apply" "true" "$(read_output "${case1_out}" "run_portainer_apply")"
 assert_eq "meta_push_infra_filter" "run_health_redeploy" "false" "$(read_output "${case1_out}" "run_health_redeploy")"
+assert_eq "meta_push_infra_filter" "plan_schema_version" "ci-plan-v1" "$(read_plan_json_field "${case1_out}" '.plan_schema_version')"
 
 # Case 2: meta push ansible filter -> ansible implies portainer
 case2_env="${TMP_DIR}/case2.env"
@@ -259,6 +268,7 @@ assert_eq "iac_dispatch_all" "portainer_workspace_changed" "true" "$(read_output
 assert_eq "iac_dispatch_all" "ansible_changed" "true" "$(read_output "${case10_out}" "ansible_changed")"
 assert_eq "iac_dispatch_all" "stacks_gitlink_changed" "true" "$(read_output "${case10_out}" "stacks_gitlink_changed")"
 assert_eq "iac_dispatch_all" "changed_tf_roots_json" '["terraform/infra","terraform/oci","terraform/gcp","terraform/portainer-root","terraform/portainer"]' "$(read_output "${case10_out}" "changed_tf_roots_json")"
+assert_eq "iac_dispatch_all" "plan_schema_version" "ci-plan-v1" "$(read_plan_json_field "${case10_out}" '.plan_schema_version')"
 
 # Case 11: iac pull_request filter booleans
 case11_env="${TMP_DIR}/case11.env"

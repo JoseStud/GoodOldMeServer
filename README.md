@@ -43,6 +43,7 @@ docker stack deploy -c stacks/auth/docker-compose.yml auth
 For the full deployment procedure, see the [Deployment Runbook](docs/deployment-runbook.md).
 For first-time pipeline setup, use the [Meta-Pipeline Cutover Checklist](docs/meta-pipeline-cutover-checklist.md).
 For CI change-detection behavior, see the [CI Impact Rules](docs/ci-impact-rules.md).
+For CI plan schema and projection rules, see the [CI Plan Contract](docs/ci-plan-contract.md).
 
 ## Documentation
 

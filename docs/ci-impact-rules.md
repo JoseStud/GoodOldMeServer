@@ -8,6 +8,15 @@ This document is the single source of truth for change-detection behavior used b
 
 Rules are defined in `.github/ci/path-filters.yml` and consumed via `dorny/paths-filter@v3`.
 
+## Canonical Planning Contract
+
+- Canonical output: `plan_json` (schema version `ci-plan-v1`)
+- Projection script for scalar workflow outputs:
+  - `.github/scripts/plan/project_plan_outputs.sh iac`
+  - `.github/scripts/plan/project_plan_outputs.sh meta`
+
+Compatibility scalar outputs from `.github/workflows/reusable-detect-impact-resolve-plan.yml` are deprecated and kept only for phased migration.
+
 ## Filter Truth Table
 
 | Filter key | Paths | Resolver output | Derived execution | Jobs triggered | Event caveats |
