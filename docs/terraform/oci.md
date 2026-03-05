@@ -31,6 +31,34 @@ After Ansible runs the `storage` role:
 
 > See [Backup Strategy](../backup-strategy.md) for details on the Silver backup policy.
 
+## NSG Rule Rationale
+
+The OCI module attaches every worker VNIC to `gateway-nsg` and applies these ingress rules:
+
+| Rule | Source | Port/Protocol | Rationale | Risk posture |
+|------|--------|---------------|-----------|--------------|
+| `gateway_http` | `0.0.0.0/0` | TCP `80` | Required for HTTP entrypoint and redirect-to-HTTPS behavior in Traefik | Public by design; limited to web ingress only |
+| `gateway_https` | `0.0.0.0/0` | TCP `443` | Required for TLS-terminated service ingress via Traefik | Public by design; service access further constrained at app/middleware layer |
+| `ssh` | `ssh_allowed_cidrs` only | TCP `22` | Restricted operator/automation access for Ansible and break-glass operations | Must remain least-privilege; do not open globally |
+
+## SSH Allowed CIDRs Guidance
+
+`ssh_allowed_cidrs` is intended for deterministic automation egress ranges and must be IPv4 CIDRs. Prefer narrowly scoped `/32` ranges whenever possible.
+
+Recommended pattern:
+
+- `203.0.113.10/32` (single trusted runner egress IP)
+- `198.51.100.25/32` (secondary trusted runner egress IP)
+
+Avoid broad ranges:
+
+- `0.0.0.0/0` (overly permissive, unacceptable)
+- `203.0.113.0/24` (too broad unless formally justified and approved)
+
+Operational note:
+
+- Keep `ssh_allowed_cidrs` aligned with centralized `TF_VAR_network_access_policy.oci_ssh.source_ranges` so Terraform root validation and pipeline policy sync stay consistent.
+
 ## Regenerating Docs
 
 ```bash

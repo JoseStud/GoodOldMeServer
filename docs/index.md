@@ -17,6 +17,30 @@ If you are bootstrapping or validating CI/CD for the first time, read these firs
 2. [**Infisical Workflow**](infisical-workflow.md#variable-ownership--mutability) — which variables are operator-managed vs auto-managed by Ansible, Terraform, or the meta-pipeline.
 3. [**Deployment Runbook Prerequisites**](deployment-runbook.md#prerequisites) — operational readiness checks before deploy/apply actions.
 
+## Quick Paths by Role
+
+### Operator
+
+1. [Meta-Pipeline Cutover Checklist](meta-pipeline-cutover-checklist.md)
+2. [Deployment Runbook](deployment-runbook.md#prerequisites)
+3. [Stacks](stacks.md#health-checks-and-webhook-gate-behavior)
+4. [Backup Strategy](backup-strategy.md#recovery-objectives-rporto)
+
+### Platform
+
+1. [Configuration Management (Ansible)](ansible.md#tags-matrix)
+2. [Network Architecture](network-architecture.md#port-and-protocol-matrix)
+3. [CI Impact Rules](ci-impact-rules.md)
+4. [Scripts & Utilities](scripts.md)
+5. [Terraform OCI](terraform/oci.md)
+
+### Security
+
+1. [Infisical Workflow](infisical-workflow.md#variable-ownership--mutability)
+2. [Meta-Pipeline Cutover Checklist](meta-pipeline-cutover-checklist.md#0-auto-managed-values-do-not-set-manually)
+3. [Network Architecture](network-architecture.md#port-and-protocol-matrix)
+4. [OCI Terraform Cloud OIDC Setup](oci-tfc-oidc-setup.md)
+
 ## High-Level Architecture
 
 ```mermaid
@@ -67,9 +91,9 @@ flowchart TD
 
 ### Core Documentation
 
-- [**Configuration Management (Ansible)**](ansible.md) — Playbooks, roles, dynamic inventory, and the 6-phase provisioning lifecycle
-- [**Application Workloads (Stacks)**](stacks.md) — All Docker Swarm stack configurations: Gateway, Auth, Management, Network, Observability, Media/AI, Uptime, Cloud
-- [**Utilities (Scripts)**](scripts.md) — Helper scripts and manual execution wrappers
+- [**Configuration Management (Ansible)**](ansible.md) — Playbooks, roles, dynamic inventory, and the 6-phase provisioning lifecycle. Last reviewed: `2026-03-05`.
+- [**Application Workloads (Stacks)**](stacks.md) — All Docker Swarm stack configurations: Gateway, Auth, Management, Network, Observability, Media/AI, Uptime, Cloud. Last reviewed: `2026-03-05`.
+- [**Utilities (Scripts)**](scripts.md) — Helper scripts and manual execution wrappers. Last reviewed: `2026-03-05`.
 
 ### Infrastructure as Code (Terraform)
 
@@ -80,13 +104,13 @@ flowchart TD
 
 ### Architecture & Operations
 
-- [**Network Architecture**](network-architecture.md) — Tailscale mesh, 3-manager Swarm topology, GlusterFS replication, overlay networks, DNS & ingress flow
-- [**Infisical Secrets Workflow**](infisical-workflow.md) — Agent config, `.env.tmpl` templating, secret injection pipeline
-- [**CI Impact Rules**](ci-impact-rules.md) — Centralized path filters and workflow impact-output mapping
-- [**Meta-Pipeline Cutover Checklist**](meta-pipeline-cutover-checklist.md) — Minimal first-run checklist (GitHub vars/secrets + Terraform workspace vars)
-- [**Deployment Runbook**](deployment-runbook.md) — Stack ordering, deploy commands, verification, rollback procedures
-- [**Backup Strategy**](backup-strategy.md) — OCI Silver backup policy, GlusterFS redundancy, application-level backups, recovery
+- [**Network Architecture**](network-architecture.md) — Tailscale mesh, 3-manager Swarm topology, GlusterFS replication, overlay networks, DNS & ingress flow. Last reviewed: `2026-03-05`.
+- [**Infisical Secrets Workflow**](infisical-workflow.md) — Agent config, `.env.tmpl` templating, secret injection pipeline. Last reviewed: `2026-03-05`.
+- [**CI Impact Rules**](ci-impact-rules.md) — Centralized path filters and workflow impact-output mapping. Last reviewed: `2026-03-05`.
+- [**Meta-Pipeline Cutover Checklist**](meta-pipeline-cutover-checklist.md) — Minimal first-run checklist (GitHub vars/secrets + Terraform workspace vars). Last reviewed: `2026-03-05`.
+- [**Deployment Runbook**](deployment-runbook.md) — Stack ordering, deploy commands, verification, rollback procedures. Last reviewed: `2026-03-05`.
+- [**Backup Strategy**](backup-strategy.md) — OCI Silver backup policy, GlusterFS redundancy, application-level backups, recovery. Last reviewed: `2026-03-05`.
 
 ### Guides & External Setups
 
-- [OCI Terraform Cloud OIDC Setup](oci-tfc-oidc-setup.md)
+- [OCI Terraform Cloud OIDC Setup](oci-tfc-oidc-setup.md) — Federated identity setup and fallback pattern. Last reviewed: `2026-03-05`.

@@ -49,13 +49,40 @@ Use this as the source of truth for whether a value is operator-managed or autom
 
 | Variable / Path | Owner | Mutability |
 |-----------------|-------|------------|
-| `/stacks/management/PORTAINER_ADMIN_PASSWORD_HASH` | Ansible `portainer_bootstrap` | Auto-generated/re-written each bootstrap run. Do not set manually. |
-| `/management/PORTAINER_URL`, `/management/PORTAINER_API_URL`, `/management/PORTAINER_API_KEY` | Ansible `portainer_bootstrap` | Auto-written after bootstrap (and API key may be rotated). |
-| `/deployments/PORTAINER_WEBHOOK_URLS` + `/deployments/WEBHOOK_URL_*` | Terraform `portainer` module | Auto-written on Portainer workspace apply. Do not edit manually. |
-| `TF_VAR_network_access_policy` (Terraform Cloud env var) | Meta pipeline `network-policy-sync` job | Auto-created/updated from canonical runner egress policy JSON. |
-| `/stacks/management/PORTAINER_AUTOMATION_ALLOWED_CIDRS` | Meta pipeline `network-policy-sync` job | Auto-synced from `network_access_policy.portainer_api.source_ranges`. |
+| `/stacks/management/PORTAINER_ADMIN_PASSWORD_HASH` | Platform | Auto-generated/re-written by Ansible `portainer_bootstrap` on bootstrap runs. Do not set manually. |
+| `/management/PORTAINER_URL`, `/management/PORTAINER_API_URL`, `/management/PORTAINER_API_KEY` | Platform | Auto-written by Ansible `portainer_bootstrap` after bootstrap (API key may be rotated). Do not set manually. |
+| `/deployments/PORTAINER_WEBHOOK_URLS` + `/deployments/WEBHOOK_URL_*` | Platform | Auto-written by Terraform `portainer` module on Portainer workspace apply. Do not edit manually. |
+| `TF_VAR_network_access_policy` (Terraform Cloud env var) | Security | Auto-created/updated by meta-pipeline `network-policy-sync` job. Do not set manually outside policy sync flow. |
+| `/stacks/management/PORTAINER_AUTOMATION_ALLOWED_CIDRS` | Security | Auto-synced by meta-pipeline from `network_access_policy.portainer_api.source_ranges`. Do not set manually outside break-glass recovery. |
 
 > For first-run setup and required GitHub/TFC inputs, see [Meta-Pipeline Cutover Checklist](meta-pipeline-cutover-checklist.md).
+
+### Required for First Deploy
+
+| Path | Variables | Requirement | Owner | Notes |
+|------|-----------|-------------|-------|-------|
+| `/infrastructure` | `BASE_DOMAIN`, `TZ`, `CLOUDFLARE_API_TOKEN`, `ZONE_ID`, `TAILSCALE_AUTH_KEY` | Required | Operator | Baseline globals for stack rendering, DNS, and provisioning |
+| `/cloud-provider/oci` | `OCI_COMPARTMENT_OCID`, `OCI_IMAGE_OCID` | Required | Platform | Required for infra workspace apply |
+| `/cloud-provider/gcp` | `GCP_PROJECT_ID` | Required | Platform | Required for infra workspace apply |
+| `/security` | `SSH_CA_PUBLIC_KEY` (and host CA key if used) | Required | Security | Required for SSH certificate trust bootstrap |
+| `/stacks/management` | `HOMARR_SECRET_KEY`, `PORTAINER_ADMIN_PASSWORD` | Required | Operator | Needed before Phase 6 Portainer bootstrap |
+| `/stacks/gateway` | `ACME_EMAIL`, `DOCKER_SOCKET_PROXY_URL` | Required | Operator | Required for gateway stack certificate/Docker provider wiring |
+| `/stacks/identity` | `AUTHELIA_JWT_SECRET`, `AUTHELIA_SESSION_SECRET`, `POSTGRES_PASSWORD`, SMTP+OIDC secrets | Required | Security | Required for first auth deploy and SSO readiness |
+| `/stacks/network` | `VW_DB_PASS`, `VW_ADMIN_TOKEN`, `PIHOLE_PASSWORD` | Required | Operator | Required for network stack stateful services |
+| `/stacks/observability` | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET`, `ALERTMANAGER_WEBHOOK_URL` | Required | Operator | Required for observability deploy and alert routing |
+| `/stacks/ai-interface` | `ARCH_PC_IP` | Required | Operator | Required for Open WebUI upstream reachability |
+| GitHub `vars.*`/`secrets.*` bootstrap set | `INFISICAL_MACHINE_IDENTITY_ID`, `INFISICAL_PROJECT_ID`, `TFC_*`, `CLOUD_STATIC_RUNNER_LABEL`, `TFC_TOKEN`, `INFISICAL_TOKEN` | Required | Platform | Required for pipeline execution and handover stages |
+
+### Steady-State / Optional
+
+| Path | Variables | Requirement | Owner | Notes |
+|------|-----------|-------------|-------|-------|
+| `/management` | `PORTAINER_LICENSE_KEY` | Optional | Operator | Only needed for Portainer BE licensing |
+| GitHub `vars.*` | Timeout/poll interval tunables (`TFC_PLAN_*`, `PORTAINER_ALLOWLIST_PROPAGATION_*`, etc.) | Optional | Operator | Operational tuning only; defaults exist |
+| `/deployments` | `PORTAINER_WEBHOOK_URLS`, `WEBHOOK_URL_*` | Optional (manual use) | Platform | Auto-managed outputs from Terraform apply; consumed automatically by pipelines |
+| `/stacks/management` | `PORTAINER_AUTOMATION_ALLOWED_CIDRS` | Optional (manual seed only) | Security | Auto-synced by policy pipeline; manual set only as temporary break-glass bridge |
+
+### Detailed Path Reference
 
 ### `/infrastructure` — Global
 

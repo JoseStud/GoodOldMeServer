@@ -1,45 +1,83 @@
-OCI + Terraform Cloud (TFC) federated OIDC setup
+# OCI + Terraform Cloud OIDC Setup
 
-Goal
-- Enable Terraform Cloud remote runs to acquire short-lived credentials from Oracle Cloud Infrastructure (OCI) using OIDC federation (avoid long‑lived API keys).
+This guide describes how to let Terraform Cloud runs obtain short-lived OCI credentials through OIDC federation and what to do when direct federation is unavailable.
 
-Important note
-- Terraform Cloud must be able to act as an OIDC client to obtain tokens that OCI will accept. If Terraform Cloud does not support acting as the OIDC token requester for OCI in your subscription, the practical fallback is to store short‑lived OCI credentials (rotated) in a TFC Variable Set.
+## Prerequisites
 
-High-level approach
-1. Identify the OIDC issuer URL that Terraform Cloud will use when requesting tokens (TFC OIDC issuer). This may be a Terraform Cloud endpoint or a dedicated OIDC URL. If TFC does not expose an issuer that can be used, you will need to use the fallback approach.
-2. In OCI, register an OIDC identity provider that trusts the TFC issuer.
-3. Create a Dynamic Group in OCI that matches tokens issued by TFC (use claims such as `sub` or `aud` as configured).
-4. Create OCI IAM policies granting the Dynamic Group the least-privilege permissions required by your Terraform configurations.
-5. Configure Terraform Cloud workspace(s) to use the federated identity (if TFC supports direct OIDC federation). If not supported, add OCI API credentials to a TFC Variable Set (marked Sensitive) as the fallback.
+- Terraform Cloud organization and workspace(s) already created.
+- OCI tenancy admin access for Identity Providers, Dynamic Groups, and IAM Policies.
+- Confirmed Terraform Cloud OIDC issuer URL and expected audience claim.
+- Clear fallback decision: if direct TFC -> OCI OIDC federation is unavailable in your tenancy/subscription, use short-lived OCI credentials in a Terraform Cloud Variable Set.
 
-OCI steps (console or CLI)
-- You will need the exact TFC issuer URL and the audience (aud) value you want OCI to match.
+## Verified Steps
 
-1) Register an OIDC Identity Provider in OCI
-- In the OCI Console: Identity & Security → Identity Providers → Add → OpenID Connect
-  - Name: terraform-cloud-oidc
-  - Issuer URL: <TFC_OIDC_ISSUER_URL>  # e.g. https://app.terraform.io/.well-known/openid-configuration (confirm exact URL)
-  - Client ID / Audience: <AUDIENCE_STRING>
-  - Save the provider.
+### 1) Confirm Terraform Cloud OIDC issuer and audience
 
-2) Create a Dynamic Group
-- In the OCI Console: Identity & Security → Dynamic Groups → Create Dynamic Group
-  - Name: tfc-dynamic-group
-  - Matching rule: create a rule that matches the token claims (for example, a claim for subject or audience). Exact rule syntax depends on the token mapping used. Examples you may adapt:
-    - If tokens contain a `sub` claim like `org/xxxxx/workspace/...`, match by `token.sub`.
-    - If tokens contain repository or other claims, use that mapping.
+1. Identify the exact Terraform Cloud OIDC issuer URL used by runs.
+2. Decide the audience value OCI should match.
+3. Record both values in change documentation before touching OCI IAM.
 
-3) Create an IAM Policy granting permissions
-- Example minimal policy (replace compartment and resources):
-  - allow dynamic-group tfc-dynamic-group to manage instance-family in compartment MyCompartment
-  - allow dynamic-group tfc-dynamic-group to manage virtual-network-family in compartment MyCompartment
+### 2) Register OCI OIDC Identity Provider
 
-4) Configure Terraform Cloud
-- If Terraform Cloud supports registering an external OIDC provider for workspace remote runs, add the TFC client configuration and audience there and map the OCI trust accordingly. Required environment variable is typically just `OCI_CLI_AUTH="security_token"`.
+1. Open OCI Console: `Identity & Security -> Identity Providers -> Add -> OpenID Connect`.
+2. Create provider values:
+   - Name: `terraform-cloud-oidc`
+   - Issuer URL: `<TFC_OIDC_ISSUER_URL>`
+   - Audience/Client ID: `<AUDIENCE_STRING>`
+3. Save and copy provider identifiers for audit notes.
 
-Verification
-- Trigger a TFC run and check cloud logs.
-- If OCI denies access, verify the issuer/audience and token claims accepted by the Dynamic Group rule.
+### 3) Create OCI Dynamic Group for Terraform Cloud identities
 
+1. Open OCI Console: `Identity & Security -> Dynamic Groups -> Create Dynamic Group`.
+2. Name: `tfc-dynamic-group`.
+3. Add matching rules based on trusted claims (`sub`, `aud`, and any scoped claim strategy in your environment).
+4. Keep matching narrow to required workspaces/use cases.
 
+### 4) Grant least-privilege IAM policies
+
+Create policies in target compartment(s), for example:
+
+- `allow dynamic-group tfc-dynamic-group to manage instance-family in compartment MyCompartment`
+- `allow dynamic-group tfc-dynamic-group to manage virtual-network-family in compartment MyCompartment`
+
+Start least-privilege and expand only after denied-action evidence.
+
+### 5) Configure Terraform Cloud run path
+
+If direct federation is supported:
+
+1. Configure workspace runtime/auth settings for federated OIDC.
+2. Set OCI auth mode for token flow (commonly `OCI_CLI_AUTH=security_token`).
+3. Run a plan and verify OCI actions without static key material.
+
+If direct federation is not supported (fallback):
+
+1. Store short-lived OCI credentials in a Terraform Cloud Variable Set (sensitive values).
+2. Attach Variable Set to required workspaces only.
+3. Define rotation cadence and ownership.
+
+## Verification
+
+- Trigger a Terraform Cloud run and record run ID/time.
+- Confirm OCI API calls succeed using federated identity or approved fallback credentials.
+- If denied, validate:
+  - issuer URL exact match,
+  - audience claim expected by OCI,
+  - dynamic group claim matching rules,
+  - IAM policy scope/verbs.
+
+## Rollback
+
+If federation rollout causes run failures:
+
+1. Disable or detach new federation-specific workspace auth changes.
+2. Reattach known-good fallback Variable Set credentials (short-lived, sensitive).
+3. Re-run plan to confirm recovery.
+4. Keep failed federation config for postmortem analysis (do not delete immediately).
+
+## Troubleshooting
+
+- **401/403 from OCI APIs:** usually claim mismatch (`iss`, `aud`, or `sub`) or missing IAM policy permission.
+- **Terraform Cloud run cannot mint/forward expected token:** verify workspace auth capability and current subscription support.
+- **Dynamic group rule too broad or too narrow:** inspect run identity claims and adjust rule precision.
+- **Intermittent auth errors:** verify token lifetime/skew and runner clock consistency.

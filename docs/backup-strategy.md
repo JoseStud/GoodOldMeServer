@@ -17,6 +17,17 @@ flowchart TD
     L3 -.->|Granular recovery| APPDATA[Application Data Restore]
 ```
 
+## Recovery Objectives (RPO/RTO)
+
+Conservative recovery targets for current architecture:
+
+| Scope | RPO Target | RTO Target | Notes |
+|------|------------|------------|-------|
+| Platform-wide stateful services | 24h | 8h | Anchored to OCI Silver daily backups plus manual restore workflow |
+| Critical auth data path (Authelia + Vaultwarden DB) | 24h | 4h | Faster restore objective due to identity and credential dependency impact |
+
+> These are operational targets for planning and incident handling, not hard availability guarantees.
+
 ## Layer 1: OCI Block Volume Backups
 
 ### Configuration
@@ -215,6 +226,21 @@ Authelia's config directory is bind-mounted from GlusterFS (`/mnt/swarm-shared/a
 | Authelia DB | PostgreSQL dump | Manual | — | No |
 | Pi-hole config | Teleporter export | Manual | — | No |
 | Grafana dashboards | API export | Manual | — | No |
+
+## Quarterly Restore Validation Checklist
+
+Perform this checklist at least once per quarter and store evidence in your incident/change records.
+
+| Step | Evidence | Owner | Pass/Fail Criteria |
+|------|----------|-------|--------------------|
+| Select a recent OCI block-volume backup and record backup OCID/timestamp | Screenshot or exported metadata with backup OCID and creation time | Platform | Pass when selected backup is <= 24h old at test start |
+| Restore backup as a new temporary block volume and attach to a recovery host | OCI attachment screenshot + `lsblk` output | Platform | Pass when restored volume is attached and visible to OS |
+| Mount restored filesystem and verify expected directories (`auth`, `network`, `observability`, etc.) | `find`/`ls` output captured in run log | Platform | Pass when critical service paths exist and are readable |
+| Run sample integrity checks on restored artifacts (for example DB dump header/readability checks) | Command transcript showing successful checks | Operator | Pass when sample artifacts can be read and parsed without corruption errors |
+| Rehydrate a non-production copy of at least one critical service data set | Command log + service status output | Platform | Pass when service starts and health check returns expected status |
+| Validate DNS/auth-facing service health after restore rehearsal | `curl`/health endpoint output and timestamps | Operator | Pass when selected health checks return expected status codes |
+| Trigger Gluster heal simulation command for restored copy workflow (`gluster volume heal ...`) | Command output in test log | Platform | Pass when command completes without fatal errors |
+| Document test result, variance from RPO/RTO targets, and remediation actions | Quarterly report entry with owner sign-off | Security | Pass when report includes outcome, gaps, and action items with owners |
 
 ## Recommendations
 

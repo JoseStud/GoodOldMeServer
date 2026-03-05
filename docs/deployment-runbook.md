@@ -200,6 +200,17 @@ Runs execute with a split model:
 - `goodoldme-infra`: Terraform Cloud managed workers (remote run/apply)
 - `goodoldme-portainer`: local Terraform CLI on the cloud static runner, backed by Terraform Cloud remote state (`operations=false`)
 
+## Decision Gate: Normal vs Break-Glass
+
+Use this decision gate before running local/manual fallback commands.
+
+| Condition | Mode | Allowed actions | Controls required | Post-action reconciliation |
+|-----------|------|-----------------|------------------|----------------------------|
+| Terraform Cloud workspaces are reachable, metadata is healthy, and no urgent outage is active | Normal | `meta-pipeline.yml` execution, Terraform-managed apply paths, health-gated webhook redeploys | Follow cutover checklist prerequisites, run pipeline preflights, keep network policy sync enabled | Verify no drift via planned managed run and document execution reason/output |
+| Terraform Cloud control plane unavailable or degraded but service-impacting change is required | Break-Glass | Local `terraform -chdir=... apply` and/or direct `docker stack deploy` fallback commands | Record incident ticket/change record, limit operator set, keep commands scoped to impacted stack(s) only | Re-run normal managed workflow ASAP, confirm drift is cleared, attach evidence to incident record |
+| Portainer API allowlist propagation or webhook automation path is blocked during incident response | Break-Glass | Direct CLI stack deploy or targeted service update commands | Confirm operator SSH source is approved, capture exact commands and timestamps | Reconcile by rerunning managed redeploy and validating webhooks/allowlist behavior |
+| Routine updates with no control-plane issues | Normal | GitOps webhook path and Terraform `portainer-root` managed apply only | Standard review + validation checks | Confirm expected job chain completed and archive logs/artifacts |
+
 ```bash
 # Local fallback (if not using Terraform Cloud workspaces)
 terraform -chdir=terraform/infra apply

@@ -35,6 +35,23 @@ All workloads are constrained to `node.labels.location == cloud` (OCI nodes). Th
 
 See [Deployment Runbook](deployment-runbook.md) for step-by-step commands.
 
+## Health Checks and Webhook Gate Behavior
+
+Health-gated redeploy behavior is driven by `stacks/stacks.yaml` and `.github/scripts/trigger_webhooks_with_gates.sh`.
+
+| Stack | Health endpoint | Expected status | Timeout | Dependency gate behavior | Post-trigger wait behavior |
+|-------|------------------|-----------------|---------|--------------------------|----------------------------|
+| `management` | N/A | N/A | N/A | Not Portainer-managed (`portainer_managed: false`); not part of webhook gate flow | N/A |
+| `gateway` | `https://gateway-health.${BASE_DOMAIN}/healthz` | `200` | `300s` | No dependencies; can trigger first | Waits for gateway health endpoint after webhook trigger |
+| `auth` | `https://auth.${BASE_DOMAIN}/api/health` | `200` | `300s` | Waits for `gateway` health before trigger | Waits for auth health endpoint after webhook trigger |
+| `network` | N/A | N/A | N/A | Waits for dependency checks on `gateway` and `auth` first | No stack health URL configured; post-trigger health wait returns immediately |
+| `observability` | N/A | N/A | N/A | Waits for dependency checks on `gateway` and `auth` first | No stack health URL configured; post-trigger health wait returns immediately |
+| `ai-interface` | N/A | N/A | N/A | Waits for dependency checks on `gateway` and `auth` first | No stack health URL configured; post-trigger health wait returns immediately |
+| `uptime` | N/A | N/A | N/A | Waits for dependency checks on `gateway` and `auth` first | No stack health URL configured; post-trigger health wait returns immediately |
+| `cloud` | N/A | N/A | N/A | Waits for dependency checks on `gateway` and `auth` first | No stack health URL configured; post-trigger health wait returns immediately |
+
+The gate script always checks dependency health before triggering a dependent stack webhook, then performs a post-trigger health wait for the triggered stack when a `healthcheck_url` exists.
+
 ## Shared Patterns
 
 All stacks follow these conventions:

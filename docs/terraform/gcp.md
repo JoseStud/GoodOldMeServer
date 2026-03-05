@@ -19,6 +19,38 @@ After provisioning, Ansible installs Tailscale on this instance and joins it to 
 
 > See [Network Architecture](../network-architecture.md#docker-swarm-topology) for the 3-manager quorum rationale.
 
+## Network Access Policy Example (IPv6 witness SSH)
+
+The GCP module consumes `ssh_allowed_cidrs` from `TF_VAR_network_access_policy.gcp_ssh.source_ranges` through the infra root module wiring.
+
+Example:
+
+```bash
+export TF_VAR_network_access_policy='{
+  "oci_ssh": {
+    "enabled": true,
+    "source_ranges": ["203.0.113.10/32"]
+  },
+  "gcp_ssh": {
+    "enabled": true,
+    "source_ranges": ["2001:db8:100::10/128"]
+  },
+  "portainer_api": {
+    "source_ranges": ["203.0.113.10/32", "2001:db8:100::10/128"]
+  }
+}'
+```
+
+`gcp_ssh.source_ranges` must contain IPv6 CIDRs only.
+
+## Common Validation Errors
+
+| Validation source | Error pattern | Why it fails | Fix |
+|-------------------|--------------|-------------|-----|
+| `terraform/gcp/main.tf` (`ssh_allowed_cidrs`) | `ssh_allowed_cidrs must contain valid IPv6 CIDRs and must be non-empty when ssh_enabled=true.` | One or more CIDRs are invalid, IPv4, or list is empty while SSH is enabled | Provide valid IPv6 CIDRs (for example `/128` runner egress) and keep list non-empty when enabled |
+| `terraform/infra/main.tf` (`network_access_policy`) | `network_access_policy is invalid: ... gcp_ssh must use IPv6 CIDRs ...` | Root policy validation rejected `gcp_ssh.source_ranges` values | Ensure `gcp_ssh.source_ranges` are IPv6 CIDRs only |
+| `terraform/infra/main.tf` (`network_access_policy`) | `network_access_policy is invalid: ... portainer_api must include at least one valid CIDR.` | `portainer_api.source_ranges` empty or invalid | Provide at least one valid CIDR (dual-stack recommended for automation runners) |
+
 ## Regenerating Docs
 
 ```bash

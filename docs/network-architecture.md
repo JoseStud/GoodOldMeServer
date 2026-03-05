@@ -46,6 +46,20 @@ graph TB
     OCI1 <-.->|GlusterFS replica-3-arbiter-1<br/>over Tailscale| OCI2
 ```
 
+## Port and Protocol Matrix
+
+| Source | Destination | Protocol/Port | Purpose | Enforcement point |
+|--------|-------------|---------------|---------|-------------------|
+| Internet clients | OCI workers (`app-worker-1`, `app-worker-2`) | TCP `80`, `443` | Public HTTP/HTTPS ingress to Traefik entrypoints | OCI Gateway NSG ingress rules (`gateway_http`, `gateway_https`) |
+| Cloud static runner IPv4 egress | OCI workers | TCP `22` | Ansible/SSH administrative access to OCI nodes | OCI NSG SSH rule (`oci_core_network_security_group_security_rule.ssh`) driven by `TF_VAR_network_access_policy.oci_ssh.source_ranges` |
+| Cloud static runner IPv6 egress | GCP witness | TCP `22` | Initial Ansible connectivity to witness | GCP firewall `allow_ssh` rule using `ssh_allowed_cidrs` from `TF_VAR_network_access_policy.gcp_ssh.source_ranges` |
+| Cloud static runner dual-stack egress | `portainer-api.<BASE_DOMAIN>` (Traefik -> Portainer service) | TCP `443` | Terraform Portainer provider calls and private webhook automation traffic | Traefik `ipAllowList` middleware (`PORTAINER_AUTOMATION_ALLOWED_CIDRS`) + rate limit middleware |
+| Swarm manager nodes (all 3) | Swarm manager nodes (all 3) | TCP `2377`, TCP/UDP `7946`, UDP `4789` | Swarm control-plane, gossip, and overlay networking | Docker Swarm over Tailscale mesh; nodes are joined with Tailscale advertise addresses |
+| OCI workers + GCP witness | GlusterFS peers/bricks | TCP `24007` + GlusterFS brick ports | GlusterFS peer management and replicated storage traffic | GlusterFS daemon configuration over Tailscale private network |
+| LAN/Tailscale clients | Pi-hole services on OCI nodes | TCP/UDP `53` (host mode) | DNS resolution via Pi-hole pair | Host-mode port binding in `stacks/network/docker-compose.yml` + node pinning |
+| Traefik service | `socket-proxy` service | TCP `2375` | Read-only Docker API access for dynamic routing discovery | Internal `socket-proxy` overlay network + docker-socket-proxy capability flags |
+| Traefik service | Stack backends (Authelia, Grafana, etc.) | Internal service ports over overlay (for example `9091`, `3000`, `9093`) | Reverse proxy routing to application services | `traefik_proxy` overlay membership + explicit `traefik.enable=true` labels |
+
 ## Tailscale Mesh Networking
 
 All 3 nodes (2 OCI workers + 1 GCP witness) are connected via a [Tailscale](https://tailscale.com/) mesh network built on WireGuard. This provides:

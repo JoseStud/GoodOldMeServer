@@ -91,6 +91,32 @@ This eliminates the need to distribute individual public keys to each node.
 
 The `ansible/playbooks/provision.yml` playbook runs all 6 phases sequentially. It starts by waiting for SSH connectivity (up to 300s with 10s delay), gathering facts, and verifying with a ping.
 
+## Tags Matrix
+
+| Phase | Tags | Includes | Example `--tags` | Example `--skip-tags` |
+|------|------|----------|------------------|-----------------------|
+| Phase 1: Base system | `phase1_base` | `system_user`, `storage` (OCI only) | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --tags phase1_base` | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --skip-tags phase1_base` |
+| Phase 2: Docker | `phase2_docker` | `docker` role | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --tags phase2_docker` | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --skip-tags phase2_docker` |
+| Phase 3: Tailscale | `phase3_tailscale` | Tailscale install/auth/verify tasks | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --tags phase3_tailscale` | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --skip-tags phase3_tailscale` |
+| Phase 4: GlusterFS | `phase4_glusterfs` | `glusterfs` role + config sync include | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --tags phase4_glusterfs` | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --skip-tags phase4_glusterfs` |
+| Phase 4b: Config sync only | `sync-configs` | `roles/glusterfs/tasks/sync-configs.yml` | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --tags sync-configs` | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --skip-tags sync-configs` |
+| Phase 5: Swarm | `phase5_swarm` | `swarm` role | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --tags phase5_swarm` | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --skip-tags phase5_swarm` |
+| Phase 6: Portainer bootstrap | `phase6_portainer` | `portainer_bootstrap` role (first OCI node only) | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --tags phase6_portainer` | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --skip-tags phase6_portainer` |
+
+## Runtime & Failure Expectations by Phase
+
+Expected runtimes below are guidance ranges for healthy nodes and network conditions; they are not SLOs.
+
+| Phase | Typical Runtime | Dominant Failure Points |
+|------|-----------------|-------------------------|
+| Phase 1 (`phase1_base`) | 2-8 min | Block device not present (`/dev/sdb` mapping mismatch), partition/format permissions, mount failures on OCI nodes |
+| Phase 2 (`phase2_docker`) | 3-10 min | APT/GPG key fetch failures, Docker repository reachability, package lock contention |
+| Phase 3 (`phase3_tailscale`) | 1-5 min | Missing/invalid `TAILSCALE_AUTH_KEY`, outbound connectivity to Tailscale package/auth endpoints, node already in inconsistent auth state |
+| Phase 4 (`phase4_glusterfs`) | 5-20 min | Peer probe failure over Tailscale, Gluster volume create/start errors, witness connectivity issues, mount and brick path availability |
+| Phase 4b (`sync-configs`) | <1-3 min | Missing source config files under `stacks/*/config`, GlusterFS mount/path permissions |
+| Phase 5 (`phase5_swarm`) | 2-8 min | Manager join token retrieval/use issues, Tailscale IP discovery problems, pre-existing conflicting swarm state |
+| Phase 6 (`phase6_portainer`) | 2-12 min | Portainer API health timeout, invalid bootstrap credentials/env vars, Infisical write/auth failures for `/management` and `/stacks/management` |
+
 ### Phase 1: Base System Setup
 
 **Applies to:** All nodes (system_user), OCI nodes only (storage)
