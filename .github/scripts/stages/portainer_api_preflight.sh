@@ -6,7 +6,6 @@ source .github/scripts/lib/workflow_common.sh
 
 : "${INFISICAL_PROJECT_ID:?INFISICAL_PROJECT_ID is required}"
 
-apt_install jq netcat-openbsd
 setup_infisical
 
 portainer_api_url="$(

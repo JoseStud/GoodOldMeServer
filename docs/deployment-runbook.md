@@ -12,8 +12,8 @@ Before deploying any stack, verify that all infrastructure layers are operationa
 |-------------|---------------|-----|
 | Cutover checklist complete | Review [Meta-Pipeline Cutover Checklist](meta-pipeline-cutover-checklist.md) and confirm all required items | Complete missing GitHub/TFC/Infisical prerequisites before deploy |
 | Automation-managed variables understood | Review [Variable Ownership & Mutability](infisical-workflow.md#variable-ownership--mutability) | Do not manually edit automation-managed variables outside their owning workflow |
-| Terraform infra workspace applied | Terraform Cloud run for `goodoldme-infra` succeeds (or `terraform -chdir=terraform/infra output`) | Run `meta-pipeline.yml` with `run_infra_apply=true` or `terraform -chdir=terraform/infra apply` |
-| Terraform Portainer workspace applied | Local CI apply for `terraform/portainer-root` succeeds against TFC remote state (`goodoldme-portainer`) (or `terraform -chdir=terraform/portainer-root output`) | Run `meta-pipeline.yml` with `run_portainer_apply=true` or `terraform -chdir=terraform/portainer-root apply` |
+| Terraform infra workspace applied | Terraform Cloud run for `goodoldme-infra` succeeds (or `terraform -chdir=terraform/infra output`) | Run `infra-orchestrator.yml` with `run_infra_apply=true` or `terraform -chdir=terraform/infra apply` |
+| Terraform Portainer workspace applied | Local CI apply for `terraform/portainer-root` succeeds against TFC remote state (`goodoldme-portainer`) (or `terraform -chdir=terraform/portainer-root output`) | Run `infra-orchestrator.yml` with `run_portainer_apply=true` or `terraform -chdir=terraform/portainer-root apply` |
 | Cloud static runner ready | `vars.CLOUD_STATIC_RUNNER_LABEL` is set and workflow logs show deterministic IPv4/IPv6 egress | Configure runner label and egress routing, then re-run |
 | Ansible provisioning complete | SSH into nodes, verify Docker/Tailscale/GlusterFS/Portainer | Re-run `ansible-playbook` |
 | Portainer running | `curl -s http://localhost:9000/api/system/status` returns HTTP 200 | Re-run Ansible `portainer_bootstrap` role |
@@ -28,7 +28,7 @@ Before deploying any stack, verify that all infrastructure layers are operationa
 
 ## Deployment Order
 
-Stacks have dependencies. The meta-pipeline enforces this order with health gates:
+Stacks have dependencies. The infrastructure orchestrator enforces this order with health gates:
 
 ```mermaid
 flowchart TD
@@ -206,7 +206,7 @@ Use this decision gate before running local/manual fallback commands.
 
 | Condition | Mode | Allowed actions | Controls required | Post-action reconciliation |
 |-----------|------|-----------------|------------------|----------------------------|
-| Terraform Cloud workspaces are reachable, metadata is healthy, and no urgent outage is active | Normal | `meta-pipeline.yml` execution, Terraform-managed apply paths, health-gated webhook redeploys | Follow cutover checklist prerequisites, run pipeline preflights, keep network policy sync enabled | Verify no drift via planned managed run and document execution reason/output |
+| Terraform Cloud workspaces are reachable, metadata is healthy, and no urgent outage is active | Normal | `infra-orchestrator.yml` execution, Terraform-managed apply paths, health-gated webhook redeploys | Follow cutover checklist prerequisites, run pipeline preflights, keep network policy sync enabled | Verify no drift via planned managed run and document execution reason/output |
 | Terraform Cloud control plane unavailable or degraded but service-impacting change is required | Break-Glass | Local `terraform -chdir=... apply` and/or direct `docker stack deploy` fallback commands | Record incident ticket/change record, limit operator set, keep commands scoped to impacted stack(s) only | Re-run normal managed workflow ASAP, confirm drift is cleared, attach evidence to incident record |
 | Portainer API allowlist propagation or webhook automation path is blocked during incident response | Break-Glass | Direct CLI stack deploy or targeted service update commands | Confirm operator SSH source is approved, capture exact commands and timestamps | Reconcile by rerunning managed redeploy and validating webhooks/allowlist behavior |
 | Routine updates with no control-plane issues | Normal | GitOps webhook path and Terraform `portainer-root` managed apply only | Standard review + validation checks | Confirm expected job chain completed and archive logs/artifacts |
@@ -271,8 +271,8 @@ Every stack is linked to the `JoseStud/stacks` Git repository in Portainer with 
 **Automatic (private automation):**
 
 1. Push to `main` in the stacks repo triggers `stacks/.github/workflows/stacks-ci.yml` and `stacks/.github/workflows/stacks-dispatch-redeploy.yml`.
-2. The dispatch workflow computes changed stacks from `stacks.yaml`, then dispatches one `stacks-redeploy-requested` event (schema `v2`) to this infra repo.
-3. Infra `meta-pipeline.yml` validates secrets, runs Portainer apply when `structural_change=true`, runs config sync when `config_stacks` is non-empty, then triggers health-gated webhooks.
+2. The dispatch workflow computes changed stacks from `stacks.yaml`, then dispatches one `stacks-redeploy-intent-v3` event (schema `v3`) to this infra repo.
+3. Infra `infra-orchestrator.yml` validates secrets, runs Portainer apply when `structural_change=true`, runs config sync when `config_stacks` is non-empty, then triggers health-gated webhooks.
 4. Health gates use manifest dependencies: Gateway is checked first (`gateway-health.<BASE_DOMAIN>/healthz`) before Auth and downstream stacks.
 
 **Manual (one-off):**
@@ -308,7 +308,7 @@ Stacks are now managed declaratively via the `portainer` Terraform module. To ad
 
 1. Create the `docker-compose.yml` in the stacks repo under `<name>/`
 2. Add a new entry to `stacks/stacks.yaml` with `compose_path`, `portainer_managed`, dependencies, and optional health check metadata
-3. Run `terraform -chdir=terraform/portainer-root apply` (or trigger `meta-pipeline.yml` with `run_portainer_apply=true`) — the stack, webhook, and Infisical secret are all created automatically
+3. Run `terraform -chdir=terraform/portainer-root apply` (or trigger `infra-orchestrator.yml` with `run_portainer_apply=true`) — the stack, webhook, and Infisical secret are all created automatically
 
 The webhook URL is written to Infisical `/deployments` as `WEBHOOK_URL_<STACK_NAME>` and appended to the combined `PORTAINER_WEBHOOK_URLS` secret.
 

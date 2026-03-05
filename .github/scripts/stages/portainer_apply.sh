@@ -9,8 +9,6 @@ source .github/scripts/lib/workflow_common.sh
 
 SHADOW_MODE="$(to_bool "${SHADOW_MODE:-false}")"
 
-apt_install jq
-
 TFC_WORKSPACE="${TFC_WORKSPACE_PORTAINER}" \
 .github/scripts/tfc/assert_tfc_workspace_local_mode.sh
 

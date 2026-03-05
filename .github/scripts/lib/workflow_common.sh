@@ -18,27 +18,13 @@ require_command() {
   fi
 }
 
-apt_install() {
-  if [[ $# -eq 0 ]]; then
-    return
-  fi
-  sudo apt-get update
-  sudo apt-get install -y "$@"
-}
-
-setup_infisical_cli() {
-  curl -1sLf 'https://artifacts-infisical-core.infisical.com/setup.deb.sh' | sudo -E bash
-  sudo apt-get update
-  sudo apt-get install -y infisical-core
-}
-
 infisical_oidc_login() {
   : "${INFISICAL_MACHINE_IDENTITY_ID:?INFISICAL_MACHINE_IDENTITY_ID is required}"
-  infisical login --method=oidc --oidc-client-id="${INFISICAL_MACHINE_IDENTITY_ID}" --domain="https://app.infisical.com"
+  infisical login --method=oidc --oidc-client-id="${INFISICAL_MACHINE_IDENTITY_ID}" --domain="${INFISICAL_DOMAIN:-https://app.infisical.com}"
 }
 
 setup_infisical() {
-  setup_infisical_cli
+  require_command infisical
   infisical_oidc_login
 }
 
@@ -54,13 +40,9 @@ checkout_stacks_sha() {
 
 generate_ephemeral_ssh_certificate() {
   : "${INFISICAL_SSH_CA_ID:?INFISICAL_SSH_CA_ID is required}"
+  require_command ssh-keygen
+  require_command infisical
   mkdir -p ~/.ssh
   ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ""
   infisical ssh sign --public-key=~/.ssh/id_ed25519.pub --ca-id="${INFISICAL_SSH_CA_ID}" > ~/.ssh/id_ed25519-cert.pub
-}
-
-install_yq() {
-  sudo wget -q https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
-  sudo chmod +x /usr/local/bin/yq
-  yq --version
 }

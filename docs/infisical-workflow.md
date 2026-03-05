@@ -52,8 +52,8 @@ Use this as the source of truth for whether a value is operator-managed or autom
 | `/stacks/management/PORTAINER_ADMIN_PASSWORD_HASH` | Platform | Auto-generated/re-written by Ansible `portainer_bootstrap` on bootstrap runs. Do not set manually. |
 | `/management/PORTAINER_URL`, `/management/PORTAINER_API_URL`, `/management/PORTAINER_API_KEY` | Platform | Auto-written by Ansible `portainer_bootstrap` after bootstrap (API key may be rotated). Do not set manually. |
 | `/deployments/PORTAINER_WEBHOOK_URLS` + `/deployments/WEBHOOK_URL_*` | Platform | Auto-written by Terraform `portainer` module on Portainer workspace apply. Do not edit manually. |
-| `TF_VAR_network_access_policy` (Terraform Cloud env var) | Security | Auto-created/updated by meta-pipeline `network-policy-sync` job. Do not set manually outside policy sync flow. |
-| `/stacks/management/PORTAINER_AUTOMATION_ALLOWED_CIDRS` | Security | Auto-synced by meta-pipeline from `network_access_policy.portainer_api.source_ranges`. Do not set manually outside break-glass recovery. |
+| `TF_VAR_network_access_policy` (Terraform Cloud env var) | Security | Auto-created/updated by `infra-orchestrator.yml` `network-policy-sync` job. Do not set manually outside policy sync flow. |
+| `/stacks/management/PORTAINER_AUTOMATION_ALLOWED_CIDRS` | Security | Auto-synced by `infra-orchestrator.yml` from `network_access_policy.portainer_api.source_ranges`. Do not set manually outside break-glass recovery. |
 
 > For first-run setup and required GitHub/TFC inputs, see [Meta-Pipeline Cutover Checklist](meta-pipeline-cutover-checklist.md).
 
@@ -149,7 +149,7 @@ The management stack (Portainer + Homarr) is deployed by Ansible, not Terraform,
 | `HOMARR_SECRET_KEY` | Generate: `openssl rand -hex 32` | Homarr `SECRET_ENCRYPTION_KEY` |
 | `PORTAINER_ADMIN_PASSWORD` | Choose a strong password or generate: `openssl rand -base64 24` | Ansible `portainer_bootstrap` role — hashed to bcrypt at deploy time and passed to Portainer via `--admin-password`; plaintext used only for JWT auth to create API key |
 | `PORTAINER_ADMIN_PASSWORD_HASH` | **Auto-generated and rewritten by Ansible on every bootstrap run** (`password_hash('bcrypt')`) and written to Infisical `/stacks/management` for Infisical Agent renders — do not set manually | Portainer `--admin-password` CLI flag (set in `docker-compose.yml`) |
-| `PORTAINER_AUTOMATION_ALLOWED_CIDRS` | Auto-synced by the meta-pipeline network policy sync job (or manually seeded before first sync) | Traefik `ipAllowList` middleware on `portainer-api.<domain>` |
+| `PORTAINER_AUTOMATION_ALLOWED_CIDRS` | Auto-synced by the infrastructure orchestrator network policy sync job (or manually seeded before first sync) | Traefik `ipAllowList` middleware on `portainer-api.<domain>` |
 
 ### `/stacks/network` — Vaultwarden + Pi-hole
 
@@ -196,14 +196,14 @@ The workflow authenticates to Infisical via **OIDC** (not Universal Auth), so no
 
 | Variable | How to Get | Used By |
 |----------|-----------|---------|
-| `INFISICAL_MACHINE_IDENTITY_ID` | Infisical → Access Control → Machine Identities → OIDC Auth → Identity ID | `meta-pipeline.yml` OIDC login |
+| `INFISICAL_MACHINE_IDENTITY_ID` | Infisical → Access Control → Machine Identities → OIDC Auth → Identity ID | `infra-orchestrator.yml` OIDC login |
 | `INFISICAL_PROJECT_ID` | Infisical → Project Settings → Project ID | Terraform/Ansible workflows and webhook runner secret reads |
-| `INFISICAL_SSH_CA_ID` | Infisical → SSH Management → SSH CA details | `meta-pipeline.yml` ephemeral SSH cert signing |
-| `TFC_ORGANIZATION` (or `TFC_ORG`) | Terraform Cloud organization slug | Meta pipeline + IaC validation Terraform Cloud API calls |
-| `CLOUD_STATIC_RUNNER_LABEL` | Label of your static-egress private runner | Meta pipeline jobs that require deterministic egress + private reachability |
+| `INFISICAL_SSH_CA_ID` | Infisical → SSH Management → SSH CA details | `infra-orchestrator.yml` ephemeral SSH cert signing |
+| `TFC_ORGANIZATION` (or `TFC_ORG`) | Terraform Cloud organization slug | Infrastructure orchestrator + infrastructure validation Terraform Cloud API calls |
+| `CLOUD_STATIC_RUNNER_LABEL` | Label of your static-egress private runner | Infrastructure orchestrator jobs that require deterministic egress + private reachability |
 | `TFC_WORKSPACE_INFRA` | Terraform Cloud → Workspace name (`goodoldme-infra`) | Infra workspace apply (`terraform/infra`) |
 | `TFC_WORKSPACE_PORTAINER` | Terraform Cloud → Workspace name (`goodoldme-portainer`) | Portainer workspace apply (`terraform/portainer-root`) |
-| `TFC_INFRA_APPLY_WAIT_TIMEOUT_SECONDS` *(optional)* | Integer seconds (default `7200`) | Infra manual-confirm wait loop in meta pipeline |
+| `TFC_INFRA_APPLY_WAIT_TIMEOUT_SECONDS` *(optional)* | Integer seconds (default `7200`) | Infra manual-confirm wait loop in infrastructure orchestrator |
 | `TFC_PLAN_WAIT_TIMEOUT_SECONDS` *(optional)* | Integer seconds (default `7200`) | IaC validation speculative-plan wait timeout |
 | `TFC_PLAN_POLL_INTERVAL_SECONDS` *(optional)* | Integer seconds (default `10`) | IaC validation speculative-plan polling interval |
 | `PORTAINER_ALLOWLIST_PROPAGATION_TIMEOUT_SECONDS` *(optional)* | Integer seconds (default `420`) | Portainer allowlist propagation wait timeout |
@@ -214,8 +214,8 @@ The workflow authenticates to Infisical via **OIDC** (not Universal Auth), so no
 | Variable | How to Get | Used By |
 |----------|-----------|---------|
 | `INFISICAL_TOKEN` (infra repo) | Infisical service token with project read/write scope for automation paths | Required by cloud-runner guard and local `terraform/portainer-root` apply path |
-| `INFRA_REPO_DISPATCH_TOKEN` (stacks repo) | Fine-grained GitHub token with `contents:write` + repository dispatch access on this infra repo | `stacks/.github/workflows/stacks-dispatch-redeploy.yml` dispatches `stacks-redeploy-requested` to this repo |
-| `TFC_TOKEN` (infra repo) | Terraform Cloud Team/API token with workspace run access | `meta-pipeline.yml` Terraform Cloud run/apply + state output inventory handover |
+| `INFRA_REPO_DISPATCH_TOKEN` (stacks repo) | Fine-grained GitHub token with `contents:write` + repository dispatch access on this infra repo | `stacks/.github/workflows/stacks-dispatch-redeploy.yml` dispatches `stacks-redeploy-intent-v3` to this repo |
+| `TFC_TOKEN` (infra repo) | Terraform Cloud Team/API token with workspace run access | `infra-orchestrator.yml` Terraform Cloud run/apply + state output inventory handover |
 
 ---
 
@@ -288,7 +288,7 @@ The management stack is **not** in this list.
 
 1. Create the compose file in `github.com/JoseStud/stacks`
 2. Add a new entry in `stacks/stacks.yaml` (`compose_path`, `portainer_managed`, `depends_on`, optional health checks)
-3. Run `terraform -chdir=terraform/portainer-root apply` (or trigger `meta-pipeline.yml` with `run_portainer_apply=true`)
+3. Run `terraform -chdir=terraform/portainer-root apply` (or trigger `infra-orchestrator.yml` with `run_portainer_apply=true`)
 
 ## Private Webhook Automation
 
@@ -302,19 +302,20 @@ Flow:
 1. Push to `main` in stacks repo
 2. Private cloud static runner computes affected stacks from changed paths
 3. Runner ignores non-deploy paths (for example docs/CI-only files)
-4. Runner dispatches a unified event (`stacks-redeploy-requested`) with schema `v2` payload to this infra repo
-5. Infra `meta-pipeline.yml` decides the ordered stages: secret validation -> optional Portainer apply -> optional config sync -> health-gated webhook redeploy
+4. Runner dispatches a unified event (`stacks-redeploy-intent-v3`) with schema `v3` payload to this infra repo
+5. Infra `infra-orchestrator.yml` decides the ordered stages: secret validation -> optional Portainer apply -> optional config sync -> health-gated webhook redeploy
 
-### `stacks-redeploy-requested` Dispatch Contract
+### `stacks-redeploy-intent-v3` Dispatch Contract
 
-- Event type: `stacks-redeploy-requested`
-- Required `client_payload.schema_version`: `v2`
+- Event type: `stacks-redeploy-intent-v3`
+- Required `client_payload.schema_version`: `v3`
 - Required `client_payload.stacks_sha`: commit SHA from stacks repo
-- Required `client_payload.changed_stacks`: CSV list of changed stack names
-- Required `client_payload.config_stacks`: CSV list of config-sync stacks (`auth`, `observability`) or empty
+- Required `client_payload.source_sha`: commit SHA from stacks repo workflow source
+- Required `client_payload.changed_stacks`: JSON array of changed stack names
+- Required `client_payload.config_stacks`: JSON array of config-sync stacks (`auth`, `observability`) or empty
 - Required `client_payload.structural_change`: boolean
 - Required `client_payload.reason`: `structural-change`, `manual-refresh`, or `content-change`
-- Optional `client_payload.changed_paths`: CSV list of stack-relevant changed paths for audit
+- Optional `client_payload.changed_paths`: JSON array of stack-relevant changed paths for audit
 - Required `client_payload.source_repo`: source repository (`owner/repo`)
 - Required `client_payload.source_run_id`: source workflow run id
 

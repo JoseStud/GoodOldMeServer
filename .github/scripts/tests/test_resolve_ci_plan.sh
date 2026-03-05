@@ -146,12 +146,16 @@ assert_eq "meta_push_portainer_filter" "run_portainer_apply" "true" "$(read_outp
 # Case 4: meta repository_dispatch structural change
 case4_env="${TMP_DIR}/case4.env"
 write_env_file "${case4_env}" \
+  "PAYLOAD_SCHEMA_VERSION=v3" \
   "PAYLOAD_STACKS_SHA=${HEAD_SHA}" \
-  "PAYLOAD_CHANGED_STACKS=gateway" \
-  "PAYLOAD_CONFIG_STACKS=" \
+  "PAYLOAD_SOURCE_SHA=${HEAD_SHA}" \
+  "PAYLOAD_CHANGED_STACKS_JSON=[\"gateway\"]" \
+  "PAYLOAD_CONFIG_STACKS_JSON=[]" \
   "PAYLOAD_STRUCTURAL_CHANGE=true" \
   "PAYLOAD_REASON=structural-change" \
-  "PAYLOAD_CHANGED_PATHS=stacks.yaml"
+  "PAYLOAD_CHANGED_PATHS_JSON=[\"stacks.yaml\"]" \
+  "PAYLOAD_SOURCE_REPO=example/stacks" \
+  "PAYLOAD_SOURCE_RUN_ID=12345"
 case4_out="$(run_plan_case "meta_repo_dispatch_structural" "meta" "repository_dispatch" "${case4_env}")"
 assert_eq "meta_repo_dispatch_structural" "run_portainer_apply" "true" "$(read_output "${case4_out}" "run_portainer_apply")"
 assert_eq "meta_repo_dispatch_structural" "run_health_redeploy" "true" "$(read_output "${case4_out}" "run_health_redeploy")"
@@ -160,12 +164,16 @@ assert_eq "meta_repo_dispatch_structural" "run_config_sync" "false" "$(read_outp
 # Case 5: meta repository_dispatch config-only path
 case5_env="${TMP_DIR}/case5.env"
 write_env_file "${case5_env}" \
+  "PAYLOAD_SCHEMA_VERSION=v3" \
   "PAYLOAD_STACKS_SHA=${HEAD_SHA}" \
-  "PAYLOAD_CHANGED_STACKS=" \
-  "PAYLOAD_CONFIG_STACKS=auth" \
+  "PAYLOAD_SOURCE_SHA=${HEAD_SHA}" \
+  "PAYLOAD_CHANGED_STACKS_JSON=[]" \
+  "PAYLOAD_CONFIG_STACKS_JSON=[\"auth\"]" \
   "PAYLOAD_STRUCTURAL_CHANGE=false" \
   "PAYLOAD_REASON=content-change" \
-  "PAYLOAD_CHANGED_PATHS=auth/config/configuration.yml"
+  "PAYLOAD_CHANGED_PATHS_JSON=[\"auth/config/configuration.yml\"]" \
+  "PAYLOAD_SOURCE_REPO=example/stacks" \
+  "PAYLOAD_SOURCE_RUN_ID=12345"
 case5_out="$(run_plan_case "meta_repo_dispatch_config" "meta" "repository_dispatch" "${case5_env}")"
 assert_eq "meta_repo_dispatch_config" "changed_stacks" "auth" "$(read_output "${case5_out}" "changed_stacks")"
 assert_eq "meta_repo_dispatch_config" "run_config_sync" "true" "$(read_output "${case5_out}" "run_config_sync")"
@@ -174,12 +182,13 @@ assert_eq "meta_repo_dispatch_config" "run_health_redeploy" "true" "$(read_outpu
 # Case 6: meta repository_dispatch no-op
 case6_env="${TMP_DIR}/case6.env"
 write_env_file "${case6_env}" \
+  "VALIDATE_DISPATCH_CONTRACT=false" \
   "PAYLOAD_STACKS_SHA=${HEAD_SHA}" \
-  "PAYLOAD_CHANGED_STACKS=" \
-  "PAYLOAD_CONFIG_STACKS=" \
+  "PAYLOAD_CHANGED_STACKS_JSON=[]" \
+  "PAYLOAD_CONFIG_STACKS_JSON=[]" \
   "PAYLOAD_STRUCTURAL_CHANGE=false" \
   "PAYLOAD_REASON=no-op" \
-  "PAYLOAD_CHANGED_PATHS="
+  "PAYLOAD_CHANGED_PATHS_JSON=[]"
 case6_out="$(run_plan_case "meta_repo_dispatch_noop" "meta" "repository_dispatch" "${case6_env}")"
 assert_eq "meta_repo_dispatch_noop" "has_work" "false" "$(read_output "${case6_out}" "has_work")"
 assert_eq "meta_repo_dispatch_noop" "run_health_redeploy" "false" "$(read_output "${case6_out}" "run_health_redeploy")"
@@ -191,11 +200,11 @@ write_env_file "${case7_env}" \
   "INPUT_RUN_ANSIBLE=false" \
   "INPUT_RUN_PORTAINER=false" \
   "INPUT_STACKS_SHA=" \
-  "INPUT_CHANGED_STACKS=" \
-  "INPUT_CONFIG_STACKS=" \
+  "INPUT_CHANGED_STACKS_JSON=[]" \
+  "INPUT_CONFIG_STACKS_JSON=[]" \
   "INPUT_STRUCTURAL_CHANGE=false" \
   "INPUT_REASON=manual-dispatch" \
-  "INPUT_CHANGED_PATHS="
+  "INPUT_CHANGED_PATHS_JSON=[]"
 case7_out="$(run_plan_case "meta_manual_infra_only" "meta" "workflow_dispatch" "${case7_env}")"
 assert_eq "meta_manual_infra_only" "run_infra_apply" "true" "$(read_output "${case7_out}" "run_infra_apply")"
 assert_eq "meta_manual_infra_only" "run_ansible_bootstrap" "false" "$(read_output "${case7_out}" "run_ansible_bootstrap")"
@@ -208,11 +217,11 @@ write_env_file "${case8_env}" \
   "INPUT_RUN_ANSIBLE=false" \
   "INPUT_RUN_PORTAINER=false" \
   "INPUT_STACKS_SHA=${HEAD_SHA}" \
-  "INPUT_CHANGED_STACKS=gateway" \
-  "INPUT_CONFIG_STACKS=auth" \
+  "INPUT_CHANGED_STACKS_JSON=[\"gateway\"]" \
+  "INPUT_CONFIG_STACKS_JSON=[\"auth\"]" \
   "INPUT_STRUCTURAL_CHANGE=false" \
   "INPUT_REASON=manual-dispatch" \
-  "INPUT_CHANGED_PATHS=auth/config/configuration.yml"
+  "INPUT_CHANGED_PATHS_JSON=[\"auth/config/configuration.yml\"]"
 case8_out="$(run_plan_case "meta_manual_stack_paths" "meta" "workflow_dispatch" "${case8_env}")"
 assert_eq "meta_manual_stack_paths" "changed_stacks" "auth,gateway" "$(read_output "${case8_out}" "changed_stacks")"
 assert_eq "meta_manual_stack_paths" "run_config_sync" "true" "$(read_output "${case8_out}" "run_config_sync")"
@@ -227,6 +236,18 @@ write_env_file "${case9_env}" \
   "INPUT_STACKS_SHA=bad_sha" \
   "INPUT_REASON=manual-dispatch"
 run_plan_case_expect_fail "meta_invalid_stacks_sha" "meta" "workflow_dispatch" "${case9_env}"
+
+# Case 9b: meta invalid JSON stack list should fail
+case9b_env="${TMP_DIR}/case9b.env"
+write_env_file "${case9b_env}" \
+  "INPUT_RUN_INFRA=false" \
+  "INPUT_RUN_ANSIBLE=false" \
+  "INPUT_RUN_PORTAINER=false" \
+  "INPUT_STACKS_SHA=${HEAD_SHA}" \
+  "INPUT_CHANGED_STACKS_JSON=[\"bad,stack\"]" \
+  "INPUT_CONFIG_STACKS_JSON=[]" \
+  "INPUT_REASON=manual-dispatch"
+run_plan_case_expect_fail "meta_invalid_stack_json" "meta" "workflow_dispatch" "${case9b_env}"
 
 # Case 10: iac workflow_dispatch should enable all checks
 case10_env="${TMP_DIR}/case10.env"
@@ -279,23 +300,24 @@ assert_eq "iac_push_portainer_gitlink" "changed_tf_roots_json" '["terraform/port
 assert_eq "iac_push_portainer_gitlink" "stacks_sha" "${HEAD_SHA}" "$(read_output "${case12_out}" "stacks_sha")"
 assert_eq "iac_push_portainer_gitlink" "tfc_workspace_matrix_json" '[]' "$(read_output "${case12_out}" "tfc_workspace_matrix_json")"
 
-# Additional validator failure check for dispatch schema v2
+# Additional validator failure check for non-v3 dispatch schema
 if (
   export EVENT_NAME="repository_dispatch"
   export PAYLOAD_SCHEMA_VERSION="v1"
   export PAYLOAD_STACKS_SHA="${HEAD_SHA}"
-  export PAYLOAD_CHANGED_STACKS="gateway"
-  export PAYLOAD_CONFIG_STACKS=""
+  export PAYLOAD_SOURCE_SHA="${HEAD_SHA}"
+  export PAYLOAD_CHANGED_STACKS_JSON="[\"gateway\"]"
+  export PAYLOAD_CONFIG_STACKS_JSON="[]"
   export PAYLOAD_STRUCTURAL_CHANGE="false"
   export PAYLOAD_REASON="content-change"
-  export PAYLOAD_CHANGED_PATHS="gateway/docker-compose.yml"
+  export PAYLOAD_CHANGED_PATHS_JSON="[\"gateway/docker-compose.yml\"]"
   export PAYLOAD_SOURCE_REPO="example/stacks"
   export PAYLOAD_SOURCE_RUN_ID="12345"
   "${VALIDATOR}" meta
 ); then
-  fail "dispatch_validator_v2_enforced: expected failure for schema v1"
+  fail "dispatch_validator_v3_enforced: expected failure for schema v1"
 else
-  pass "dispatch_validator_v2_enforced"
+  pass "dispatch_validator_v3_enforced"
 fi
 
 echo "PASS=${PASS_COUNT} FAIL=${FAIL_COUNT}"

@@ -1,4 +1,4 @@
-name: Meta Pipeline
+name: Infrastructure Orchestrator
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
       - "ansible/**"
       - ".ansible-lint"
   repository_dispatch:
-    types: [stacks-redeploy-requested]
+    types: [stacks-redeploy-intent-v3]
   workflow_dispatch:
     inputs:
       run_infra_apply:
@@ -35,12 +35,12 @@ on:
         description: "Optional stacks repository commit SHA"
         required: false
         type: string
-      changed_stacks:
-        description: "Comma-separated stack names for health-gated webhook redeploy"
+      changed_stacks_json:
+        description: "Optional JSON array of stack names for health-gated webhook redeploy"
         required: false
         type: string
-      config_stacks:
-        description: "Comma-separated stack names requiring config sync"
+      config_stacks_json:
+        description: "Optional JSON array of stack names requiring config sync"
         required: false
         type: string
       structural_change:
@@ -53,8 +53,8 @@ on:
         required: false
         default: "manual-dispatch"
         type: string
-      changed_paths:
-        description: "Optional CSV list of changed structural paths"
+      changed_paths_json:
+        description: "Optional JSON array list of changed structural paths"
         required: false
         type: string
       break_glass_policy_json:
@@ -78,10 +78,10 @@ on:
       stacks_sha:
         required: false
         type: string
-      changed_stacks:
+      changed_stacks_json:
         required: false
         type: string
-      config_stacks:
+      config_stacks_json:
         required: false
         type: string
       structural_change:
@@ -90,7 +90,7 @@ on:
       reason:
         required: false
         type: string
-      changed_paths:
+      changed_paths_json:
         required: false
         type: string
       break_glass_policy_json:
@@ -112,110 +112,40 @@ env:
   SHADOW_MODE: ${{ ((github.event_name == 'workflow_dispatch' && inputs.dry_run) || (github.event_name == 'workflow_call' && inputs.dry_run)) && 'true' || vars.SHADOW_MODE || 'false' }}
 
 concurrency:
-  group: meta-pipeline-${{ github.ref_name || github.event.repository.default_branch || 'main' }}
+  group: infra-orchestrator-${{ github.ref_name || github.event.repository.default_branch || 'main' }}
   cancel-in-progress: false
 
 jobs:
   resolve-context:
-    runs-on: ubuntu-latest
-    outputs:
-      plan_json: ${{ steps.resolve.outputs.plan_json }}
-      run_infra_apply: ${{ steps.resolve.outputs.run_infra_apply }}
-      run_ansible_bootstrap: ${{ steps.resolve.outputs.run_ansible_bootstrap }}
-      run_portainer_apply: ${{ steps.resolve.outputs.run_portainer_apply }}
-      run_config_sync: ${{ steps.resolve.outputs.run_config_sync }}
-      run_health_redeploy: ${{ steps.resolve.outputs.run_health_redeploy }}
-      has_work: ${{ steps.resolve.outputs.has_work }}
-      stacks_sha: ${{ steps.resolve.outputs.stacks_sha }}
-      changed_stacks: ${{ steps.resolve.outputs.changed_stacks }}
-      config_stacks: ${{ steps.resolve.outputs.config_stacks }}
-      structural_change: ${{ steps.resolve.outputs.structural_change }}
-      reason: ${{ steps.resolve.outputs.reason }}
-      changed_paths: ${{ steps.resolve.outputs.changed_paths }}
-      stage_cloud_runner_guard: ${{ steps.resolve.outputs.stage_cloud_runner_guard }}
-      stage_secret_validation: ${{ steps.resolve.outputs.stage_secret_validation }}
-      stage_network_policy_sync: ${{ steps.resolve.outputs.stage_network_policy_sync }}
-      stage_infra_apply: ${{ steps.resolve.outputs.stage_infra_apply }}
-      stage_inventory_handover: ${{ steps.resolve.outputs.stage_inventory_handover }}
-      stage_network_preflight_ssh: ${{ steps.resolve.outputs.stage_network_preflight_ssh }}
-      stage_ansible_bootstrap: ${{ steps.resolve.outputs.stage_ansible_bootstrap }}
-      stage_post_bootstrap_secret_check: ${{ steps.resolve.outputs.stage_post_bootstrap_secret_check }}
-      stage_portainer_api_preflight: ${{ steps.resolve.outputs.stage_portainer_api_preflight }}
-      stage_portainer_apply: ${{ steps.resolve.outputs.stage_portainer_apply }}
-      stage_config_sync: ${{ steps.resolve.outputs.stage_config_sync }}
-      stage_health_gated_redeploy: ${{ steps.resolve.outputs.stage_health_gated_redeploy }}
+    uses: ./.github/workflows/reusable-detect-impact-resolve-plan.yml
+    with:
+      plan_mode: meta
+      source_event_name: ${{ github.event_name }}
+      push_before: ${{ github.event.before }}
+      push_sha: ${{ github.sha }}
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      run_infra_apply: ${{ inputs.run_infra_apply }}
+      run_ansible_bootstrap: ${{ inputs.run_ansible_bootstrap }}
+      run_portainer_apply: ${{ inputs.run_portainer_apply }}
+      dry_run: ${{ inputs.dry_run }}
+      stacks_sha: ${{ inputs.stacks_sha }}
+      changed_stacks_json: ${{ inputs.changed_stacks_json }}
+      config_stacks_json: ${{ inputs.config_stacks_json }}
+      structural_change: ${{ inputs.structural_change }}
+      reason: ${{ inputs.reason }}
+      changed_paths_json: ${{ inputs.changed_paths_json }}
+      break_glass_policy_json: ${{ inputs.break_glass_policy_json }}
 
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y jq
-
-      - name: Load path filters config
-        id: filter-config
-        run: |
-          {
-            echo "filters<<EOF"
-            cat .github/ci/path-filters.yml
-            echo "EOF"
-          } >> "${GITHUB_OUTPUT}"
-
-      - name: Detect changed paths
-        id: path-filter
-        if: ${{ github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000' }}
-        uses: dorny/paths-filter@v3
-        with:
-          filters: ${{ steps.filter-config.outputs.filters }}
-          base: ${{ github.event.before }}
-          ref: ${{ github.sha }}
-
-      - name: Validate repository_dispatch payload contract
-        if: ${{ github.event_name == 'repository_dispatch' }}
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          PAYLOAD_SCHEMA_VERSION: ${{ github.event.client_payload.schema_version }}
-          PAYLOAD_STACKS_SHA: ${{ github.event.client_payload.stacks_sha }}
-          PAYLOAD_CHANGED_STACKS: ${{ github.event.client_payload.changed_stacks }}
-          PAYLOAD_CONFIG_STACKS: ${{ github.event.client_payload.config_stacks }}
-          PAYLOAD_STRUCTURAL_CHANGE: ${{ github.event.client_payload.structural_change }}
-          PAYLOAD_REASON: ${{ github.event.client_payload.reason }}
-          PAYLOAD_CHANGED_PATHS: ${{ github.event.client_payload.changed_paths }}
-          PAYLOAD_SOURCE_REPO: ${{ github.event.client_payload.source_repo }}
-          PAYLOAD_SOURCE_RUN_ID: ${{ github.event.client_payload.source_run_id }}
-        run: .github/scripts/plan/validate_dispatch_payload.sh meta
-
-      - name: Resolve execution context
-        id: resolve
-        env:
-          CI_PLAN_MODE: meta
-          EVENT_NAME: ${{ github.event_name }}
-          PUSH_BEFORE: ${{ github.event.before }}
-          PUSH_SHA: ${{ github.sha }}
-          INPUT_RUN_INFRA: ${{ inputs.run_infra_apply }}
-          INPUT_RUN_ANSIBLE: ${{ inputs.run_ansible_bootstrap }}
-          INPUT_RUN_PORTAINER: ${{ inputs.run_portainer_apply }}
-          INPUT_STACKS_SHA: ${{ inputs.stacks_sha }}
-          INPUT_CHANGED_STACKS: ${{ inputs.changed_stacks }}
-          INPUT_CONFIG_STACKS: ${{ inputs.config_stacks }}
-          INPUT_STRUCTURAL_CHANGE: ${{ inputs.structural_change }}
-          INPUT_REASON: ${{ inputs.reason }}
-          INPUT_CHANGED_PATHS: ${{ inputs.changed_paths }}
-          PAYLOAD_STACKS_SHA: ${{ github.event.client_payload.stacks_sha }}
-          PAYLOAD_CHANGED_STACKS: ${{ github.event.client_payload.changed_stacks }}
-          PAYLOAD_CONFIG_STACKS: ${{ github.event.client_payload.config_stacks }}
-          PAYLOAD_STRUCTURAL_CHANGE: ${{ github.event.client_payload.structural_change }}
-          PAYLOAD_REASON: ${{ github.event.client_payload.reason }}
-          PAYLOAD_CHANGED_PATHS: ${{ github.event.client_payload.changed_paths }}
-          META_FILTER_APPLIED: ${{ steps.path-filter.outcome == 'success' && 'true' || 'false' }}
-          META_INFRA_CHANGED: ${{ steps.path-filter.outputs.meta_infra }}
-          META_ANSIBLE_CHANGED: ${{ steps.path-filter.outputs.meta_ansible }}
-          META_PORTAINER_CHANGED: ${{ steps.path-filter.outputs.meta_portainer }}
-          RESOLVE_STACKS_SHA_FROM_HEAD: "false"
-          VALIDATE_DISPATCH_CONTRACT: "false"
-        run: .github/scripts/plan/resolve_ci_plan.sh
+      dispatch_schema_version: ${{ github.event.client_payload.schema_version }}
+      dispatch_stacks_sha: ${{ github.event.client_payload.stacks_sha }}
+      dispatch_changed_stacks_json: ${{ toJson(github.event.client_payload.changed_stacks) }}
+      dispatch_config_stacks_json: ${{ toJson(github.event.client_payload.config_stacks) }}
+      dispatch_structural_change: ${{ toJson(github.event.client_payload.structural_change) }}
+      dispatch_reason: ${{ github.event.client_payload.reason }}
+      dispatch_changed_paths_json: ${{ toJson(github.event.client_payload.changed_paths) }}
+      dispatch_source_repo: ${{ github.event.client_payload.source_repo }}
+      dispatch_source_run_id: ${{ github.event.client_payload.source_run_id }}
+      dispatch_source_sha: ${{ github.event.client_payload.source_sha }}
 
   cloud-runner-guard:
     needs: [resolve-context]
@@ -241,6 +171,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Bootstrap jq
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_jq: "true"
+
       - name: Verify trusted stacks SHA
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -256,6 +191,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bootstrap infisical + login
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_infisical: "true"
+          infisical_login: "true"
+          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
+
       - name: Validate required secret paths
         env:
           RUN_INFRA: ${{ needs.resolve-context.outputs.run_infra_apply }}
@@ -276,6 +221,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Bootstrap jq + infisical + login
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_jq: "true"
+          install_infisical: "true"
+          infisical_login: "true"
+          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
+
       - name: Build and sync network policy
         id: sync
         env:
@@ -291,6 +244,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Bootstrap jq
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_jq: "true"
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
@@ -300,7 +258,7 @@ jobs:
         with:
           workspace: ${{ env.TFC_WORKSPACE_INFRA }}
           configuration_version: ${{ github.sha }}
-          message: "Meta pipeline infra apply (${{ needs.resolve-context.outputs.reason }})"
+          message: "Infrastructure orchestrator infra apply (${{ needs.resolve-context.outputs.reason }})"
 
       - name: Wait for Terraform Cloud infra run
         env:
@@ -318,6 +276,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Bootstrap jq
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_jq: "true"
 
       - name: Render deterministic Ansible inventory
         env:
@@ -339,6 +302,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Bootstrap jq + netcat
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_jq: "true"
+          install_netcat: "true"
 
       - name: Download CI inventory artifact
         uses: actions/download-artifact@v4
@@ -366,6 +335,13 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
+      - name: Bootstrap infisical + login
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_infisical: "true"
+          infisical_login: "true"
+          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
+
       - name: Download CI inventory artifact
         uses: actions/download-artifact@v4
         with:
@@ -384,6 +360,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bootstrap infisical + login
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_infisical: "true"
+          infisical_login: "true"
+          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
+
       - name: Validate bootstrap-managed Portainer secrets
         run: .github/scripts/stages/post_bootstrap_secret_check.sh
 
@@ -395,6 +381,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Bootstrap jq + netcat + infisical + login
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_jq: "true"
+          install_netcat: "true"
+          install_infisical: "true"
+          infisical_login: "true"
+          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
 
       - name: Preflight egress + Portainer API reachability
         env:
@@ -418,6 +413,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Bootstrap jq
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_jq: "true"
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
@@ -435,6 +435,13 @@ jobs:
         with:
           fetch-depth: 0
           submodules: recursive
+
+      - name: Bootstrap infisical + login
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_infisical: "true"
+          infisical_login: "true"
+          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
 
       - name: Download CI inventory artifact
         uses: actions/download-artifact@v4
@@ -459,6 +466,14 @@ jobs:
         with:
           fetch-depth: 0
           submodules: recursive
+
+      - name: Bootstrap yq + infisical + login
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_yq: "true"
+          install_infisical: "true"
+          infisical_login: "true"
+          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
 
       - name: Trigger health-gated webhooks
         env:

@@ -2,8 +2,9 @@
 
 This document is the single source of truth for change-detection behavior used by:
 
-- `.github/workflows/iac-validation.yml`
-- `.github/workflows/meta-pipeline.yml`
+- `.github/workflows/infra-validation.yml`
+- `.github/workflows/infra-orchestrator.yml`
+- `.github/workflows/reusable-detect-impact-resolve-plan.yml`
 
 Rules are defined in `.github/ci/path-filters.yml` and consumed via `dorny/paths-filter@v3`.
 
@@ -26,8 +27,8 @@ Rules are defined in `.github/ci/path-filters.yml` and consumed via `dorny/paths
 
 ## Notes
 
-- Dispatch-only stack planning: stack content/config/structural intent comes from `stacks` repo event `stacks-redeploy-requested` (schema `v2` payload).
+- Dispatch-only stack planning: stack content/config/structural intent comes from `stacks` repo event `stacks-redeploy-intent-v3` (schema `v3` payload with typed JSON arrays).
 - `run_config_sync=true` when dispatch/manual `config_stacks` is non-empty.
 - `run_health_redeploy=true` when dispatch/manual `changed_stacks` is non-empty.
 - `has_work=true` when any execution toggle is true.
-- `meta-pipeline.yml` no longer infers stack redeploy intent from infra `push` events.
+- `infra-orchestrator.yml` no longer infers stack redeploy intent from infra `push` events.

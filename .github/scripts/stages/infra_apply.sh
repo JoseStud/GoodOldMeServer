@@ -14,8 +14,6 @@ if [[ "${SHADOW_MODE}" == "true" ]]; then
   exit 0
 fi
 
-apt_install jq
-
 REQUIRE_MANUAL_CONFIRM=true \
 FAIL_IF_AUTO_APPLY=true \
 SUCCESS_STATUSES="planned_and_finished,applied" \

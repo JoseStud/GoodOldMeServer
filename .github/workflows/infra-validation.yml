@@ -1,4 +1,4 @@
-name: IaC Validation
+name: Infrastructure Validation
 
 on:
   pull_request:
@@ -6,6 +6,7 @@ on:
       - "terraform/**"
       - "ansible/**"
       - ".github/ci/**"
+      - ".github/actions/**"
       - ".github/workflows/**"
       - ".github/scripts/**"
       - "stacks"
@@ -15,6 +16,7 @@ on:
       - "terraform/**"
       - "ansible/**"
       - ".github/ci/**"
+      - ".github/actions/**"
       - ".github/workflows/**"
       - ".github/scripts/**"
       - "stacks"
@@ -28,66 +30,55 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: iac-validation-${{ github.ref_name || github.event.repository.default_branch || 'main' }}
+  group: infra-validation-${{ github.ref_name || github.event.repository.default_branch || 'main' }}
   cancel-in-progress: true
 
 jobs:
   detect-impact:
+    uses: ./.github/workflows/reusable-detect-impact-resolve-plan.yml
+    with:
+      plan_mode: iac
+      source_event_name: ${{ github.event_name }}
+      push_before: ${{ github.event.before }}
+      push_sha: ${{ github.sha }}
+      pr_base_sha: ${{ github.event.pull_request.base.sha }}
+      pr_head_sha: ${{ github.event.pull_request.head.sha }}
+
+  bootstrap-tools-smoke:
     runs-on: ubuntu-latest
-    outputs:
-      plan_json: ${{ steps.detect.outputs.plan_json }}
-      infra_workspace_changed: ${{ steps.detect.outputs.infra_workspace_changed }}
-      portainer_workspace_changed: ${{ steps.detect.outputs.portainer_workspace_changed }}
-      ansible_changed: ${{ steps.detect.outputs.ansible_changed }}
-      stacks_gitlink_changed: ${{ steps.detect.outputs.stacks_gitlink_changed }}
-      stacks_sha: ${{ steps.detect.outputs.stacks_sha }}
-      changed_tf_roots_json: ${{ steps.detect.outputs.changed_tf_roots_json }}
-      tfc_workspace_matrix_json: ${{ steps.detect.outputs.tfc_workspace_matrix_json }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Install impact detection dependencies
-        run: sudo apt-get update && sudo apt-get install -y jq
-
-      - name: Load path filters config
-        id: filter-config
+      - name: Load tool lock
+        id: lock
         run: |
+          set -euo pipefail
+          source .github/ci/tool-versions.lock
           {
-            echo "filters<<EOF"
-            cat .github/ci/path-filters.yml
-            echo "EOF"
+            echo "jq_version=${JQ_VERSION}"
+            echo "yq_version=${YQ_VERSION}"
+            echo "netcat_version=${NETCAT_DEB_VERSION}"
+            echo "infisical_version=${INFISICAL_VERSION}"
           } >> "${GITHUB_OUTPUT}"
 
-      - name: Detect changed paths
-        id: path-filter
-        if: ${{ github.event_name != 'workflow_dispatch' && !(github.event_name == 'push' && github.event.before == '0000000000000000000000000000000000000000') }}
-        uses: dorny/paths-filter@v3
+      - name: Bootstrap all pinned tools
+        id: bootstrap
+        uses: ./.github/actions/bootstrap-tools
         with:
-          filters: ${{ steps.filter-config.outputs.filters }}
-          base: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          install_jq: "true"
+          install_yq: "true"
+          install_netcat: "true"
+          install_infisical: "true"
 
-      - name: Detect impact
-        id: detect
-        env:
-          CI_PLAN_MODE: iac
-          EVENT_NAME: ${{ github.event_name }}
-          PUSH_BEFORE_SHA: ${{ github.event.before }}
-          GITHUB_SHA_CURRENT: ${{ github.sha }}
-          IAC_WORKSPACE_INFRA: ${{ steps.path-filter.outputs.iac_workspace_infra }}
-          IAC_WORKSPACE_PORTAINER: ${{ steps.path-filter.outputs.iac_workspace_portainer }}
-          IAC_ANSIBLE: ${{ steps.path-filter.outputs.iac_ansible }}
-          IAC_STACKS_GITLINK_CHANGED: ${{ steps.path-filter.outputs.iac_stacks_gitlink }}
-          IAC_TF_INFRA: ${{ steps.path-filter.outputs.iac_tf_infra }}
-          IAC_TF_OCI: ${{ steps.path-filter.outputs.iac_tf_oci }}
-          IAC_TF_GCP: ${{ steps.path-filter.outputs.iac_tf_gcp }}
-          IAC_TF_PORTAINER_ROOT: ${{ steps.path-filter.outputs.iac_tf_portainer_root }}
-          IAC_TF_PORTAINER: ${{ steps.path-filter.outputs.iac_tf_portainer }}
-        run: .github/scripts/plan/resolve_ci_plan.sh
+      - name: Assert pinned versions
+        run: |
+          set -euo pipefail
+          [[ "${{ steps.bootstrap.outputs.jq_version_installed }}" == "${{ steps.lock.outputs.jq_version }}" ]]
+          [[ "${{ steps.bootstrap.outputs.yq_version_installed }}" == "${{ steps.lock.outputs.yq_version }}" ]]
+          [[ "${{ steps.bootstrap.outputs.nc_version_installed }}" == "${{ steps.lock.outputs.netcat_version }}" ]]
+          [[ "${{ steps.bootstrap.outputs.infisical_version_installed }}" == "${{ steps.lock.outputs.infisical_version }}" ]]
 
   terraform-fmt:
     runs-on: ubuntu-latest
@@ -141,6 +132,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Bootstrap jq
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_jq: "true"
 
       - name: Resolve workspace and validate required inputs
         id: preflight
@@ -211,6 +207,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Bootstrap jq
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_jq: "true"
 
       - name: Verify trusted stacks SHA
         env:

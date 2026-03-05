@@ -61,6 +61,32 @@ normalize_csv() {
     | paste -sd, -
 }
 
+normalize_json_array_to_csv() {
+  local input="${1:-}"
+  local item_regex="${2:-.*}"
+  local field_name="${3:-json_array}"
+
+  if [[ -z "${input}" || "${input}" == "null" ]]; then
+    echo ""
+    return
+  fi
+
+  if ! jq -e --arg re "${item_regex}" '
+      type == "array"
+      and all(.[]; type == "string" and test($re))
+    ' <<<"${input}" >/dev/null; then
+    echo "Invalid ${field_name}: expected JSON array of strings matching regex '${item_regex}'."
+    exit 1
+  fi
+
+  jq -r '.[]' <<<"${input}" \
+    | awk '{$1=$1; print}' \
+    | awk 'NF > 0' \
+    | awk '!seen[$0]++' \
+    | sort \
+    | paste -sd, -
+}
+
 append_unique() {
   local value="$1"
   shift
@@ -137,11 +163,27 @@ resolve_meta_mode() {
     fi
 
     stacks_sha="$(normalize_nullable "${PAYLOAD_STACKS_SHA:-}")"
-    changed_stacks="$(normalize_csv "${PAYLOAD_CHANGED_STACKS:-}")"
-    config_stacks="$(normalize_csv "${PAYLOAD_CONFIG_STACKS:-}")"
+
+    if [[ -n "${PAYLOAD_CHANGED_STACKS_JSON:-}" && "${PAYLOAD_CHANGED_STACKS_JSON:-}" != "null" ]]; then
+      changed_stacks="$(normalize_json_array_to_csv "${PAYLOAD_CHANGED_STACKS_JSON}" '^[a-z0-9][a-z0-9-]*$' "PAYLOAD_CHANGED_STACKS_JSON")"
+    else
+      changed_stacks="$(normalize_csv "${PAYLOAD_CHANGED_STACKS:-}")"
+    fi
+
+    if [[ -n "${PAYLOAD_CONFIG_STACKS_JSON:-}" && "${PAYLOAD_CONFIG_STACKS_JSON:-}" != "null" ]]; then
+      config_stacks="$(normalize_json_array_to_csv "${PAYLOAD_CONFIG_STACKS_JSON}" '^[a-z0-9][a-z0-9-]*$' "PAYLOAD_CONFIG_STACKS_JSON")"
+    else
+      config_stacks="$(normalize_csv "${PAYLOAD_CONFIG_STACKS:-}")"
+    fi
+
     structural_change="$(to_bool "${PAYLOAD_STRUCTURAL_CHANGE:-}")"
     reason="$(normalize_nullable "${PAYLOAD_REASON:-}")"
-    changed_paths="$(normalize_csv "${PAYLOAD_CHANGED_PATHS:-}")"
+
+    if [[ -n "${PAYLOAD_CHANGED_PATHS_JSON:-}" && "${PAYLOAD_CHANGED_PATHS_JSON:-}" != "null" ]]; then
+      changed_paths="$(normalize_json_array_to_csv "${PAYLOAD_CHANGED_PATHS_JSON}" '^[^,\r\n]+$' "PAYLOAD_CHANGED_PATHS_JSON")"
+    else
+      changed_paths="$(normalize_csv "${PAYLOAD_CHANGED_PATHS:-}")"
+    fi
 
     if [[ "${structural_change}" == "true" || "${reason}" == "structural-change" || "${reason}" == "manual-refresh" ]]; then
       run_portainer_apply="true"
@@ -151,11 +193,27 @@ resolve_meta_mode() {
     run_ansible_bootstrap="$(to_bool "${INPUT_RUN_ANSIBLE:-}")"
     run_portainer_apply="$(to_bool "${INPUT_RUN_PORTAINER:-}")"
     stacks_sha="$(normalize_nullable "${INPUT_STACKS_SHA:-}")"
-    changed_stacks="$(normalize_csv "${INPUT_CHANGED_STACKS:-}")"
-    config_stacks="$(normalize_csv "${INPUT_CONFIG_STACKS:-}")"
+
+    if [[ -n "${INPUT_CHANGED_STACKS_JSON:-}" && "${INPUT_CHANGED_STACKS_JSON:-}" != "null" ]]; then
+      changed_stacks="$(normalize_json_array_to_csv "${INPUT_CHANGED_STACKS_JSON}" '^[a-z0-9][a-z0-9-]*$' "INPUT_CHANGED_STACKS_JSON")"
+    else
+      changed_stacks="$(normalize_csv "${INPUT_CHANGED_STACKS:-}")"
+    fi
+
+    if [[ -n "${INPUT_CONFIG_STACKS_JSON:-}" && "${INPUT_CONFIG_STACKS_JSON:-}" != "null" ]]; then
+      config_stacks="$(normalize_json_array_to_csv "${INPUT_CONFIG_STACKS_JSON}" '^[a-z0-9][a-z0-9-]*$' "INPUT_CONFIG_STACKS_JSON")"
+    else
+      config_stacks="$(normalize_csv "${INPUT_CONFIG_STACKS:-}")"
+    fi
+
     structural_change="$(to_bool "${INPUT_STRUCTURAL_CHANGE:-}")"
     reason="$(normalize_nullable "${INPUT_REASON:-}")"
-    changed_paths="$(normalize_csv "${INPUT_CHANGED_PATHS:-}")"
+
+    if [[ -n "${INPUT_CHANGED_PATHS_JSON:-}" && "${INPUT_CHANGED_PATHS_JSON:-}" != "null" ]]; then
+      changed_paths="$(normalize_json_array_to_csv "${INPUT_CHANGED_PATHS_JSON}" '^[^,\r\n]+$' "INPUT_CHANGED_PATHS_JSON")"
+    else
+      changed_paths="$(normalize_csv "${INPUT_CHANGED_PATHS:-}")"
+    fi
   fi
 
   if [[ -n "${config_stacks}" ]]; then

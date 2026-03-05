@@ -7,5 +7,4 @@ source .github/scripts/lib/workflow_common.sh
 : "${TFC_WORKSPACE_INFRA:?TFC_WORKSPACE_INFRA is required}"
 : "${OUTPUT_FILE:?OUTPUT_FILE is required}"
 
-apt_install jq
 .github/scripts/tfc/render_inventory_from_tfc_outputs.sh "${TFC_WORKSPACE_INFRA}" "${OUTPUT_FILE}"

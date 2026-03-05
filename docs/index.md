@@ -5,7 +5,7 @@ Welcome to the centralized GoodOldMeServer documentation. This repository manage
 1. **Infrastructure Provisioning** — Terraform provisions cloud resources across OCI (2× Ampere A1 workers) and GCP (1× e2-micro Swarm witness)
 2. **Configuration Management** — Ansible bootstraps nodes: system users, Docker, Tailscale mesh networking, GlusterFS distributed storage, and a 3-manager Docker Swarm cluster
 3. **Application Workloads** — Docker Swarm stacks with Infisical-managed secrets, routed through Traefik reverse proxy with Authelia SSO
-4. **Meta Pipeline** — GitHub Actions orchestrates secret validation, Terraform apply, inventory handover, Ansible bootstrap, Portainer apply, and health-gated webhook redeploys
+4. **Infrastructure Orchestrator** — GitHub Actions orchestrates secret validation, Terraform apply, inventory handover, Ansible bootstrap, Portainer apply, and health-gated webhook redeploys
 
 > **Note:** The `stacks/` directory is a [Git submodule](https://github.com/JoseStud/stacks) tracking the `main` branch. Submodule update PRs are managed by Dependabot (`gitsubmodule` ecosystem).
 
@@ -14,7 +14,7 @@ Welcome to the centralized GoodOldMeServer documentation. This repository manage
 If you are bootstrapping or validating CI/CD for the first time, read these first:
 
 1. [**Meta-Pipeline Cutover Checklist**](meta-pipeline-cutover-checklist.md) — required GitHub variables/secrets, Terraform workspace settings, and first-run sequence.
-2. [**Infisical Workflow**](infisical-workflow.md#variable-ownership--mutability) — which variables are operator-managed vs auto-managed by Ansible, Terraform, or the meta-pipeline.
+2. [**Infisical Workflow**](infisical-workflow.md#variable-ownership--mutability) — which variables are operator-managed vs auto-managed by Ansible, Terraform, or the infrastructure orchestrator.
 3. [**Deployment Runbook Prerequisites**](deployment-runbook.md#prerequisites) — operational readiness checks before deploy/apply actions.
 
 ## Quick Paths by Role

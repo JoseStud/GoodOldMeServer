@@ -9,7 +9,6 @@ source .github/scripts/lib/workflow_common.sh
 SHADOW_MODE="$(to_bool "${SHADOW_MODE:-false}")"
 
 checkout_stacks_sha "${STACKS_SHA:-}"
-install_yq
 setup_infisical
 
 if [[ "${SHADOW_MODE}" == "true" ]]; then

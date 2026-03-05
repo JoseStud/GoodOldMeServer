@@ -1,0 +1,111 @@
+name: Bootstrap Tools
+description: Install pinned CI tools with checksum verification and optional Infisical OIDC login.
+
+inputs:
+  tool_versions_lock_path:
+    description: Path to lock file with tool versions and checksums.
+    required: false
+    default: .github/ci/tool-versions.lock
+
+  install_jq:
+    description: Install jq.
+    required: false
+    default: "false"
+  install_yq:
+    description: Install yq.
+    required: false
+    default: "false"
+  install_netcat:
+    description: Install netcat-openbsd (nc).
+    required: false
+    default: "false"
+  install_infisical:
+    description: Install infisical-core CLI.
+    required: false
+    default: "false"
+  infisical_login:
+    description: Run infisical OIDC login after installation.
+    required: false
+    default: "false"
+
+  jq_version:
+    description: jq version override.
+    required: false
+    default: ""
+  yq_version:
+    description: yq version override (without leading v).
+    required: false
+    default: ""
+  netcat_deb_version:
+    description: netcat-openbsd package version override.
+    required: false
+    default: ""
+  infisical_version:
+    description: infisical-core package version override.
+    required: false
+    default: ""
+
+  jq_sha256:
+    description: jq SHA256 override.
+    required: false
+    default: ""
+  yq_sha256:
+    description: yq SHA256 override.
+    required: false
+    default: ""
+  netcat_deb_sha256:
+    description: netcat-openbsd package SHA256 override.
+    required: false
+    default: ""
+  infisical_sha256:
+    description: infisical-core package SHA256 override.
+    required: false
+    default: ""
+
+  infisical_machine_identity_id:
+    description: Machine identity id for OIDC login.
+    required: false
+    default: ""
+  infisical_domain:
+    description: Infisical domain.
+    required: false
+    default: https://app.infisical.com
+
+outputs:
+  jq_version_installed:
+    description: Installed jq version.
+    value: ${{ steps.bootstrap.outputs.jq_version_installed }}
+  yq_version_installed:
+    description: Installed yq version.
+    value: ${{ steps.bootstrap.outputs.yq_version_installed }}
+  nc_version_installed:
+    description: Installed netcat package version.
+    value: ${{ steps.bootstrap.outputs.nc_version_installed }}
+  infisical_version_installed:
+    description: Installed infisical version.
+    value: ${{ steps.bootstrap.outputs.infisical_version_installed }}
+
+runs:
+  using: composite
+  steps:
+    - name: Bootstrap tools
+      id: bootstrap
+      shell: bash
+      env:
+        INPUT_TOOL_VERSIONS_LOCK_PATH: ${{ inputs.tool_versions_lock_path }}
+        INPUT_INSTALL_JQ: ${{ inputs.install_jq }}
+        INPUT_INSTALL_YQ: ${{ inputs.install_yq }}
+        INPUT_INSTALL_NETCAT: ${{ inputs.install_netcat }}
+        INPUT_INSTALL_INFISICAL: ${{ inputs.install_infisical }}
+        INPUT_INFISICAL_LOGIN: ${{ inputs.infisical_login }}
+        INPUT_JQ_VERSION: ${{ inputs.jq_version }}
+        INPUT_YQ_VERSION: ${{ inputs.yq_version }}
+        INPUT_NETCAT_DEB_VERSION: ${{ inputs.netcat_deb_version }}
+        INPUT_INFISICAL_VERSION: ${{ inputs.infisical_version }}
+        INPUT_JQ_SHA256: ${{ inputs.jq_sha256 }}
+        INPUT_YQ_SHA256: ${{ inputs.yq_sha256 }}
+        INPUT_NETCAT_DEB_SHA256: ${{ inputs.netcat_deb_sha256 }}
+        INPUT_INFISICAL_SHA256: ${{ inputs.infisical_sha256 }}
+        INPUT_INFISICAL_MACHINE_IDENTITY_ID: ${{ inputs.infisical_machine_identity_id }}
+        INPUT_INFISICAL_DOMAIN: ${{ inputs.infisical_domain }}
+      run: "${{ github.action_path }}/bootstrap-tools.sh"

@@ -4,8 +4,6 @@ set -euo pipefail
 
 source .github/scripts/lib/workflow_common.sh
 
-apt_install jq netcat-openbsd
-
 RUN_ANSIBLE="${RUN_ANSIBLE:-false}" \
 RUN_CONFIG="${RUN_CONFIG:-false}" \
 RUN_HEALTH="false" \

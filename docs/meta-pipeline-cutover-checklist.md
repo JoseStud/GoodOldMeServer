@@ -1,6 +1,6 @@
 # Meta Pipeline Cutover Checklist (Minimal)
 
-Use this checklist before the first full run of `.github/workflows/meta-pipeline.yml`.
+Use this checklist before the first full run of `.github/workflows/infra-orchestrator.yml`.
 For ownership context, see [Infisical Workflow](infisical-workflow.md#variable-ownership--mutability).
 
 ## 0) Auto-Managed Values (Do Not Set Manually)
@@ -49,7 +49,7 @@ Required for `stacks/.github/workflows/stacks-dispatch-redeploy.yml` dispatching
 | `vars.INFRA_REPO` | Optional | Platform | Optional when default `JoseStud/GoodOldMeServer` is correct. | [ ] |
 | `secrets.INFRA_REPO_DISPATCH_TOKEN` | Required | Security | Fine-grained token used for repository dispatch to infra repo. | [ ] |
 | `stacks/.github/workflows/stacks-ci.yml` active | Required | Platform | Stack compose validation and manifest sanity run in stacks repo. | [ ] |
-| Dispatch payload schema `v2` implemented | Required | Platform | Must include `schema_version`, `source_repo`, `source_run_id`, plus stack intent fields. | [ ] |
+| Dispatch payload schema `v3` implemented | Required | Platform | Must include typed JSON arrays (`changed_stacks`, `config_stacks`, optional `changed_paths`) plus `schema_version`, `source_repo`, `source_run_id`, `source_sha`, and `stacks_sha`. | [ ] |
 
 ## 4) Terraform Cloud Workspace Variables
 
@@ -87,9 +87,10 @@ Required for `stacks/.github/workflows/stacks-dispatch-redeploy.yml` dispatching
 
 | Item | Requirement | Owner | Notes | Checkbox |
 |------|-------------|-------|-------|----------|
-| Trigger `meta-pipeline.yml` with `workflow_dispatch` + `dry_run=true` | Required | Operator | Validate planner outputs and non-mutating path without infra/apply mutations. | [ ] |
+| Trigger `infra-orchestrator.yml` with `workflow_dispatch` + `dry_run=true` | Required | Operator | Validate planner outputs and non-mutating path without infra/apply mutations. | [ ] |
 | Verify `stacks-ci.yml` passes in stacks repo | Required | Platform | Compose validation and manifest sanity must pass before dispatching stack intent. | [ ] |
 | Verify cloud runner deterministic dual-stack egress | Required | Platform | `curl -4 https://api.ipify.org` and `curl -6 https://api64.ipify.org` from runner. | [ ] |
-| Run `meta-pipeline.yml` with `run_infra_apply=true` | Required | Operator | Starts infra run sequence. | [ ] |
+| Run `infra-orchestrator.yml` with `run_infra_apply=true` | Required | Operator | Starts infra run sequence. | [ ] |
 | Confirm/apply infra run in Terraform Cloud UI when prompted | Required | Operator | Required because Auto Apply is disabled. | [ ] |
-| Confirm dispatch path validates `schema_version=v2` and waits for trusted `stacks_sha` checks | Required | Platform | `stacks-sha-trust` should pass before stack SHA is consumed by later stages. | [ ] |
+| Confirm dispatch path validates `schema_version=v3` and waits for trusted `stacks_sha` checks | Required | Platform | `stacks-sha-trust` should pass before stack SHA is consumed by later stages. | [ ] |
+| Update branch protection required checks after workflow rename | Required | Platform | Replace old `IaC Validation` / `Meta Pipeline` checks with `Infrastructure Validation` / `Infrastructure Orchestrator`. | [ ] |

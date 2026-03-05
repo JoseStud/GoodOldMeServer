@@ -59,7 +59,7 @@ payload="$(
         attributes: {
           key: $key,
           value: $value,
-          description: "Managed by meta-pipeline network policy sync",
+          description: "Managed by infrastructure orchestrator network policy sync",
           category: "env",
           hcl: false,
           sensitive: false

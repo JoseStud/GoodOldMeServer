@@ -6,7 +6,6 @@ source .github/scripts/lib/workflow_common.sh
 
 SHADOW_MODE="$(to_bool "${SHADOW_MODE:-false}")"
 
-apt_install jq
 setup_infisical
 
 policy_json="$({

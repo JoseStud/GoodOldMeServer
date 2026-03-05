@@ -5,7 +5,7 @@ Personal homelab/cloud server infrastructure using a three-tier architecture:
 1. **Terraform** provisions cloud resources across Oracle Cloud (2× Ampere A1.Flex workers) and Google Cloud (1× e2-micro Swarm witness)
 2. **Ansible** bootstraps nodes through 5 phases: system user → Docker → Tailscale mesh → GlusterFS (replica-3-arbiter-1) → Docker Swarm (3-manager cluster)
 3. **Docker Swarm** stacks deploy application workloads (8 stacks) behind Traefik reverse proxy with Authelia SSO, using Infisical for secret management
-4. **Meta Pipeline (GitHub Actions)** orchestrates secret validation → infra apply → inventory handover → Ansible bootstrap → Portainer apply → health-gated stack redeploy
+4. **Infrastructure Orchestrator (GitHub Actions)** orchestrates secret validation → infra apply → inventory handover → Ansible bootstrap → Portainer apply → health-gated stack redeploy
 
 ## Prerequisites
 
@@ -23,7 +23,7 @@ Personal homelab/cloud server infrastructure using a three-tier architecture:
 
 ```bash
 # 1. End-to-end orchestration (recommended)
-# GitHub Actions: .github/workflows/meta-pipeline.yml
+# GitHub Actions: .github/workflows/infra-orchestrator.yml
 
 # 2. Local fallback: provision cloud infrastructure
 terraform -chdir=terraform/infra apply

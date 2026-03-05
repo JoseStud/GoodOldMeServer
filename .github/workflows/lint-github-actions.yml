@@ -6,11 +6,13 @@ on:
       - main
     paths:
       - ".github/ci/**"
+      - ".github/actions/**"
       - ".github/workflows/**"
       - ".github/dependabot.yml"
   pull_request:
     paths:
       - ".github/ci/**"
+      - ".github/actions/**"
       - ".github/workflows/**"
       - ".github/dependabot.yml"
   workflow_dispatch:
@@ -30,6 +32,16 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Load tool lock
+        id: lock
+        run: |
+          set -euo pipefail
+          source .github/ci/tool-versions.lock
+          {
+            echo "actionlint_version=${ACTIONLINT_VERSION}"
+            echo "yamllint_version=${YAMLLINT_VERSION}"
+          } >> "${GITHUB_OUTPUT}"
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -37,7 +49,8 @@ jobs:
 
       - name: Install actionlint
         run: |
-          go install github.com/rhysd/actionlint/cmd/actionlint@latest
+          set -euo pipefail
+          go install "github.com/rhysd/actionlint/cmd/actionlint@${{ steps.lock.outputs.actionlint_version }}"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Setup Python
@@ -47,14 +60,14 @@ jobs:
 
       - name: Install yamllint
         run: |
+          set -euo pipefail
           python -m pip install --upgrade pip
-          python -m pip install yamllint
+          python -m pip install "yamllint==${{ steps.lock.outputs.yamllint_version }}"
 
-      - name: Install yq
-        run: |
-          sudo wget -q https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
-          sudo chmod +x /usr/local/bin/yq
-          yq --version
+      - name: Bootstrap yq
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_yq: "true"
 
       - name: Run actionlint
         run: actionlint -color
