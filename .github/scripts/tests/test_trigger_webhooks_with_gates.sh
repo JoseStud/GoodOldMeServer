@@ -127,7 +127,6 @@ touch "${full_log}"
 full_out="$(run_case "full_reconcile" env \
   PATH="${PATH}" \
   CURL_LOG_FILE="${full_log}" \
-  FULL_STACKS_RECONCILE=true \
   BASE_DOMAIN=example.com \
   WEBHOOK_URL_GATEWAY=https://hooks/gateway \
   WEBHOOK_URL_AUTH=https://hooks/auth \
@@ -138,7 +137,7 @@ full_out="$(run_case "full_reconcile" env \
   WEBHOOK_URL_CLOUD=https://hooks/cloud \
   bash "${SCRIPT}" "${ROOT_DIR}/stacks/stacks.yaml")"
 
-assert_contains "full_reconcile" "FULL_STACKS_RECONCILE=true: redeploying all Portainer-managed stacks." "${full_out}"
+assert_contains "full_reconcile" "Full reconcile: redeploying all Portainer-managed stacks." "${full_out}"
 
 post_order="$(
   awk '$1 == "POST" { sub("^https://hooks/", "", $2); print $2 }' "${full_log}" | paste -sd, -
@@ -158,7 +157,6 @@ EOF
 
 missing_out="$(run_case_expect_fail "missing_webhook" env \
   PATH="${PATH}" \
-  FULL_STACKS_RECONCILE=true \
   bash "${SCRIPT}" "${missing_manifest}")"
 assert_contains "missing_webhook" "Missing WEBHOOK_URL_ALPHA for stack 'alpha'." "${missing_out}"
 
@@ -178,7 +176,6 @@ EOF
 
 cycle_out="$(run_case_expect_fail "cycle_detected" env \
   PATH="${PATH}" \
-  FULL_STACKS_RECONCILE=true \
   WEBHOOK_URL_ALPHA=https://hooks/alpha \
   WEBHOOK_URL_BETA=https://hooks/beta \
   bash "${SCRIPT}" "${cycle_manifest}")"

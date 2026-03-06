@@ -214,7 +214,7 @@ The workflow authenticates to Infisical via **OIDC** (not Universal Auth), so no
 | Variable | How to Get | Used By |
 |----------|-----------|---------|
 | `INFISICAL_TOKEN` (infra repo) | Infisical service token with project read/write scope for automation paths | Required by the local `terraform/portainer-root` apply path |
-| `INFRA_REPO_DISPATCH_TOKEN` (stacks repo) | Fine-grained GitHub token with `contents:write` + repository dispatch access on this infra repo | `stacks/.github/workflows/stacks-dispatch-redeploy.yml` dispatches `stacks-redeploy-intent-v4` to this repo |
+| `INFRA_REPO_DISPATCH_TOKEN` (stacks repo) | Fine-grained GitHub token with `contents:write` + repository dispatch access on this infra repo | `stacks/.github/workflows/stacks-dispatch-redeploy.yml` dispatches `stacks-redeploy-intent-v5` to this repo |
 | `INFISICAL_AGENT_CLIENT_ID` (infra repo) | Universal Auth client id for the host-side Infisical Agent | Ansible `phase7_runtime_sync` and local Portainer webhook helper |
 | `INFISICAL_AGENT_CLIENT_SECRET` (infra repo) | Universal Auth client secret for the host-side Infisical Agent | Ansible `phase7_runtime_sync` and local Portainer webhook helper |
 | `TFC_TOKEN` (infra repo) | Terraform Cloud Team/API token with workspace run access | `infra-orchestrator.yml` Terraform Cloud run/apply + state output inventory handover |
@@ -302,25 +302,21 @@ Webhook triggers run from stacks-repo workflows:
 Flow:
 
 1. Push to `main` in stacks repo
-2. Private cloud static runner computes affected stacks from changed paths
-3. Runner ignores non-deploy paths (for example docs/CI-only files)
-4. Runner dispatches a unified event (`stacks-redeploy-intent-v4`) with schema `v4` payload to this infra repo
-5. Infra `infra-orchestrator.yml` decides the ordered stages. For stacks `repository_dispatch`, that path is now a full reconcile: secret validation -> `phase7_runtime_sync` -> Portainer apply -> `sync-configs` -> health-gated webhook redeploy.
+2. `stacks-ci.yml` completes successfully with repo-level validation
+3. The dispatch workflow emits exactly one `stacks-redeploy-intent-v5` event with the minimal `v5` payload
+4. Infra `infra-orchestrator.yml` runs the fixed full-reconcile path: secret validation -> `phase7_runtime_sync` -> `sync-configs` -> Portainer apply -> health-gated webhook redeploy.
 
-### `stacks-redeploy-intent-v4` Dispatch Contract
+### `stacks-redeploy-intent-v5` Dispatch Contract
 
-- Event type: `stacks-redeploy-intent-v4`
-- Required `client_payload.schema_version`: `v4`
+- Event type: `stacks-redeploy-intent-v5`
+- Required `client_payload.schema_version`: `v5`
 - Required `client_payload.stacks_sha`: commit SHA from stacks repo
 - Required `client_payload.source_sha`: commit SHA from stacks repo workflow source
-- Required `client_payload.changed_stacks`: JSON array of changed stack names
-- Required `client_payload.host_sync_stacks`: JSON array of stacks requiring `/opt/stacks` or agent-config convergence
-- Required `client_payload.config_stacks`: JSON array of config-sync stacks (`auth`, `observability`) or empty
-- Required `client_payload.structural_change`: boolean
-- Required `client_payload.reason`: `structural-change`, `manual-refresh`, or `content-change`
-- Optional `client_payload.changed_paths`: JSON array of stack-relevant changed paths for audit
+- Required `client_payload.reason`: `full-reconcile`
 - Required `client_payload.source_repo`: source repository (`owner/repo`)
 - Required `client_payload.source_run_id`: source workflow run id
+
+Manual stacks reconciliation is no longer supported from `infra-orchestrator.yml`; manual workflow use remains for infra/bootstrap/Portainer operations only.
 
 ## Infisical Agent (Docker Swarm)
 

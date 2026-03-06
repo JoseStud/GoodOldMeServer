@@ -18,18 +18,14 @@ Current schema version:
 All plans share:
 
 - `plan_schema_version` (string)
-- `mode` (`meta` or `iac`)
+- `mode` (`meta`)
 - `event_name` (string)
-
-Then one mode payload:
-
-- `meta` object when `mode == "meta"`
-- `iac` object when `mode == "iac"`
+- `meta` object
 
 ## `meta` Mode Fields
 
 - Execution toggles: `run_infra_apply`, `run_ansible_bootstrap`, `run_portainer_apply`, `run_host_sync`, `run_config_sync`, `run_health_redeploy`, `has_work`
-- Context: `stacks_sha`, `changed_stacks`, `host_sync_stacks`, `config_stacks`, `structural_change`, `reason`, `changed_paths`
+- Context: `stacks_sha`, `reason`
 - Stage gates under `meta.stages`:
   - `stage_cloud_runner_guard`
   - `stage_secret_validation`
@@ -45,22 +41,17 @@ Then one mode payload:
   - `stage_config_sync`
   - `stage_health_gated_redeploy`
 
-## `iac` Mode Fields
+## Event Semantics
 
-- `infra_workspace_changed`
-- `portainer_workspace_changed`
-- `ansible_changed`
-- `stacks_gitlink_changed`
-- `stacks_sha`
-- `changed_tf_roots` (JSON array)
-- `tfc_workspace_matrix` (JSON array)
+- `push`: uses `meta_*` path filters to derive infra/apply/bootstrap/Portainer apply behavior for infra-repo changes.
+- `repository_dispatch`: accepts only `stacks-redeploy-intent-v5` with the minimal `v5` payload and always resolves to the full stacks reconcile path.
+- `workflow_dispatch` and `workflow_call`: support manual infra/bootstrap/Portainer operations only. `stacks_sha` is a trusted checkout override, not a stack-selection control.
 
 ## Projection Layer
 
 Workflows that need scalar outputs must project them from `plan_json` using:
 
 - `.github/scripts/plan/project_plan_outputs.sh meta`
-- `.github/scripts/plan/project_plan_outputs.sh iac`
 
 The projection script validates:
 

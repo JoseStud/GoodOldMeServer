@@ -16,7 +16,6 @@ if [[ "${SHADOW_MODE}" == "true" ]]; then
   exit 0
 fi
 
-STACKS_CSV="${STACKS_CSV:-}" \
-  infisical run --projectId="${INFISICAL_PROJECT_ID}" --env=prod -- bash -lc '
-    .github/scripts/stacks/trigger_webhooks_with_gates.sh stacks/stacks.yaml "${STACKS_CSV}"
-  '
+infisical run --projectId="${INFISICAL_PROJECT_ID}" --env=prod -- bash -lc '
+  .github/scripts/stacks/trigger_webhooks_with_gates.sh stacks/stacks.yaml
+'

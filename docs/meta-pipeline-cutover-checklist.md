@@ -42,7 +42,7 @@ These values are managed by automation after bootstrap and are not operator-owne
 | `INFISICAL_AGENT_CLIENT_SECRET` | Required | Security | Universal Auth client secret used by the Ansible-managed host runtime sync and local webhook helper. | [ ] |
 | `STACKS_REPO_READ_TOKEN` | Required | Security | Token used for trust verification of `stacks_sha` dispatch payloads. | [ ] |
 
-## 3) Stacks Repo (Dispatch-Only Stack Planning)
+## 3) Stacks Repo (Dispatch-Only Full Reconcile)
 
 Required for `stacks/.github/workflows/stacks-dispatch-redeploy.yml` dispatching into this infra repo.
 
@@ -51,23 +51,18 @@ Required for `stacks/.github/workflows/stacks-dispatch-redeploy.yml` dispatching
 | `vars.INFRA_REPO` | Optional | Platform | Optional when default `JoseStud/GoodOldMeServer` is correct. | [ ] |
 | `secrets.INFRA_REPO_DISPATCH_TOKEN` | Required | Security | Fine-grained token used for repository dispatch to infra repo. | [ ] |
 | `stacks/.github/workflows/stacks-ci.yml` active | Required | Platform | Stack compose validation and manifest sanity run in stacks repo. | [ ] |
-| Dispatch payload schema `v4` implemented | Required | Platform | Must include typed JSON arrays (`changed_stacks`, `host_sync_stacks`, `config_stacks`, optional `changed_paths`) plus `schema_version`, `source_repo`, `source_run_id`, `source_sha`, and `stacks_sha`. | [ ] |
+| Dispatch payload schema `v5` implemented | Required | Platform | Must include only `schema_version`, `stacks_sha`, `source_sha`, `source_repo`, `source_run_id`, and `reason=full-reconcile`. No selective stack/path fields remain. | [ ] |
 
 Expected dispatch payload example:
 
 ```json
 {
-  "event_type": "stacks-redeploy-intent-v4",
+  "event_type": "stacks-redeploy-intent-v5",
   "client_payload": {
-    "schema_version": "v4",
+    "schema_version": "v5",
     "stacks_sha": "0123456789abcdef0123456789abcdef01234567",
     "source_sha": "0123456789abcdef0123456789abcdef01234567",
-    "changed_stacks": ["gateway", "auth"],
-    "host_sync_stacks": ["gateway", "auth"],
-    "config_stacks": ["auth"],
-    "structural_change": false,
-    "reason": "content-change",
-    "changed_paths": ["gateway/docker-compose.yml"],
+    "reason": "full-reconcile",
     "source_repo": "owner/stacks",
     "source_run_id": 123456789
   }
@@ -111,10 +106,10 @@ Expected dispatch payload example:
 | Item | Requirement | Owner | Notes | Checkbox |
 |------|-------------|-------|-------|----------|
 | Trigger `infra-orchestrator.yml` with `workflow_dispatch` + `dry_run=true` | Required | Operator | Validate planner outputs and non-mutating path without infra/apply mutations. | [ ] |
-| Verify `stacks-ci.yml` passes in stacks repo | Required | Platform | Compose validation and manifest sanity must pass before dispatching stack intent. | [ ] |
+| Verify `stacks-ci.yml` passes in stacks repo | Required | Platform | Repo-level validation must pass before dispatching the full reconcile. | [ ] |
 | Verify cloud runner deterministic dual-stack egress | Required | Platform | `curl -4 https://api.ipify.org` and `curl -6 https://api64.ipify.org` from runner. | [ ] |
 | Run `infra-orchestrator.yml` with `run_infra_apply=true` | Required | Operator | Starts infra run sequence. | [ ] |
 | Confirm/apply infra run in Terraform Cloud UI when prompted | Required | Operator | Required because Auto Apply is disabled. | [ ] |
-| Confirm dispatch path validates `schema_version=v4` and waits for trusted `stacks_sha` checks | Required | Platform | `stacks-sha-trust` should pass before stack SHA is consumed by later stages, including host sync. | [ ] |
+| Confirm dispatch path validates `schema_version=v5` and waits for trusted `stacks_sha` checks | Required | Platform | `stacks-sha-trust` should pass before stack SHA is consumed by later stages, including host sync and config sync. | [ ] |
 | Retire legacy workflow checks and runbooks | Required | Platform | Remove old `IaC Validation` / `Meta Pipeline` checks, stop using retired workflow entry points, and standardize on the active workflow set in [Workflow Lifecycle](workflow-lifecycle.md). | [ ] |
 | Ensure CI governance checks are required | Required | Platform | Include `Lint GitHub Actions` and shell contract tests (`Infrastructure Validation / planner-contract-tests`) in required PR checks. | [ ] |

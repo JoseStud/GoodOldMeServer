@@ -27,13 +27,11 @@ resolve_meta_mode() {
   run_infra_apply="false"
   run_ansible_bootstrap="false"
   run_portainer_apply="false"
+  run_host_sync="false"
+  run_config_sync="false"
+  run_health_redeploy="false"
   stacks_sha=""
-  changed_stacks=""
-  host_sync_stacks=""
-  config_stacks=""
-  structural_change="false"
   reason=""
-  changed_paths=""
 
   if [[ "${EVENT_NAME}" == "push" ]]; then
     before="${PUSH_BEFORE:-}"
@@ -44,8 +42,6 @@ resolve_meta_mode() {
     else
       changed_files="$(git diff --name-only "${before}" "${after}" || true)"
     fi
-
-    changed_paths="$(normalize_csv "$(echo "${changed_files}" | paste -sd, -)")"
 
     if [[ "$(to_bool "${META_FILTER_APPLIED:-false}")" == "true" ]]; then
       run_infra_apply="$(to_bool "${META_INFRA_CHANGED:-false}")"
@@ -71,36 +67,10 @@ resolve_meta_mode() {
     fi
 
     stacks_sha="$(normalize_nullable "${PAYLOAD_STACKS_SHA:-}")"
-
-    if [[ -n "${PAYLOAD_CHANGED_STACKS_JSON:-}" && "${PAYLOAD_CHANGED_STACKS_JSON:-}" != "null" ]]; then
-      changed_stacks="$(normalize_json_array_to_csv "${PAYLOAD_CHANGED_STACKS_JSON}" '^[a-z0-9][a-z0-9-]*$' "PAYLOAD_CHANGED_STACKS_JSON")"
-    else
-      changed_stacks="$(normalize_csv "${PAYLOAD_CHANGED_STACKS:-}")"
-    fi
-
-    if [[ -n "${PAYLOAD_HOST_SYNC_STACKS_JSON:-}" && "${PAYLOAD_HOST_SYNC_STACKS_JSON:-}" != "null" ]]; then
-      host_sync_stacks="$(normalize_json_array_to_csv "${PAYLOAD_HOST_SYNC_STACKS_JSON}" '^[a-z0-9][a-z0-9-]*$' "PAYLOAD_HOST_SYNC_STACKS_JSON")"
-    else
-      host_sync_stacks="$(normalize_csv "${PAYLOAD_HOST_SYNC_STACKS:-}")"
-    fi
-
-    if [[ -n "${PAYLOAD_CONFIG_STACKS_JSON:-}" && "${PAYLOAD_CONFIG_STACKS_JSON:-}" != "null" ]]; then
-      config_stacks="$(normalize_json_array_to_csv "${PAYLOAD_CONFIG_STACKS_JSON}" '^[a-z0-9][a-z0-9-]*$' "PAYLOAD_CONFIG_STACKS_JSON")"
-    else
-      config_stacks="$(normalize_csv "${PAYLOAD_CONFIG_STACKS:-}")"
-    fi
-
-    structural_change="$(to_bool "${PAYLOAD_STRUCTURAL_CHANGE:-}")"
     reason="$(normalize_nullable "${PAYLOAD_REASON:-}")"
 
-    if [[ -n "${PAYLOAD_CHANGED_PATHS_JSON:-}" && "${PAYLOAD_CHANGED_PATHS_JSON:-}" != "null" ]]; then
-      changed_paths="$(normalize_json_array_to_csv "${PAYLOAD_CHANGED_PATHS_JSON}" '^[^,\r\n]+$' "PAYLOAD_CHANGED_PATHS_JSON")"
-    else
-      changed_paths="$(normalize_csv "${PAYLOAD_CHANGED_PATHS:-}")"
-    fi
-
     # Any stacks dispatch now runs the full reconcile path regardless of the
-    # payload's narrowed intent arrays or structural-change hint.
+    # payload, with no stack-targeting support.
     run_portainer_apply="true"
     run_host_sync="true"
     run_config_sync="true"
@@ -110,50 +80,7 @@ resolve_meta_mode() {
     run_ansible_bootstrap="$(to_bool "${INPUT_RUN_ANSIBLE:-}")"
     run_portainer_apply="$(to_bool "${INPUT_RUN_PORTAINER:-}")"
     stacks_sha="$(normalize_nullable "${INPUT_STACKS_SHA:-}")"
-
-    if [[ -n "${INPUT_CHANGED_STACKS_JSON:-}" && "${INPUT_CHANGED_STACKS_JSON:-}" != "null" ]]; then
-      changed_stacks="$(normalize_json_array_to_csv "${INPUT_CHANGED_STACKS_JSON}" '^[a-z0-9][a-z0-9-]*$' "INPUT_CHANGED_STACKS_JSON")"
-    else
-      changed_stacks="$(normalize_csv "${INPUT_CHANGED_STACKS:-}")"
-    fi
-
-    if [[ -n "${INPUT_HOST_SYNC_STACKS_JSON:-}" && "${INPUT_HOST_SYNC_STACKS_JSON:-}" != "null" ]]; then
-      host_sync_stacks="$(normalize_json_array_to_csv "${INPUT_HOST_SYNC_STACKS_JSON}" '^[a-z0-9][a-z0-9-]*$' "INPUT_HOST_SYNC_STACKS_JSON")"
-    else
-      host_sync_stacks="$(normalize_csv "${INPUT_HOST_SYNC_STACKS:-}")"
-    fi
-
-    if [[ -n "${INPUT_CONFIG_STACKS_JSON:-}" && "${INPUT_CONFIG_STACKS_JSON:-}" != "null" ]]; then
-      config_stacks="$(normalize_json_array_to_csv "${INPUT_CONFIG_STACKS_JSON}" '^[a-z0-9][a-z0-9-]*$' "INPUT_CONFIG_STACKS_JSON")"
-    else
-      config_stacks="$(normalize_csv "${INPUT_CONFIG_STACKS:-}")"
-    fi
-
-    structural_change="$(to_bool "${INPUT_STRUCTURAL_CHANGE:-}")"
     reason="$(normalize_nullable "${INPUT_REASON:-}")"
-
-    if [[ -n "${INPUT_CHANGED_PATHS_JSON:-}" && "${INPUT_CHANGED_PATHS_JSON:-}" != "null" ]]; then
-      changed_paths="$(normalize_json_array_to_csv "${INPUT_CHANGED_PATHS_JSON}" '^[^,\r\n]+$' "INPUT_CHANGED_PATHS_JSON")"
-    else
-      changed_paths="$(normalize_csv "${INPUT_CHANGED_PATHS:-}")"
-    fi
-  fi
-
-  if [[ "${EVENT_NAME}" != "repository_dispatch" ]]; then
-    run_config_sync="false"
-    if [[ -n "${config_stacks}" ]]; then
-      run_config_sync="true"
-    fi
-
-    run_host_sync="false"
-    if [[ -n "${host_sync_stacks}" ]]; then
-      run_host_sync="true"
-    fi
-
-    run_health_redeploy="false"
-    if [[ -n "${changed_stacks}" ]]; then
-      run_health_redeploy="true"
-    fi
   fi
 
   if [[ -z "${reason}" ]]; then
@@ -225,12 +152,7 @@ resolve_meta_mode() {
       --arg run_health_redeploy "${run_health_redeploy}" \
       --arg has_work "${has_work}" \
       --arg stacks_sha "${stacks_sha}" \
-      --arg changed_stacks "${changed_stacks}" \
-      --arg host_sync_stacks "${host_sync_stacks}" \
-      --arg config_stacks "${config_stacks}" \
-      --arg structural_change "${structural_change}" \
       --arg reason "${reason}" \
-      --arg changed_paths "${changed_paths}" \
       --arg stage_cloud_runner_guard "${stage_cloud_runner_guard}" \
       --arg stage_secret_validation "${stage_secret_validation}" \
       --arg stage_network_policy_sync "${stage_network_policy_sync}" \
@@ -257,12 +179,7 @@ resolve_meta_mode() {
           run_health_redeploy: ($run_health_redeploy == "true"),
           has_work: ($has_work == "true"),
           stacks_sha: $stacks_sha,
-          changed_stacks: $changed_stacks,
-          host_sync_stacks: $host_sync_stacks,
-          config_stacks: $config_stacks,
-          structural_change: ($structural_change == "true"),
           reason: $reason,
-          changed_paths: $changed_paths,
           stages: {
             stage_cloud_runner_guard: ($stage_cloud_runner_guard == "true"),
             stage_secret_validation: ($stage_secret_validation == "true"),

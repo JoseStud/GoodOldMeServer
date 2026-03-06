@@ -271,8 +271,8 @@ Every stack is linked to the `JoseStud/stacks` Git repository in Portainer with 
 **Automatic (private automation):**
 
 1. Push to `main` in the stacks repo triggers `stacks/.github/workflows/stacks-ci.yml` and `stacks/.github/workflows/stacks-dispatch-redeploy.yml`.
-2. The dispatch workflow computes `changed_stacks`, `host_sync_stacks`, and `config_stacks`, then dispatches one `stacks-redeploy-intent-v4` event (schema `v4`) to this infra repo.
-3. Infra `infra-orchestrator.yml` treats every valid stacks dispatch as a full reconcile: it validates secrets, runs `phase7_runtime_sync`, runs `terraform/portainer-root apply`, runs `sync-configs`, then redeploys every Portainer-managed stack.
+2. After `stacks-ci.yml` succeeds on `main`, the dispatch workflow emits one `stacks-redeploy-intent-v5` event with the minimal full-reconcile payload.
+3. Infra `infra-orchestrator.yml` treats every valid stacks dispatch as a full reconcile: it validates secrets, runs `phase7_runtime_sync`, runs `sync-configs`, runs `terraform/portainer-root apply`, then redeploys every Portainer-managed stack.
 4. Health gates use manifest dependencies and manifest order: Gateway is checked first (`gateway-health.<BASE_DOMAIN>/healthz`), then Auth, then the remaining Portainer-managed stacks. The Ansible-managed `management` stack stays outside this webhook flow.
 
 **Manual (one-off):**

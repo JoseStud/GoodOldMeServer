@@ -87,83 +87,53 @@ meta_plan_json="$(cat <<'JSON'
 {
   "plan_schema_version": "ci-plan-v1",
   "mode": "meta",
-  "event_name": "workflow_dispatch",
+  "event_name": "repository_dispatch",
   "meta": {
-    "run_infra_apply": true,
-    "run_ansible_bootstrap": true,
+    "run_infra_apply": false,
+    "run_ansible_bootstrap": false,
     "run_portainer_apply": true,
     "run_host_sync": true,
     "run_config_sync": true,
-    "run_health_redeploy": false,
+    "run_health_redeploy": true,
     "has_work": true,
     "stacks_sha": "0123456789abcdef0123456789abcdef01234567",
-    "changed_stacks": "auth,gateway",
-    "host_sync_stacks": "auth,gateway,management",
-    "config_stacks": "auth",
-    "structural_change": false,
-    "reason": "manual-dispatch",
-    "changed_paths": "stacks.yaml",
+    "reason": "full-reconcile",
     "stages": {
       "stage_cloud_runner_guard": true,
       "stage_secret_validation": true,
       "stage_network_policy_sync": true,
-      "stage_infra_apply": true,
+      "stage_infra_apply": false,
       "stage_inventory_handover": true,
       "stage_network_preflight_ssh": true,
-      "stage_ansible_bootstrap": true,
-      "stage_host_sync": false,
+      "stage_ansible_bootstrap": false,
+      "stage_host_sync": true,
       "stage_post_bootstrap_secret_check": true,
       "stage_portainer_api_preflight": true,
       "stage_portainer_apply": true,
       "stage_config_sync": true,
-      "stage_health_gated_redeploy": false
+      "stage_health_gated_redeploy": true
     }
   }
 }
 JSON
 )"
 
-iac_plan_json="$(cat <<'JSON'
-{
-  "plan_schema_version": "ci-plan-v1",
-  "mode": "iac",
-  "event_name": "pull_request",
-  "iac": {
-    "infra_workspace_changed": true,
-    "portainer_workspace_changed": false,
-    "ansible_changed": true,
-    "stacks_gitlink_changed": true,
-    "stacks_sha": "fedcba9876543210fedcba9876543210fedcba98",
-    "changed_tf_roots": ["terraform/infra", "terraform/oci"],
-    "tfc_workspace_matrix": [{"workspace_key":"infra","config_directory":"terraform/infra"}]
-  }
-}
-JSON
-)"
-
 meta_out="$(run_case "meta_projection" "meta" "${meta_plan_json}")"
-assert_eq "meta_projection" "run_infra_apply" "true" "$(read_output "${meta_out}" "run_infra_apply")"
+assert_eq "meta_projection" "run_portainer_apply" "true" "$(read_output "${meta_out}" "run_portainer_apply")"
 assert_eq "meta_projection" "run_host_sync" "true" "$(read_output "${meta_out}" "run_host_sync")"
 assert_eq "meta_projection" "run_config_sync" "true" "$(read_output "${meta_out}" "run_config_sync")"
-assert_eq "meta_projection" "changed_stacks" "auth,gateway" "$(read_output "${meta_out}" "changed_stacks")"
-assert_eq "meta_projection" "host_sync_stacks" "auth,gateway,management" "$(read_output "${meta_out}" "host_sync_stacks")"
-assert_eq "meta_projection" "stage_portainer_apply" "true" "$(read_output "${meta_out}" "stage_portainer_apply")"
-assert_eq "meta_projection" "stage_host_sync" "false" "$(read_output "${meta_out}" "stage_host_sync")"
-assert_eq "meta_projection" "stage_health_gated_redeploy" "false" "$(read_output "${meta_out}" "stage_health_gated_redeploy")"
-
-iac_out="$(run_case "iac_projection" "iac" "${iac_plan_json}")"
-assert_eq "iac_projection" "infra_workspace_changed" "true" "$(read_output "${iac_out}" "infra_workspace_changed")"
-assert_eq "iac_projection" "ansible_changed" "true" "$(read_output "${iac_out}" "ansible_changed")"
-assert_eq "iac_projection" "stacks_sha" "fedcba9876543210fedcba9876543210fedcba98" "$(read_output "${iac_out}" "stacks_sha")"
-assert_eq "iac_projection" "changed_tf_roots_json" '["terraform/infra","terraform/oci"]' "$(read_output "${iac_out}" "changed_tf_roots_json")"
-assert_eq "iac_projection" "tfc_workspace_matrix_json" '[{"workspace_key":"infra","config_directory":"terraform/infra"}]' "$(read_output "${iac_out}" "tfc_workspace_matrix_json")"
+assert_eq "meta_projection" "run_health_redeploy" "true" "$(read_output "${meta_out}" "run_health_redeploy")"
+assert_eq "meta_projection" "stacks_sha" "0123456789abcdef0123456789abcdef01234567" "$(read_output "${meta_out}" "stacks_sha")"
+assert_eq "meta_projection" "reason" "full-reconcile" "$(read_output "${meta_out}" "reason")"
+assert_eq "meta_projection" "stage_host_sync" "true" "$(read_output "${meta_out}" "stage_host_sync")"
+assert_eq "meta_projection" "stage_health_gated_redeploy" "true" "$(read_output "${meta_out}" "stage_health_gated_redeploy")"
 
 invalid_schema_json="$(jq -c '.plan_schema_version = "ci-plan-v0"' <<<"${meta_plan_json}")"
 run_case_expect_fail "invalid_schema_version" "meta" "${invalid_schema_json}"
 
-run_case_expect_fail "mode_mismatch" "iac" "${meta_plan_json}"
+run_case_expect_fail "unsupported_mode" "iac" "${meta_plan_json}"
 
-missing_field_json="$(jq -c 'del(.meta.stages.stage_portainer_apply)' <<<"${meta_plan_json}")"
+missing_field_json="$(jq -c 'del(.meta.reason)' <<<"${meta_plan_json}")"
 run_case_expect_fail "missing_required_field" "meta" "${missing_field_json}"
 
 echo "PASS=${PASS_COUNT} FAIL=${FAIL_COUNT}"

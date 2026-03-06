@@ -3,9 +3,6 @@ name: Reusable Detect Impact Resolve Plan
 on:
   workflow_call:
     inputs:
-      plan_mode:
-        required: true
-        type: string
       source_event_name:
         required: true
         type: string
@@ -14,12 +11,6 @@ on:
         required: false
         type: string
       push_sha:
-        required: false
-        type: string
-      pr_base_sha:
-        required: false
-        type: string
-      pr_head_sha:
         required: false
         type: string
 
@@ -35,47 +26,20 @@ on:
       stacks_sha:
         required: false
         type: string
-      changed_stacks_json:
-        required: false
-        type: string
-      host_sync_stacks_json:
-        required: false
-        type: string
-      config_stacks_json:
-        required: false
-        type: string
-      structural_change:
-        required: false
-        type: boolean
       reason:
-        required: false
-        type: string
-      changed_paths_json:
         required: false
         type: string
 
       dispatch_schema_version:
         required: false
         type: string
+      dispatch_payload_json:
+        required: false
+        type: string
       dispatch_stacks_sha:
         required: false
         type: string
-      dispatch_changed_stacks_json:
-        required: false
-        type: string
-      dispatch_host_sync_stacks_json:
-        required: false
-        type: string
-      dispatch_config_stacks_json:
-        required: false
-        type: string
-      dispatch_structural_change:
-        required: false
-        type: string
       dispatch_reason:
-        required: false
-        type: string
-      dispatch_changed_paths_json:
         required: false
         type: string
       dispatch_source_repo:
@@ -123,25 +87,21 @@ jobs:
 
       - name: Detect changed paths
         id: path-filter
-        if: ${{ (inputs.plan_mode == 'iac' && inputs.source_event_name != 'workflow_dispatch' && !(inputs.source_event_name == 'push' && inputs.push_before == '0000000000000000000000000000000000000000')) || (inputs.plan_mode == 'meta' && inputs.source_event_name == 'push' && inputs.push_before != '0000000000000000000000000000000000000000') }}
+        if: ${{ inputs.source_event_name == 'push' && inputs.push_before != '0000000000000000000000000000000000000000' }}
         uses: dorny/paths-filter@v3
         with:
           filters: ${{ steps.filter-config.outputs.filters }}
-          base: ${{ inputs.source_event_name == 'pull_request' && inputs.pr_base_sha || inputs.push_before }}
-          ref: ${{ inputs.source_event_name == 'pull_request' && inputs.pr_head_sha || inputs.push_sha }}
+          base: ${{ inputs.push_before }}
+          ref: ${{ inputs.push_sha }}
 
       - name: Validate repository_dispatch payload contract
-        if: ${{ inputs.plan_mode == 'meta' && inputs.source_event_name == 'repository_dispatch' }}
+        if: ${{ inputs.source_event_name == 'repository_dispatch' }}
         env:
           EVENT_NAME: repository_dispatch
+          PAYLOAD_JSON: ${{ inputs.dispatch_payload_json }}
           PAYLOAD_SCHEMA_VERSION: ${{ inputs.dispatch_schema_version }}
           PAYLOAD_STACKS_SHA: ${{ inputs.dispatch_stacks_sha }}
-          PAYLOAD_CHANGED_STACKS_JSON: ${{ inputs.dispatch_changed_stacks_json }}
-          PAYLOAD_HOST_SYNC_STACKS_JSON: ${{ inputs.dispatch_host_sync_stacks_json }}
-          PAYLOAD_CONFIG_STACKS_JSON: ${{ inputs.dispatch_config_stacks_json }}
-          PAYLOAD_STRUCTURAL_CHANGE: ${{ inputs.dispatch_structural_change }}
           PAYLOAD_REASON: ${{ inputs.dispatch_reason }}
-          PAYLOAD_CHANGED_PATHS_JSON: ${{ inputs.dispatch_changed_paths_json }}
           PAYLOAD_SOURCE_REPO: ${{ inputs.dispatch_source_repo }}
           PAYLOAD_SOURCE_RUN_ID: ${{ inputs.dispatch_source_run_id }}
           PAYLOAD_SOURCE_SHA: ${{ inputs.dispatch_source_sha }}
@@ -150,7 +110,7 @@ jobs:
       - name: Resolve execution context
         id: resolve
         env:
-          CI_PLAN_MODE: ${{ inputs.plan_mode }}
+          CI_PLAN_MODE: meta
           EVENT_NAME: ${{ inputs.source_event_name }}
 
           PUSH_BEFORE: ${{ inputs.push_before }}
@@ -162,36 +122,19 @@ jobs:
           INPUT_RUN_ANSIBLE: ${{ inputs.run_ansible_bootstrap }}
           INPUT_RUN_PORTAINER: ${{ inputs.run_portainer_apply }}
           INPUT_STACKS_SHA: ${{ inputs.stacks_sha }}
-          INPUT_CHANGED_STACKS_JSON: ${{ inputs.changed_stacks_json }}
-          INPUT_HOST_SYNC_STACKS_JSON: ${{ inputs.host_sync_stacks_json }}
-          INPUT_CONFIG_STACKS_JSON: ${{ inputs.config_stacks_json }}
-          INPUT_STRUCTURAL_CHANGE: ${{ inputs.structural_change }}
           INPUT_REASON: ${{ inputs.reason }}
-          INPUT_CHANGED_PATHS_JSON: ${{ inputs.changed_paths_json }}
 
           PAYLOAD_SCHEMA_VERSION: ${{ inputs.dispatch_schema_version }}
           PAYLOAD_STACKS_SHA: ${{ inputs.dispatch_stacks_sha }}
-          PAYLOAD_CHANGED_STACKS_JSON: ${{ inputs.dispatch_changed_stacks_json }}
-          PAYLOAD_HOST_SYNC_STACKS_JSON: ${{ inputs.dispatch_host_sync_stacks_json }}
-          PAYLOAD_CONFIG_STACKS_JSON: ${{ inputs.dispatch_config_stacks_json }}
-          PAYLOAD_STRUCTURAL_CHANGE: ${{ inputs.dispatch_structural_change }}
           PAYLOAD_REASON: ${{ inputs.dispatch_reason }}
-          PAYLOAD_CHANGED_PATHS_JSON: ${{ inputs.dispatch_changed_paths_json }}
+          PAYLOAD_SOURCE_REPO: ${{ inputs.dispatch_source_repo }}
+          PAYLOAD_SOURCE_RUN_ID: ${{ inputs.dispatch_source_run_id }}
+          PAYLOAD_SOURCE_SHA: ${{ inputs.dispatch_source_sha }}
 
           META_FILTER_APPLIED: ${{ steps.path-filter.outcome == 'success' && 'true' || 'false' }}
           META_INFRA_CHANGED: ${{ steps.path-filter.outputs.meta_infra }}
           META_ANSIBLE_CHANGED: ${{ steps.path-filter.outputs.meta_ansible }}
           META_PORTAINER_CHANGED: ${{ steps.path-filter.outputs.meta_portainer }}
-
-          IAC_WORKSPACE_INFRA: ${{ steps.path-filter.outputs.iac_workspace_infra }}
-          IAC_WORKSPACE_PORTAINER: ${{ steps.path-filter.outputs.iac_workspace_portainer }}
-          IAC_ANSIBLE: ${{ steps.path-filter.outputs.iac_ansible }}
-          IAC_STACKS_GITLINK_CHANGED: ${{ steps.path-filter.outputs.iac_stacks_gitlink }}
-          IAC_TF_INFRA: ${{ steps.path-filter.outputs.iac_tf_infra }}
-          IAC_TF_OCI: ${{ steps.path-filter.outputs.iac_tf_oci }}
-          IAC_TF_GCP: ${{ steps.path-filter.outputs.iac_tf_gcp }}
-          IAC_TF_PORTAINER_ROOT: ${{ steps.path-filter.outputs.iac_tf_portainer_root }}
-          IAC_TF_PORTAINER: ${{ steps.path-filter.outputs.iac_tf_portainer }}
 
           RESOLVE_STACKS_SHA_FROM_HEAD: "false"
           VALIDATE_DISPATCH_CONTRACT: "false"

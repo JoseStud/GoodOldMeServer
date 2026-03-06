@@ -8,7 +8,7 @@ on:
       - "ansible/**"
       - ".ansible-lint"
   repository_dispatch:
-    types: [stacks-redeploy-intent-v4]
+    types: [stacks-redeploy-intent-v5]
   workflow_dispatch:
     inputs:
       run_infra_apply:
@@ -35,31 +35,10 @@ on:
         description: "Optional stacks repository commit SHA"
         required: false
         type: string
-      changed_stacks_json:
-        description: "Optional JSON array of stack names for health-gated webhook redeploy"
-        required: false
-        type: string
-      host_sync_stacks_json:
-        description: "Optional JSON array of stack names requiring host runtime sync"
-        required: false
-        type: string
-      config_stacks_json:
-        description: "Optional JSON array of stack names requiring config sync"
-        required: false
-        type: string
-      structural_change:
-        description: "Whether stack structure changed and Portainer apply is required"
-        required: false
-        default: false
-        type: boolean
       reason:
         description: "Execution reason label"
         required: false
         default: "manual-dispatch"
-        type: string
-      changed_paths_json:
-        description: "Optional JSON array list of changed structural paths"
-        required: false
         type: string
       break_glass_policy_json:
         description: "Optional break-glass override for network_access_policy JSON"
@@ -82,22 +61,7 @@ on:
       stacks_sha:
         required: false
         type: string
-      changed_stacks_json:
-        required: false
-        type: string
-      host_sync_stacks_json:
-        required: false
-        type: string
-      config_stacks_json:
-        required: false
-        type: string
-      structural_change:
-        required: false
-        type: boolean
       reason:
-        required: false
-        type: string
-      changed_paths_json:
         required: false
         type: string
       break_glass_policy_json:
@@ -126,7 +90,6 @@ jobs:
   resolve-context:
     uses: ./.github/workflows/reusable-detect-impact-resolve-plan.yml
     with:
-      plan_mode: meta
       source_event_name: ${{ github.event_name }}
       push_before: ${{ github.event.before }}
       push_sha: ${{ github.sha }}
@@ -135,21 +98,12 @@ jobs:
       run_ansible_bootstrap: ${{ inputs.run_ansible_bootstrap }}
       run_portainer_apply: ${{ inputs.run_portainer_apply }}
       stacks_sha: ${{ inputs.stacks_sha }}
-      changed_stacks_json: ${{ inputs.changed_stacks_json }}
-      host_sync_stacks_json: ${{ inputs.host_sync_stacks_json }}
-      config_stacks_json: ${{ inputs.config_stacks_json }}
-      structural_change: ${{ inputs.structural_change }}
       reason: ${{ inputs.reason }}
-      changed_paths_json: ${{ inputs.changed_paths_json }}
 
       dispatch_schema_version: ${{ github.event.client_payload.schema_version }}
+      dispatch_payload_json: ${{ toJson(github.event.client_payload) }}
       dispatch_stacks_sha: ${{ github.event.client_payload.stacks_sha }}
-      dispatch_changed_stacks_json: ${{ toJson(github.event.client_payload.changed_stacks) }}
-      dispatch_host_sync_stacks_json: ${{ toJson(github.event.client_payload.host_sync_stacks) }}
-      dispatch_config_stacks_json: ${{ toJson(github.event.client_payload.config_stacks) }}
-      dispatch_structural_change: ${{ toJson(github.event.client_payload.structural_change) }}
       dispatch_reason: ${{ github.event.client_payload.reason }}
-      dispatch_changed_paths_json: ${{ toJson(github.event.client_payload.changed_paths) }}
       dispatch_source_repo: ${{ github.event.client_payload.source_repo }}
       dispatch_source_run_id: ${{ github.event.client_payload.source_run_id }}
       dispatch_source_sha: ${{ github.event.client_payload.source_sha }}
@@ -166,12 +120,7 @@ jobs:
       run_health_redeploy: ${{ steps.project.outputs.run_health_redeploy }}
       has_work: ${{ steps.project.outputs.has_work }}
       stacks_sha: ${{ steps.project.outputs.stacks_sha }}
-      changed_stacks: ${{ steps.project.outputs.changed_stacks }}
-      host_sync_stacks: ${{ steps.project.outputs.host_sync_stacks }}
-      config_stacks: ${{ steps.project.outputs.config_stacks }}
-      structural_change: ${{ steps.project.outputs.structural_change }}
       reason: ${{ steps.project.outputs.reason }}
-      changed_paths: ${{ steps.project.outputs.changed_paths }}
       stage_cloud_runner_guard: ${{ steps.project.outputs.stage_cloud_runner_guard }}
       stage_secret_validation: ${{ steps.project.outputs.stage_secret_validation }}
       stage_network_policy_sync: ${{ steps.project.outputs.stage_network_policy_sync }}
@@ -291,7 +240,7 @@ jobs:
       - name: Build and sync network policy
         id: sync
         env:
-          BREAK_GLASS_POLICY_JSON: ${{ inputs.break_glass_policy_json || github.event.client_payload.break_glass_policy_json }}
+          BREAK_GLASS_POLICY_JSON: ${{ inputs.break_glass_policy_json }}
         run: .github/scripts/stages/network_policy_sync.sh
 
   infra-apply:
@@ -507,8 +456,8 @@ jobs:
         run: .github/scripts/stages/portainer_api_preflight.sh
 
   portainer-apply:
-    needs: [project-plan, secret-validation, cloud-runner-guard, network-policy-sync, post-bootstrap-secret-check, portainer-api-preflight]
-    if: ${{ needs.project-plan.outputs.stage_portainer_apply == 'true' }}
+    needs: [project-plan, secret-validation, cloud-runner-guard, network-policy-sync, post-bootstrap-secret-check, portainer-api-preflight, config-sync]
+    if: ${{ always() && needs.project-plan.outputs.stage_portainer_apply == 'true' && (needs.config-sync.result == 'success' || needs.config-sync.result == 'skipped') && (needs.portainer-api-preflight.result == 'success' || needs.portainer-api-preflight.result == 'skipped') && (needs.post-bootstrap-secret-check.result == 'success' || needs.post-bootstrap-secret-check.result == 'skipped') }}
     runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
     env:
       TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TOKEN }}
@@ -531,8 +480,8 @@ jobs:
         run: .github/scripts/stages/portainer_apply.sh
 
   config-sync:
-    needs: [project-plan, stacks-sha-trust, secret-validation, cloud-runner-guard, network-preflight-ssh, inventory-handover, host-sync, portainer-apply]
-    if: ${{ always() && needs.project-plan.outputs.stage_config_sync == 'true' && (needs.stacks-sha-trust.result == 'success' || needs.stacks-sha-trust.result == 'skipped') && (needs.host-sync.result == 'success' || needs.host-sync.result == 'skipped') && (needs.portainer-apply.result == 'success' || needs.portainer-apply.result == 'skipped') }}
+    needs: [project-plan, stacks-sha-trust, secret-validation, cloud-runner-guard, network-preflight-ssh, inventory-handover, host-sync]
+    if: ${{ always() && needs.project-plan.outputs.stage_config_sync == 'true' && (needs.stacks-sha-trust.result == 'success' || needs.stacks-sha-trust.result == 'skipped') && (needs.host-sync.result == 'success' || needs.host-sync.result == 'skipped') }}
     runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
 
     steps:
@@ -585,6 +534,5 @@ jobs:
       - name: Trigger health-gated webhooks
         env:
           STACKS_SHA: ${{ needs.project-plan.outputs.stacks_sha }}
-          STACKS_CSV: ${{ needs.project-plan.outputs.changed_stacks }}
-          FULL_STACKS_RECONCILE: ${{ github.event_name == 'repository_dispatch' && 'true' || 'false' }}
+          FULL_STACKS_RECONCILE: "true"
         run: .github/scripts/stages/health_gated_redeploy.sh

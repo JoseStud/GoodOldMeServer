@@ -34,44 +34,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  detect-impact:
-    uses: ./.github/workflows/reusable-detect-impact-resolve-plan.yml
-    with:
-      plan_mode: iac
-      source_event_name: ${{ github.event_name }}
-      push_before: ${{ github.event.before }}
-      push_sha: ${{ github.sha }}
-      pr_base_sha: ${{ github.event.pull_request.base.sha }}
-      pr_head_sha: ${{ github.event.pull_request.head.sha }}
-
-  project-impact:
-    needs: detect-impact
-    runs-on: ubuntu-latest
-    outputs:
-      infra_workspace_changed: ${{ steps.project.outputs.infra_workspace_changed }}
-      portainer_workspace_changed: ${{ steps.project.outputs.portainer_workspace_changed }}
-      ansible_changed: ${{ steps.project.outputs.ansible_changed }}
-      stacks_gitlink_changed: ${{ steps.project.outputs.stacks_gitlink_changed }}
-      stacks_sha: ${{ steps.project.outputs.stacks_sha }}
-      changed_tf_roots_json: ${{ steps.project.outputs.changed_tf_roots_json }}
-      tfc_workspace_matrix_json: ${{ steps.project.outputs.tfc_workspace_matrix_json }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Bootstrap jq
-        uses: ./.github/actions/bootstrap-tools
-        with:
-          install_jq: "true"
-          install_yq: "true"
-
-      - name: Project iac outputs from canonical plan_json
-        id: project
-        env:
-          PLAN_JSON: ${{ needs.detect-impact.outputs.plan_json }}
-        run: .github/scripts/plan/project_plan_outputs.sh iac
-
   planner-contract-tests:
     runs-on: ubuntu-latest
 
@@ -93,6 +55,9 @@ jobs:
 
       - name: Run webhook gate tests
         run: bash .github/scripts/tests/test_trigger_webhooks_with_gates.sh
+
+      - name: Run workflow contract tests
+        run: bash .github/scripts/tests/test_workflow_contracts.sh
 
   bootstrap-tools-smoke:
     runs-on: ubuntu-latest
@@ -144,13 +109,16 @@ jobs:
         run: terraform fmt -check -recursive terraform
 
   terraform-validate:
-    needs: project-impact
-    if: ${{ needs.project-impact.outputs.changed_tf_roots_json != '[]' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        root: ${{ fromJson(needs.project-impact.outputs.changed_tf_roots_json) }}
+        root:
+          - terraform/infra
+          - terraform/oci
+          - terraform/gcp
+          - terraform/portainer-root
+          - terraform/portainer
 
     steps:
       - name: Checkout
@@ -166,13 +134,8 @@ jobs:
         run: terraform -chdir=${{ matrix.root }} validate
 
   tfc-speculative-plan:
-    needs: [project-impact, terraform-validate]
-    if: ${{ needs.project-impact.outputs.tfc_workspace_matrix_json != '[]' && (needs.terraform-validate.result == 'success' || needs.terraform-validate.result == 'skipped') }}
+    needs: terraform-validate
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        workspace: ${{ fromJson(needs.project-impact.outputs.tfc_workspace_matrix_json) }}
     env:
       TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
       TFC_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
@@ -191,7 +154,7 @@ jobs:
       - name: Resolve workspace and validate required inputs
         id: preflight
         env:
-          WORKSPACE_KEY: ${{ matrix.workspace.workspace_key }}
+          WORKSPACE_KEY: infra
           TFC_WORKSPACE_INFRA: ${{ vars.TFC_WORKSPACE_INFRA }}
           TFC_WORKSPACE_PORTAINER: ${{ vars.TFC_WORKSPACE_PORTAINER }}
         run: .github/scripts/stages/tfc_speculative_preflight.sh
@@ -204,7 +167,7 @@ jobs:
         uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.0.0
         with:
           workspace: ${{ steps.preflight.outputs.workspace_name }}
-          directory: ${{ matrix.workspace.config_directory }}
+          directory: terraform/infra
           speculative: true
 
       - name: Create speculative run
@@ -224,8 +187,6 @@ jobs:
         run: .github/scripts/tfc/wait_for_tfc_run.sh "${RUN_ID}" "${WORKSPACE_NAME}"
 
   ansible-validate:
-    needs: project-impact
-    if: ${{ needs.project-impact.outputs.ansible_changed == 'true' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -265,8 +226,6 @@ jobs:
           ansible-playbook -i /tmp/ansible-syntax.ini --syntax-check ansible/playbooks/provision.yml
 
   stacks-sha-trust:
-    needs: project-impact
-    if: ${{ needs.project-impact.outputs.stacks_gitlink_changed == 'true' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -278,8 +237,14 @@ jobs:
         with:
           install_jq: "true"
 
+      - name: Resolve current stacks gitlink SHA
+        id: stacks-gitlink
+        run: |
+          set -euo pipefail
+          echo "sha=$(git rev-parse HEAD:stacks)" >> "${GITHUB_OUTPUT}"
+
       - name: Verify trusted stacks SHA
         env:
           GITHUB_TOKEN: ${{ github.token }}
           STACKS_REPO_READ_TOKEN: ${{ secrets.STACKS_REPO_READ_TOKEN }}
-        run: .github/scripts/stacks/verify_trusted_stacks_sha.sh "${{ needs.project-impact.outputs.stacks_sha }}"
+        run: .github/scripts/stacks/verify_trusted_stacks_sha.sh "${{ steps.stacks-gitlink.outputs.sha }}"
