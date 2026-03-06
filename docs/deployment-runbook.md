@@ -2,7 +2,7 @@
 
 This document covers the end-to-end deployment procedure: prerequisites, stack ordering, deploy commands, verification, updates, and rollback.
 
-Before using this runbook for first-time setup, complete the [Meta-Pipeline Cutover Checklist](meta-pipeline-cutover-checklist.md). For variable ownership (manual vs automation-managed), see [Infisical Workflow](infisical-workflow.md#variable-ownership--mutability).
+Before using this runbook for first-time setup, complete the [Infrastructure Orchestrator Cutover Checklist](meta-pipeline-cutover-checklist.md). For variable ownership (manual vs automation-managed), see [Infisical Workflow](infisical-workflow.md#variable-ownership--mutability).
 
 ## Prerequisites
 
@@ -10,7 +10,7 @@ Before deploying any stack, verify that all infrastructure layers are operationa
 
 | Prerequisite | How to Verify | Fix |
 |-------------|---------------|-----|
-| Cutover checklist complete | Review [Meta-Pipeline Cutover Checklist](meta-pipeline-cutover-checklist.md) and confirm all required items | Complete missing GitHub/TFC/Infisical prerequisites before deploy |
+| Cutover checklist complete | Review [Infrastructure Orchestrator Cutover Checklist](meta-pipeline-cutover-checklist.md) and confirm all required items | Complete missing GitHub/TFC/Infisical prerequisites before deploy |
 | Automation-managed variables understood | Review [Variable Ownership & Mutability](infisical-workflow.md#variable-ownership--mutability) | Do not manually edit automation-managed variables outside their owning workflow |
 | Terraform infra workspace applied | Terraform Cloud run for `goodoldme-infra` succeeds (or `terraform -chdir=terraform/infra output`) | Run `infra-orchestrator.yml` with `run_infra_apply=true` or `terraform -chdir=terraform/infra apply` |
 | Terraform Portainer workspace applied | Local CI apply for `terraform/portainer-root` succeeds against TFC remote state (`goodoldme-portainer`) (or `terraform -chdir=terraform/portainer-root output`) | Run `infra-orchestrator.yml` with `run_portainer_apply=true` or `terraform -chdir=terraform/portainer-root apply` |

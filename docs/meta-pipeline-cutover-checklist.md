@@ -1,4 +1,4 @@
-# Meta Pipeline Cutover Checklist (Minimal)
+# Infrastructure Orchestrator Cutover Checklist (Minimal)
 
 Use this checklist before the first full run of `.github/workflows/infra-orchestrator.yml`.
 For ownership context, see [Infisical Workflow](infisical-workflow.md#variable-ownership--mutability).
@@ -37,7 +37,7 @@ These values are managed by automation after bootstrap and are not operator-owne
 | Item | Requirement | Owner | Notes | Checkbox |
 |------|-------------|-------|-------|----------|
 | `TFC_TOKEN` | Required | Platform | Terraform Cloud API/team token with run and state output access. | [ ] |
-| `INFISICAL_TOKEN` | Required | Security | Needed for local `terraform/portainer-root` apply path and runner guard. | [ ] |
+| `INFISICAL_TOKEN` | Required | Security | Needed for the local `terraform/portainer-root` apply path. | [ ] |
 | `STACKS_REPO_READ_TOKEN` | Required | Security | Token used for trust verification of `stacks_sha` dispatch payloads. | [ ] |
 
 ## 3) Stacks Repo (Dispatch-Only Stack Planning)
@@ -82,7 +82,7 @@ Expected dispatch payload example:
 | Infisical provider auth variables | Required | Security | For example `INFISICAL_TOKEN` in attached variable set. | [ ] |
 | OCI provider auth (`auth = "SecurityToken"`) | Required | Security | Ensure workspace has valid OCI auth variables. | [ ] |
 | GCP provider auth | Required | Security | For example `GOOGLE_CREDENTIALS`. | [ ] |
-| Workspace Auto Apply disabled | Required | Platform | Meta-pipeline waits for manual confirm/apply in Terraform Cloud. | [ ] |
+| Workspace Auto Apply disabled | Required | Platform | Infrastructure Orchestrator waits for manual confirm/apply in Terraform Cloud. | [ ] |
 
 ### Workspace: `goodoldme-portainer` (`terraform/portainer-root`)
 

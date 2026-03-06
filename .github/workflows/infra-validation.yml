@@ -237,8 +237,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pipx
           echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
-          pipx install ansible-core
-          pipx install ansible-lint
+          source .github/ci/tool-versions.lock
+          pipx install "ansible-core==${ANSIBLE_CORE_VERSION}"
+          pipx install "ansible-lint==${ANSIBLE_LINT_VERSION}"
+          ansible-playbook --version | head -n1 | grep -F "core ${ANSIBLE_CORE_VERSION}"
+          ansible-lint --version | head -n1 | grep -F "ansible-lint ${ANSIBLE_LINT_VERSION}"
           ansible-galaxy collection install -r ansible/requirements.yml --force-with-deps
 
       - name: Run ansible-lint

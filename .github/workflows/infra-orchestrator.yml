@@ -201,10 +201,8 @@ jobs:
         id: guard
         env:
           CLOUD_STATIC_RUNNER_LABEL: ${{ vars.CLOUD_STATIC_RUNNER_LABEL }}
-          INFISICAL_TOKEN: ${{ secrets.INFISICAL_TOKEN }}
         run: |
           : "${CLOUD_STATIC_RUNNER_LABEL:?Missing required variable: CLOUD_STATIC_RUNNER_LABEL}"
-          : "${INFISICAL_TOKEN:?Missing required secret: INFISICAL_TOKEN}"
           echo "runner_label=${CLOUD_STATIC_RUNNER_LABEL}" >> "${GITHUB_OUTPUT}"
 
   stacks-sha-trust:
@@ -297,12 +295,19 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
+      - name: Upload infra configuration
+        id: upload
+        uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.0.0
+        with:
+          workspace: ${{ env.TFC_WORKSPACE_INFRA }}
+          directory: terraform/infra
+
       - name: Create Terraform Cloud Infra Run
         id: tfc-run
         uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.0
         with:
           workspace: ${{ env.TFC_WORKSPACE_INFRA }}
-          configuration_version: ${{ github.sha }}
+          configuration_version: ${{ steps.upload.outputs.configuration_version_id }}
           message: "Infrastructure orchestrator infra apply (${{ needs.project-plan.outputs.reason }})"
 
       - name: Wait for Terraform Cloud infra run

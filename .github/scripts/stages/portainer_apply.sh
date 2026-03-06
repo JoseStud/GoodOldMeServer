@@ -4,6 +4,7 @@ set -euo pipefail
 
 source .github/scripts/lib/workflow_common.sh
 
+: "${INFISICAL_TOKEN:?INFISICAL_TOKEN is required}"
 : "${TFC_WORKSPACE_PORTAINER:?TFC_WORKSPACE_PORTAINER is required}"
 : "${TFC_ORGANIZATION:?TFC_ORGANIZATION is required}"
 

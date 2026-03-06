@@ -198,14 +198,17 @@
     - rotate_api_key | default(true)
   no_log: true
 
+# Persist bootstrap-managed secrets from the controller, which already has
+# the workflow's OIDC-authenticated Infisical CLI session.
 - name: Write PORTAINER_ADMIN_PASSWORD_HASH to Infisical
   ansible.builtin.command: >
     infisical secrets set PORTAINER_ADMIN_PASSWORD_HASH={{ portainer_admin_password_hash }}
     --env=prod
     --path=/stacks/management
     --projectId={{ infisical_project_id }}
-  environment:
-    INFISICAL_TOKEN: "{{ lookup('env', 'INFISICAL_TOKEN') }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
   register: infisical_hash_result
   changed_when: infisical_hash_result.rc == 0
   when:
@@ -228,8 +231,9 @@
     --env=prod
     --path=/management
     --projectId={{ infisical_project_id }}
-  environment:
-    INFISICAL_TOKEN: "{{ lookup('env', 'INFISICAL_TOKEN') }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
   register: infisical_url_result
   changed_when: infisical_url_result.rc == 0
   when:
@@ -243,8 +247,9 @@
     --env=prod
     --path=/management
     --projectId={{ infisical_project_id }}
-  environment:
-    INFISICAL_TOKEN: "{{ lookup('env', 'INFISICAL_TOKEN') }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
   register: infisical_api_url_result
   changed_when: infisical_api_url_result.rc == 0
   when:
@@ -258,8 +263,9 @@
     --env=prod
     --path=/management
     --projectId={{ infisical_project_id }}
-  environment:
-    INFISICAL_TOKEN: "{{ lookup('env', 'INFISICAL_TOKEN') }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
   register: infisical_key_result
   changed_when: infisical_key_result.rc == 0
   when:

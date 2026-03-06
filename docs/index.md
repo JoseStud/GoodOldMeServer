@@ -13,7 +13,7 @@ Welcome to the centralized GoodOldMeServer documentation. This repository manage
 
 If you are bootstrapping or validating CI/CD for the first time, read these first:
 
-1. [**Meta-Pipeline Cutover Checklist**](meta-pipeline-cutover-checklist.md) — required GitHub variables/secrets, Terraform workspace settings, and first-run sequence.
+1. [**Infrastructure Orchestrator Cutover Checklist**](meta-pipeline-cutover-checklist.md) — required GitHub variables/secrets, Terraform workspace settings, and first-run sequence.
 2. [**Infisical Workflow**](infisical-workflow.md#variable-ownership--mutability) — which variables are operator-managed vs auto-managed by Ansible, Terraform, or the infrastructure orchestrator.
 3. [**Deployment Runbook Prerequisites**](deployment-runbook.md#prerequisites) — operational readiness checks before deploy/apply actions.
 
@@ -21,7 +21,7 @@ If you are bootstrapping or validating CI/CD for the first time, read these firs
 
 ### Operator
 
-1. [Meta-Pipeline Cutover Checklist](meta-pipeline-cutover-checklist.md)
+1. [Infrastructure Orchestrator Cutover Checklist](meta-pipeline-cutover-checklist.md)
 2. [Deployment Runbook](deployment-runbook.md#prerequisites)
 3. [Stacks](stacks.md#health-checks-and-webhook-gate-behavior)
 4. [Backup Strategy](backup-strategy.md#recovery-objectives-rporto)
@@ -37,7 +37,7 @@ If you are bootstrapping or validating CI/CD for the first time, read these firs
 ### Security
 
 1. [Infisical Workflow](infisical-workflow.md#variable-ownership--mutability)
-2. [Meta-Pipeline Cutover Checklist](meta-pipeline-cutover-checklist.md#0-auto-managed-values-do-not-set-manually)
+2. [Infrastructure Orchestrator Cutover Checklist](meta-pipeline-cutover-checklist.md#0-auto-managed-values-do-not-set-manually)
 3. [Network Architecture](network-architecture.md#port-and-protocol-matrix)
 4. [OCI Terraform Cloud OIDC Setup](oci-tfc-oidc-setup.md)
 
@@ -108,7 +108,7 @@ flowchart TD
 - [**Infisical Secrets Workflow**](infisical-workflow.md) — Agent config, `.env.tmpl` templating, secret injection pipeline. Last reviewed: `2026-03-05`.
 - [**CI Impact Rules**](ci-impact-rules.md) — Centralized path filters and workflow impact-output mapping. Last reviewed: `2026-03-05`.
 - [**CI Plan Contract**](ci-plan-contract.md) — Canonical `plan_json` schema and projection/deprecation rules. Last reviewed: `2026-03-05`.
-- [**Meta-Pipeline Cutover Checklist**](meta-pipeline-cutover-checklist.md) — Minimal first-run checklist (GitHub vars/secrets + Terraform workspace vars). Last reviewed: `2026-03-05`.
+- [**Infrastructure Orchestrator Cutover Checklist**](meta-pipeline-cutover-checklist.md) — Minimal first-run checklist (GitHub vars/secrets + Terraform workspace vars). Last reviewed: `2026-03-06`.
 - [**Deployment Runbook**](deployment-runbook.md) — Stack ordering, deploy commands, verification, rollback procedures. Last reviewed: `2026-03-05`.
 - [**Backup Strategy**](backup-strategy.md) — OCI Silver backup policy, GlusterFS redundancy, application-level backups, recovery. Last reviewed: `2026-03-05`.
 

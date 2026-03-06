@@ -55,7 +55,7 @@ Use this as the source of truth for whether a value is operator-managed or autom
 | `TF_VAR_network_access_policy` (Terraform Cloud env var) | Security | Auto-created/updated by `infra-orchestrator.yml` `network-policy-sync` job. Do not set manually outside policy sync flow. |
 | `/stacks/management/PORTAINER_AUTOMATION_ALLOWED_CIDRS` | Security | Auto-synced by `infra-orchestrator.yml` from `network_access_policy.portainer_api.source_ranges`. Do not set manually outside break-glass recovery. |
 
-> For first-run setup and required GitHub/TFC inputs, see [Meta-Pipeline Cutover Checklist](meta-pipeline-cutover-checklist.md).
+> For first-run setup and required GitHub/TFC inputs, see [Infrastructure Orchestrator Cutover Checklist](meta-pipeline-cutover-checklist.md).
 
 ### Required for First Deploy
 
@@ -71,7 +71,7 @@ Use this as the source of truth for whether a value is operator-managed or autom
 | `/stacks/network` | `VW_DB_PASS`, `VW_ADMIN_TOKEN`, `PIHOLE_PASSWORD` | Required | Operator | Required for network stack stateful services |
 | `/stacks/observability` | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET`, `ALERTMANAGER_WEBHOOK_URL` | Required | Operator | Required for observability deploy and alert routing |
 | `/stacks/ai-interface` | `ARCH_PC_IP` | Required | Operator | Required for Open WebUI upstream reachability |
-| GitHub `vars.*`/`secrets.*` bootstrap set | `INFISICAL_MACHINE_IDENTITY_ID`, `INFISICAL_PROJECT_ID`, `TFC_*`, `CLOUD_STATIC_RUNNER_LABEL`, `TFC_TOKEN`, `INFISICAL_TOKEN` | Required | Platform | Required for pipeline execution and handover stages |
+| GitHub `vars.*`/`secrets.*` bootstrap set | `INFISICAL_MACHINE_IDENTITY_ID`, `INFISICAL_PROJECT_ID`, `TFC_*`, `CLOUD_STATIC_RUNNER_LABEL`, `TFC_TOKEN`, `INFISICAL_TOKEN` | Required | Platform | Required for pipeline execution; `INFISICAL_TOKEN` is only needed by the local `terraform/portainer-root` apply path |
 
 ### Steady-State / Optional
 
@@ -213,7 +213,7 @@ The workflow authenticates to Infisical via **OIDC** (not Universal Auth), so no
 
 | Variable | How to Get | Used By |
 |----------|-----------|---------|
-| `INFISICAL_TOKEN` (infra repo) | Infisical service token with project read/write scope for automation paths | Required by cloud-runner guard and local `terraform/portainer-root` apply path |
+| `INFISICAL_TOKEN` (infra repo) | Infisical service token with project read/write scope for automation paths | Required by the local `terraform/portainer-root` apply path |
 | `INFRA_REPO_DISPATCH_TOKEN` (stacks repo) | Fine-grained GitHub token with `contents:write` + repository dispatch access on this infra repo | `stacks/.github/workflows/stacks-dispatch-redeploy.yml` dispatches `stacks-redeploy-intent-v3` to this repo |
 | `TFC_TOKEN` (infra repo) | Terraform Cloud Team/API token with workspace run access | `infra-orchestrator.yml` Terraform Cloud run/apply + state output inventory handover |
 

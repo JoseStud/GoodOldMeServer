@@ -228,9 +228,10 @@ All directories are owned by `media-srv:media-srv` (UID/GID 1500) with mode `075
 > **Required environment variables:**
 > - `PORTAINER_ADMIN_PASSWORD` — initial admin password (hashed to bcrypt at deploy time; plaintext is used only for JWT auth to create the API key)
 > - `BASE_DOMAIN` — your domain (e.g., `example.com`)
-> - `INFISICAL_TOKEN` — Infisical auth token (for writing secrets)
 > - `INFISICAL_PROJECT_ID` — Infisical project ID
 > - `HOMARR_SECRET_KEY` — Homarr encryption key
+>
+> The workflow-backed bootstrap path writes Portainer secrets back to Infisical from the OIDC-authenticated controller session, so it no longer requires `INFISICAL_TOKEN` for this phase.
 
 ## Structure
 
