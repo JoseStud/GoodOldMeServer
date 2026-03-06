@@ -36,6 +36,24 @@
   when: inventory_hostname == groups['oci_nodes'][0]
   no_log: true
 
+- name: Ensure management runtime directory exists
+  ansible.builtin.file:
+    path: "{{ portainer_runtime_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Stage trusted management compose for bootstrap
+  ansible.builtin.copy:
+    src: "{{ portainer_compose_source_path }}"
+    dest: "{{ portainer_compose_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: inventory_hostname == groups['oci_nodes'][0]
+
 - name: Deploy management stack (Portainer + Homarr)
   ansible.builtin.command: >
     docker stack deploy

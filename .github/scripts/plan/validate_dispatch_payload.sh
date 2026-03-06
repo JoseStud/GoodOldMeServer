@@ -47,8 +47,8 @@ validate_schema_version() {
     exit 1
   fi
 
-  if [[ "${value}" != "v3" ]]; then
-    echo "Unsupported dispatch schema_version '${value}'. Expected 'v3'."
+  if [[ "${value}" != "v4" ]]; then
+    echo "Unsupported dispatch schema_version '${value}'. Expected 'v4'."
     exit 1
   fi
 }
@@ -151,6 +151,7 @@ validate_schema_version "${PAYLOAD_SCHEMA_VERSION:-}"
 validate_sha "stacks_sha" "${PAYLOAD_STACKS_SHA:-}"
 validate_sha "source_sha" "${PAYLOAD_SOURCE_SHA:-}"
 validate_stack_array_json "changed_stacks" "${PAYLOAD_CHANGED_STACKS_JSON:-}"
+validate_stack_array_json "host_sync_stacks" "${PAYLOAD_HOST_SYNC_STACKS_JSON:-}"
 validate_stack_array_json "config_stacks" "${PAYLOAD_CONFIG_STACKS_JSON:-}"
 validate_paths_array_json "changed_paths" "${PAYLOAD_CHANGED_PATHS_JSON:-}"
 validate_reason "${PAYLOAD_REASON:-}"

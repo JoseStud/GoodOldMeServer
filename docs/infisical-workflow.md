@@ -214,7 +214,9 @@ The workflow authenticates to Infisical via **OIDC** (not Universal Auth), so no
 | Variable | How to Get | Used By |
 |----------|-----------|---------|
 | `INFISICAL_TOKEN` (infra repo) | Infisical service token with project read/write scope for automation paths | Required by the local `terraform/portainer-root` apply path |
-| `INFRA_REPO_DISPATCH_TOKEN` (stacks repo) | Fine-grained GitHub token with `contents:write` + repository dispatch access on this infra repo | `stacks/.github/workflows/stacks-dispatch-redeploy.yml` dispatches `stacks-redeploy-intent-v3` to this repo |
+| `INFRA_REPO_DISPATCH_TOKEN` (stacks repo) | Fine-grained GitHub token with `contents:write` + repository dispatch access on this infra repo | `stacks/.github/workflows/stacks-dispatch-redeploy.yml` dispatches `stacks-redeploy-intent-v4` to this repo |
+| `INFISICAL_AGENT_CLIENT_ID` (infra repo) | Universal Auth client id for the host-side Infisical Agent | Ansible `phase7_runtime_sync` and local Portainer webhook helper |
+| `INFISICAL_AGENT_CLIENT_SECRET` (infra repo) | Universal Auth client secret for the host-side Infisical Agent | Ansible `phase7_runtime_sync` and local Portainer webhook helper |
 | `TFC_TOKEN` (infra repo) | Terraform Cloud Team/API token with workspace run access | `infra-orchestrator.yml` Terraform Cloud run/apply + state output inventory handover |
 
 ---
@@ -302,16 +304,17 @@ Flow:
 1. Push to `main` in stacks repo
 2. Private cloud static runner computes affected stacks from changed paths
 3. Runner ignores non-deploy paths (for example docs/CI-only files)
-4. Runner dispatches a unified event (`stacks-redeploy-intent-v3`) with schema `v3` payload to this infra repo
-5. Infra `infra-orchestrator.yml` decides the ordered stages: secret validation -> optional Portainer apply -> optional config sync -> health-gated webhook redeploy
+4. Runner dispatches a unified event (`stacks-redeploy-intent-v4`) with schema `v4` payload to this infra repo
+5. Infra `infra-orchestrator.yml` decides the ordered stages. For stacks `repository_dispatch`, that path is now a full reconcile: secret validation -> `phase7_runtime_sync` -> Portainer apply -> `sync-configs` -> health-gated webhook redeploy.
 
-### `stacks-redeploy-intent-v3` Dispatch Contract
+### `stacks-redeploy-intent-v4` Dispatch Contract
 
-- Event type: `stacks-redeploy-intent-v3`
-- Required `client_payload.schema_version`: `v3`
+- Event type: `stacks-redeploy-intent-v4`
+- Required `client_payload.schema_version`: `v4`
 - Required `client_payload.stacks_sha`: commit SHA from stacks repo
 - Required `client_payload.source_sha`: commit SHA from stacks repo workflow source
 - Required `client_payload.changed_stacks`: JSON array of changed stack names
+- Required `client_payload.host_sync_stacks`: JSON array of stacks requiring `/opt/stacks` or agent-config convergence
 - Required `client_payload.config_stacks`: JSON array of config-sync stacks (`auth`, `observability`) or empty
 - Required `client_payload.structural_change`: boolean
 - Required `client_payload.reason`: `structural-change`, `manual-refresh`, or `content-change`
@@ -325,78 +328,33 @@ The Infisical Agent runs on each Swarm node as a **systemd service**. It renders
 
 ### Installing the Agent
 
-1. **Download the Infisical CLI/Agent binary** (includes the agent mode):
+The normal path is **Ansible phase 7 (`phase7_runtime_sync`)**. That role installs the `infisical` package, mirrors the trusted controller checkout to `/opt/stacks`, renders `/etc/infisical/agent.yaml`, installs the local webhook helper, and manages `infisical-agent.service`.
+
+Required bootstrap inputs:
+
+- `INFISICAL_AGENT_CLIENT_ID`
+- `INFISICAL_AGENT_CLIENT_SECRET`
+- `INFISICAL_PROJECT_ID`
+
+Generate the Universal Auth credentials in Infisical under **Access Control → Machine Identities → Create Identity → Universal Auth** and grant that identity read access to the project.
+
+Run the managed convergence path with:
 
 ```bash
-# Install via the official install script
-curl -1sLf 'https://dl.cloudsmith.io/public/infisical/infisical-cli/setup.deb.sh' | sudo bash
-sudo apt-get install -y infisical
+ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --tags phase7_runtime_sync
 ```
 
-2. **Place the agent configuration** at `/etc/infisical/agent.yaml`. The reference config is maintained in this repo at `stacks/infisical-agent.yaml`:
+Verify the managed runtime state with:
 
 ```bash
-sudo mkdir -p /etc/infisical
-sudo cp stacks/infisical-agent.yaml /etc/infisical/agent.yaml
-```
-
-3. **Bootstrap Universal Auth credentials** — these are the only secrets stored outside Infisical. Edit the agent config to replace the `<INJECTED_BY_ANSIBLE>` placeholders with real values:
-
-```bash
-sudo nano /etc/infisical/agent.yaml
-# Replace <INJECTED_BY_ANSIBLE> with actual client-id and client-secret
-```
-
-> Generate these credentials in Infisical: **Access Control → Machine Identities → Create Identity → Universal Auth**. Grant the identity read access to the project.
-
-4. **Create the systemd unit file** at `/etc/systemd/system/infisical-agent.service`:
-
-```ini
-[Unit]
-Description=Infisical Agent
-After=network-online.target docker.service
-Wants=network-online.target
-
-[Service]
-Type=simple
-ExecStart=/usr/bin/infisical agent --config /etc/infisical/agent.yaml
-Restart=always
-RestartSec=10
-User=root
-
-[Install]
-WantedBy=multi-user.target
-```
-
-5. **Enable and start the service:**
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now infisical-agent
-```
-
-6. **Verify the agent is running and templates are rendered:**
-
-```bash
-# Check service status
 systemctl status infisical-agent
-
-# Verify .env files have been created
 ls -la /opt/stacks/*/.env
-
-# Check agent logs for errors
 journalctl -u infisical-agent --no-pager -n 50
 ```
 
 ### Stacks Directory on Host
 
-The agent expects all stacks at `/opt/stacks/` on the host. This is typically a symlink or clone of the `stacks/` directory from this repository:
-
-```bash
-sudo ln -s /path/to/GoodOldMeServer/stacks /opt/stacks
-# Or clone the stacks submodule directly:
-sudo git clone https://github.com/JoseStud/stacks.git /opt/stacks
-```
+`/opt/stacks` is an Ansible-managed mirror of the trusted `stacks/` checkout for the selected `STACKS_SHA`. Do not treat a manual symlink or host-side git clone as the normal setup path. Use manual copy/clone only as break-glass recovery before rerunning `phase7_runtime_sync`.
 
 ### Template Pattern
 
@@ -435,18 +393,18 @@ Stacks that only need globals (uptime, cloud) have a single `/infrastructure` bl
 
 ### Agent Configuration
 
-The agent config lives at `/etc/infisical/agent.yaml` (see `stacks/infisical-agent.yaml`). It contains one template entry per stack, each with:
+The agent config lives at `/etc/infisical/agent.yaml` and is rendered by Ansible from `stacks/infisical-agent.yaml`. It contains one template entry per stack, each with:
 - `source-path` → the `.env.tmpl` on disk
 - `destination-path` → the rendered `.env`
 - `polling-interval: 60s` → how often to check for changes
-- `exec.command` → `docker stack deploy ...` to apply changes
+- `exec.command` → either direct management `docker stack deploy` or the local Portainer webhook helper, depending on stack ownership
 
 ### Workflow
 
 1. Operator adds/updates a secret in the Infisical dashboard
 2. The agent detects the change on its next polling interval (60s default)
 3. Agent re-renders the `.env` file with the new value
-4. Agent runs the `exec.command` to redeploy the stack with updated env vars
+4. Agent runs the `exec.command` on the primary manager to redeploy the stack or trigger the Portainer webhook
 
 ## infisical.json
 
@@ -466,7 +424,7 @@ This file is intentionally kept in the repo (without secrets) so that `infisical
 2. **Reference it in the template** — add a `{{- with secret "/path" }}` block to the stack's `.env.tmpl`
 3. **Use it in the compose file** — reference via `${SECRET_NAME}` in the stack's `docker-compose.yml`
 4. **Register the template** — add a new entry in `stacks/infisical-agent.yaml`
-5. **The agent picks it up** — on the next poll, the `.env` is re-rendered and the stack redeployed
+5. **The agent picks it up** — on the next poll, the `.env` is re-rendered and the primary manager performs the direct deploy or webhook call
 
 ## Security Considerations
 

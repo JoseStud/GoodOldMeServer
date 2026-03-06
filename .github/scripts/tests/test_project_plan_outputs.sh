@@ -92,11 +92,13 @@ meta_plan_json="$(cat <<'JSON'
     "run_infra_apply": true,
     "run_ansible_bootstrap": true,
     "run_portainer_apply": true,
+    "run_host_sync": true,
     "run_config_sync": true,
     "run_health_redeploy": false,
     "has_work": true,
     "stacks_sha": "0123456789abcdef0123456789abcdef01234567",
     "changed_stacks": "auth,gateway",
+    "host_sync_stacks": "auth,gateway,management",
     "config_stacks": "auth",
     "structural_change": false,
     "reason": "manual-dispatch",
@@ -109,6 +111,7 @@ meta_plan_json="$(cat <<'JSON'
       "stage_inventory_handover": true,
       "stage_network_preflight_ssh": true,
       "stage_ansible_bootstrap": true,
+      "stage_host_sync": false,
       "stage_post_bootstrap_secret_check": true,
       "stage_portainer_api_preflight": true,
       "stage_portainer_apply": true,
@@ -140,9 +143,12 @@ JSON
 
 meta_out="$(run_case "meta_projection" "meta" "${meta_plan_json}")"
 assert_eq "meta_projection" "run_infra_apply" "true" "$(read_output "${meta_out}" "run_infra_apply")"
+assert_eq "meta_projection" "run_host_sync" "true" "$(read_output "${meta_out}" "run_host_sync")"
 assert_eq "meta_projection" "run_config_sync" "true" "$(read_output "${meta_out}" "run_config_sync")"
 assert_eq "meta_projection" "changed_stacks" "auth,gateway" "$(read_output "${meta_out}" "changed_stacks")"
+assert_eq "meta_projection" "host_sync_stacks" "auth,gateway,management" "$(read_output "${meta_out}" "host_sync_stacks")"
 assert_eq "meta_projection" "stage_portainer_apply" "true" "$(read_output "${meta_out}" "stage_portainer_apply")"
+assert_eq "meta_projection" "stage_host_sync" "false" "$(read_output "${meta_out}" "stage_host_sync")"
 assert_eq "meta_projection" "stage_health_gated_redeploy" "false" "$(read_output "${meta_out}" "stage_health_gated_redeploy")"
 
 iac_out="$(run_case "iac_projection" "iac" "${iac_plan_json}")"

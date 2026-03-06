@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ $# -ne 1 ]]; then
+  echo "Usage: $0 <stack-name>"
+  exit 1
+fi
+
+if ! command -v curl >/dev/null 2>&1; then
+  echo "curl is required but was not found in PATH."
+  exit 1
+fi
+
+if ! command -v infisical >/dev/null 2>&1; then
+  echo "infisical is required but was not found in PATH."
+  exit 1
+fi
+
+# shellcheck disable=SC1091
+source "{{ runtime_sync_agent_env_path }}"
+
+: "${INFISICAL_DOMAIN:?INFISICAL_DOMAIN is required}"
+: "${INFISICAL_ENV:?INFISICAL_ENV is required}"
+: "${INFISICAL_PROJECT_ID:?INFISICAL_PROJECT_ID is required}"
+: "${INFISICAL_AGENT_CLIENT_ID:?INFISICAL_AGENT_CLIENT_ID is required}"
+: "${INFISICAL_AGENT_CLIENT_SECRET:?INFISICAL_AGENT_CLIENT_SECRET is required}"
+
+stack_name="$1"
+env_name="WEBHOOK_URL_$(echo "${stack_name}" | tr '[:lower:]-' '[:upper:]_')"
+
+token="$(
+  infisical login \
+    --method=universal-auth \
+    --client-id="${INFISICAL_AGENT_CLIENT_ID}" \
+    --client-secret="${INFISICAL_AGENT_CLIENT_SECRET}" \
+    --domain="${INFISICAL_DOMAIN}" \
+    --silent \
+    --plain \
+    | tr -d '\r\n'
+)"
+
+if [[ -z "${token}" ]]; then
+  echo "Failed to acquire an Infisical access token for ${stack_name}."
+  exit 1
+fi
+
+webhook_url="$(
+  ENV_NAME="${env_name}" \
+  INFISICAL_API_URL="${INFISICAL_DOMAIN}" \
+  INFISICAL_DOMAIN="${INFISICAL_DOMAIN}" \
+  INFISICAL_TOKEN="${token}" \
+    infisical run \
+      --projectId="${INFISICAL_PROJECT_ID}" \
+      --env="${INFISICAL_ENV}" \
+      --path=/deployments \
+      -- bash -lc 'printenv "${ENV_NAME}" || true'
+)"
+
+if [[ -z "${webhook_url}" ]]; then
+  echo "Missing ${env_name} in Infisical /deployments."
+  exit 1
+fi
+
+status="$(curl -sS -o /dev/null -w "%{http_code}" -X POST "${webhook_url}")"
+if [[ "${status}" != "200" && "${status}" != "204" ]]; then
+  echo "Webhook call failed for ${stack_name} (HTTP ${status})."
+  exit 1
+fi
+
+echo "Triggered Portainer webhook for ${stack_name} (HTTP ${status})."

@@ -4,9 +4,11 @@ portainer_base_domain: "{{ lookup('env', 'BASE_DOMAIN') | default('localhost', t
 
 # Compose file path (relative to repo root, on the host)
 portainer_compose_path: /opt/stacks/management/docker-compose.yml
+portainer_compose_source_path: "{{ playbook_dir }}/../../stacks/management/docker-compose.yml"
 
 # Portainer env file path
 portainer_env_path: /opt/stacks/management/.env
+portainer_runtime_dir: /opt/stacks/management
 
 # Portainer API endpoint (local, since we run on a manager node)
 portainer_api_url: "http://localhost:9000/api"

@@ -1,0 +1,17 @@
+---
+runtime_sync_stacks_src: "{{ playbook_dir }}/../../stacks/"
+runtime_sync_stacks_dest: /opt/stacks
+runtime_sync_agent_template_src: "{{ playbook_dir }}/../../stacks/infisical-agent.yaml"
+
+runtime_sync_infisical_domain: https://app.infisical.com
+runtime_sync_infisical_env: prod
+runtime_sync_infisical_project_id: "{{ lookup('env', 'INFISICAL_PROJECT_ID') | default('', true) }}"
+runtime_sync_infisical_agent_client_id: "{{ lookup('env', 'INFISICAL_AGENT_CLIENT_ID') | default('', true) }}"
+runtime_sync_infisical_agent_client_secret: "{{ lookup('env', 'INFISICAL_AGENT_CLIENT_SECRET') | default('', true) }}"
+
+runtime_sync_agent_config_path: /etc/infisical/agent.yaml
+runtime_sync_agent_env_path: /etc/infisical/runtime-sync.env
+runtime_sync_agent_cache_dir: /var/lib/infisical/cache
+runtime_sync_agent_service_path: /etc/systemd/system/infisical-agent.service
+runtime_sync_webhook_helper_path: /usr/local/bin/portainer-stack-webhook
+runtime_sync_primary_manager: "{{ groups['oci_nodes'][0] }}"

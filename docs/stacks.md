@@ -179,11 +179,21 @@ ansible-playbook playbooks/provision.yml --tags sync-configs
 
 Stacks that are self-configuring (no config files needed): **gateway**, **management**, **network**, **media/ai-interface**, **uptime**, **cloud**.
 
+## Host Runtime Sync
+
+Host runtime assets are Ansible-managed. Use `phase7_runtime_sync` to mirror the trusted `stacks/` checkout to `/opt/stacks`, render `/etc/infisical/agent.yaml`, and refresh the local webhook helper/service on every node:
+
+```bash
+ansible-playbook playbooks/provision.yml --tags phase7_runtime_sync
+```
+
 ## Adding a New Stack
 
 1. Create `stacks/<name>/docker-compose.yml` following the shared patterns above
 2. Add secrets to Infisical under `/stacks/<name>`
 3. Create `.env.tmpl` for the Infisical Agent to render
 4. If the stack needs config files, add them under `stacks/<name>/config/` and add a sync task to `ansible/roles/glusterfs/tasks/sync-configs.yml`
-5. Deploy: `docker stack deploy -c stacks/<name>/docker-compose.yml <name>`
-6. Update this document and the [Deployment Runbook](deployment-runbook.md)
+5. Register the stack in `stacks/infisical-agent.yaml` so host-sync-only template changes can update the runtime path
+6. Run `ansible-playbook playbooks/provision.yml --tags phase7_runtime_sync` to converge `/opt/stacks` and the agent config
+7. Deploy: `docker stack deploy -c stacks/<name>/docker-compose.yml <name>` (management only) or let Portainer/webhook automation own the normal deploy path for Portainer-managed stacks
+8. Update this document and the [Deployment Runbook](deployment-runbook.md)

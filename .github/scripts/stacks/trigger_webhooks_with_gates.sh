@@ -4,16 +4,13 @@ set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
   echo "Usage: $0 <manifest_path> [changed_stacks_csv]"
+  echo "Set FULL_STACKS_RECONCILE=true to redeploy every Portainer-managed stack from the manifest."
   exit 1
 fi
 
 MANIFEST_PATH="$1"
 STACKS_CSV="${2:-${STACKS_CSV:-}}"
-
-if [[ -z "${STACKS_CSV}" ]]; then
-  echo "No changed stacks provided. Nothing to redeploy."
-  exit 0
-fi
+FULL_STACKS_RECONCILE="${FULL_STACKS_RECONCILE:-false}"
 
 if [[ ! -f "${MANIFEST_PATH}" ]]; then
   echo "Manifest not found: ${MANIFEST_PATH}"
@@ -32,23 +29,62 @@ trim() {
   printf '%s' "${value}"
 }
 
-declare -A CHANGED_STACKS=()
-IFS=',' read -ra RAW_STACKS <<< "${STACKS_CSV}"
-for raw in "${RAW_STACKS[@]}"; do
-  stack="$(trim "${raw}")"
-  [[ -z "${stack}" ]] && continue
+is_true() {
+  case "${1,,}" in
+    true|1|yes) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
-  exists="$(yq -r ".stacks | has(\"${stack}\")" "${MANIFEST_PATH}")"
-  if [[ "${exists}" != "true" ]]; then
-    echo "Stack '${stack}' is not defined in ${MANIFEST_PATH}."
+declare -A TARGET_STACKS=()
+
+load_target_stacks_from_csv() {
+  local raw stack exists
+
+  if [[ -z "${STACKS_CSV}" ]]; then
+    echo "No changed stacks provided. Nothing to redeploy."
+    exit 0
+  fi
+
+  IFS=',' read -ra RAW_STACKS <<< "${STACKS_CSV}"
+  for raw in "${RAW_STACKS[@]}"; do
+    stack="$(trim "${raw}")"
+    [[ -z "${stack}" ]] && continue
+
+    exists="$(yq -r ".stacks | has(\"${stack}\")" "${MANIFEST_PATH}")"
+    if [[ "${exists}" != "true" ]]; then
+      echo "Stack '${stack}' is not defined in ${MANIFEST_PATH}."
+      exit 1
+    fi
+    TARGET_STACKS["${stack}"]=1
+  done
+
+  if [[ ${#TARGET_STACKS[@]} -eq 0 ]]; then
+    echo "No valid stacks remained after normalization."
+    exit 0
+  fi
+}
+
+load_full_reconcile_targets() {
+  local stack
+
+  while IFS= read -r stack; do
+    stack="$(trim "${stack}")"
+    [[ -z "${stack}" ]] && continue
+    TARGET_STACKS["${stack}"]=1
+  done < <(yq -r '.stacks | to_entries[] | select(.value.portainer_managed == true) | .key' "${MANIFEST_PATH}")
+
+  if [[ ${#TARGET_STACKS[@]} -eq 0 ]]; then
+    echo "No Portainer-managed stacks found in ${MANIFEST_PATH}."
     exit 1
   fi
-  CHANGED_STACKS["${stack}"]=1
-done
+}
 
-if [[ ${#CHANGED_STACKS[@]} -eq 0 ]]; then
-  echo "No valid stacks remained after normalization."
-  exit 0
+if is_true "${FULL_STACKS_RECONCILE}"; then
+  echo "FULL_STACKS_RECONCILE=true: redeploying all Portainer-managed stacks."
+  load_full_reconcile_targets
+else
+  load_target_stacks_from_csv
 fi
 
 render_url() {
@@ -132,7 +168,7 @@ visit_stack() {
   while IFS= read -r dep; do
     dep="$(trim "${dep}")"
     [[ -z "${dep}" ]] && continue
-    if [[ -n "${CHANGED_STACKS[${dep}]:-}" ]]; then
+    if [[ -n "${TARGET_STACKS[${dep}]:-}" ]]; then
       visit_stack "${dep}"
     fi
   done < <(yq -r ".stacks.\"${stack}\".depends_on[]?" "${MANIFEST_PATH}")
@@ -142,8 +178,13 @@ visit_stack() {
   ORDERED_STACKS+=("${stack}")
 }
 
-mapfile -t SORTED_INPUT_STACKS < <(printf '%s\n' "${!CHANGED_STACKS[@]}" | sort)
-for stack in "${SORTED_INPUT_STACKS[@]}"; do
+if is_true "${FULL_STACKS_RECONCILE}"; then
+  mapfile -t INPUT_STACKS < <(yq -r '.stacks | to_entries[] | select(.value.portainer_managed == true) | .key' "${MANIFEST_PATH}")
+else
+  mapfile -t INPUT_STACKS < <(printf '%s\n' "${!TARGET_STACKS[@]}" | sort)
+fi
+
+for stack in "${INPUT_STACKS[@]}"; do
   visit_stack "${stack}"
 done
 

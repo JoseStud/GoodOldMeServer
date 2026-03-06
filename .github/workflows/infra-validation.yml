@@ -64,6 +64,7 @@ jobs:
         uses: ./.github/actions/bootstrap-tools
         with:
           install_jq: "true"
+          install_yq: "true"
 
       - name: Project iac outputs from canonical plan_json
         id: project
@@ -82,12 +83,16 @@ jobs:
         uses: ./.github/actions/bootstrap-tools
         with:
           install_jq: "true"
+          install_yq: "true"
 
       - name: Run resolver contract tests
         run: .github/scripts/tests/test_resolve_ci_plan.sh
 
       - name: Run plan projection tests
         run: .github/scripts/tests/test_project_plan_outputs.sh
+
+      - name: Run webhook gate tests
+        run: bash .github/scripts/tests/test_trigger_webhooks_with_gates.sh
 
   bootstrap-tools-smoke:
     runs-on: ubuntu-latest
@@ -246,6 +251,18 @@ jobs:
 
       - name: Run ansible-lint
         run: ansible-lint -c .ansible-lint ansible
+
+      - name: Run ansible syntax check
+        run: |
+          set -euo pipefail
+          cat > /tmp/ansible-syntax.ini <<'EOF'
+          [oci_nodes]
+          localhost ansible_connection=local
+
+          [gcp_witness]
+          localhost ansible_connection=local
+          EOF
+          ansible-playbook -i /tmp/ansible-syntax.ini --syntax-check ansible/playbooks/provision.yml
 
   stacks-sha-trust:
     needs: project-impact

@@ -14,8 +14,7 @@ Rules are defined in `.github/ci/path-filters.yml` and consumed via `dorny/paths
 - Projection script for scalar workflow outputs:
   - `.github/scripts/plan/project_plan_outputs.sh iac`
   - `.github/scripts/plan/project_plan_outputs.sh meta`
-
-Compatibility scalar outputs from `.github/workflows/reusable-detect-impact-resolve-plan.yml` are deprecated and kept only for phased migration.
+- `.github/workflows/reusable-detect-impact-resolve-plan.yml` no longer exposes legacy scalar compatibility outputs directly.
 
 ## Filter Truth Table
 
@@ -36,8 +35,8 @@ Compatibility scalar outputs from `.github/workflows/reusable-detect-impact-reso
 
 ## Notes
 
-- Dispatch-only stack planning: stack content/config/structural intent comes from `stacks` repo event `stacks-redeploy-intent-v3` (schema `v3` payload with typed JSON arrays).
-- `run_config_sync=true` when dispatch/manual `config_stacks` is non-empty.
-- `run_health_redeploy=true` when dispatch/manual `changed_stacks` is non-empty.
+- Dispatch-only stack planning still receives typed JSON arrays from `stacks-redeploy-intent-v4`, but `repository_dispatch` now treats every valid event as a full stacks reconcile.
+- For `repository_dispatch`, the orchestrator always runs host sync, config sync, Portainer apply, and health-gated redeploy; payload arrays remain in `plan_json` for audit/debugging only.
+- Manual `workflow_dispatch` and `workflow_call` keep the targeted behavior: `run_config_sync=true` when `config_stacks` is non-empty, `run_host_sync=true` when `host_sync_stacks` is non-empty, and `run_health_redeploy=true` when `changed_stacks` is non-empty.
 - `has_work=true` when any execution toggle is true.
 - `infra-orchestrator.yml` no longer infers stack redeploy intent from infra `push` events.

@@ -5,6 +5,7 @@ set -euo pipefail
 : "${NETWORK_ACCESS_POLICY_JSON:?NETWORK_ACCESS_POLICY_JSON is required}"
 
 RUN_ANSIBLE="${RUN_ANSIBLE:-false}"
+RUN_HOST_SYNC="${RUN_HOST_SYNC:-false}"
 RUN_CONFIG="${RUN_CONFIG:-false}"
 RUN_HEALTH="${RUN_HEALTH:-false}"
 RUN_PORTAINER="${RUN_PORTAINER:-false}"
@@ -47,7 +48,7 @@ PY
 echo "Runner egress policy check passed: IPv4=${runner_ipv4}, IPv6=${runner_ipv6}"
 
 should_check_ssh="false"
-if [[ "${RUN_ANSIBLE}" == "true" || "${RUN_CONFIG}" == "true" ]]; then
+if [[ "${RUN_ANSIBLE}" == "true" || "${RUN_HOST_SYNC}" == "true" || "${RUN_CONFIG}" == "true" ]]; then
   should_check_ssh="true"
 fi
 

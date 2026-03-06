@@ -38,6 +38,8 @@ These values are managed by automation after bootstrap and are not operator-owne
 |------|-------------|-------|-------|----------|
 | `TFC_TOKEN` | Required | Platform | Terraform Cloud API/team token with run and state output access. | [ ] |
 | `INFISICAL_TOKEN` | Required | Security | Needed for the local `terraform/portainer-root` apply path. | [ ] |
+| `INFISICAL_AGENT_CLIENT_ID` | Required | Security | Universal Auth client id used by the Ansible-managed host runtime sync and local webhook helper. | [ ] |
+| `INFISICAL_AGENT_CLIENT_SECRET` | Required | Security | Universal Auth client secret used by the Ansible-managed host runtime sync and local webhook helper. | [ ] |
 | `STACKS_REPO_READ_TOKEN` | Required | Security | Token used for trust verification of `stacks_sha` dispatch payloads. | [ ] |
 
 ## 3) Stacks Repo (Dispatch-Only Stack Planning)
@@ -49,18 +51,19 @@ Required for `stacks/.github/workflows/stacks-dispatch-redeploy.yml` dispatching
 | `vars.INFRA_REPO` | Optional | Platform | Optional when default `JoseStud/GoodOldMeServer` is correct. | [ ] |
 | `secrets.INFRA_REPO_DISPATCH_TOKEN` | Required | Security | Fine-grained token used for repository dispatch to infra repo. | [ ] |
 | `stacks/.github/workflows/stacks-ci.yml` active | Required | Platform | Stack compose validation and manifest sanity run in stacks repo. | [ ] |
-| Dispatch payload schema `v3` implemented | Required | Platform | Must include typed JSON arrays (`changed_stacks`, `config_stacks`, optional `changed_paths`) plus `schema_version`, `source_repo`, `source_run_id`, `source_sha`, and `stacks_sha`. | [ ] |
+| Dispatch payload schema `v4` implemented | Required | Platform | Must include typed JSON arrays (`changed_stacks`, `host_sync_stacks`, `config_stacks`, optional `changed_paths`) plus `schema_version`, `source_repo`, `source_run_id`, `source_sha`, and `stacks_sha`. | [ ] |
 
 Expected dispatch payload example:
 
 ```json
 {
-  "event_type": "stacks-redeploy-intent-v3",
+  "event_type": "stacks-redeploy-intent-v4",
   "client_payload": {
-    "schema_version": "v3",
+    "schema_version": "v4",
     "stacks_sha": "0123456789abcdef0123456789abcdef01234567",
     "source_sha": "0123456789abcdef0123456789abcdef01234567",
     "changed_stacks": ["gateway", "auth"],
+    "host_sync_stacks": ["gateway", "auth"],
     "config_stacks": ["auth"],
     "structural_change": false,
     "reason": "content-change",
@@ -112,6 +115,6 @@ Expected dispatch payload example:
 | Verify cloud runner deterministic dual-stack egress | Required | Platform | `curl -4 https://api.ipify.org` and `curl -6 https://api64.ipify.org` from runner. | [ ] |
 | Run `infra-orchestrator.yml` with `run_infra_apply=true` | Required | Operator | Starts infra run sequence. | [ ] |
 | Confirm/apply infra run in Terraform Cloud UI when prompted | Required | Operator | Required because Auto Apply is disabled. | [ ] |
-| Confirm dispatch path validates `schema_version=v3` and waits for trusted `stacks_sha` checks | Required | Platform | `stacks-sha-trust` should pass before stack SHA is consumed by later stages. | [ ] |
-| Update branch protection required checks after workflow rename | Required | Platform | Replace old `IaC Validation` / `Meta Pipeline` checks with `Infrastructure Validation` / `Infrastructure Orchestrator`. | [ ] |
+| Confirm dispatch path validates `schema_version=v4` and waits for trusted `stacks_sha` checks | Required | Platform | `stacks-sha-trust` should pass before stack SHA is consumed by later stages, including host sync. | [ ] |
+| Retire legacy workflow checks and runbooks | Required | Platform | Remove old `IaC Validation` / `Meta Pipeline` checks, stop using retired workflow entry points, and standardize on the active workflow set in [Workflow Lifecycle](workflow-lifecycle.md). | [ ] |
 | Ensure CI governance checks are required | Required | Platform | Include `Lint GitHub Actions` and shell contract tests (`Infrastructure Validation / planner-contract-tests`) in required PR checks. | [ ] |

@@ -103,3 +103,9 @@
         name: portainer_bootstrap
       when: inventory_hostname == groups['oci_nodes'][0]
       tags: [phase6_portainer]
+
+    # === Phase 7: Host runtime sync (/opt/stacks + Infisical agent) ===
+    - name: Run runtime_sync role
+      ansible.builtin.include_role:
+        name: runtime_sync
+      tags: [phase7_runtime_sync]

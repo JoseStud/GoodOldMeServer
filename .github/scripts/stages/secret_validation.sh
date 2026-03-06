@@ -9,7 +9,27 @@ source .github/scripts/lib/workflow_common.sh
 RUN_INFRA="${RUN_INFRA:-false}"
 RUN_ANSIBLE="${RUN_ANSIBLE:-false}"
 RUN_PORTAINER="${RUN_PORTAINER:-false}"
+RUN_HOST_SYNC="${RUN_HOST_SYNC:-false}"
 RUN_HEALTH="${RUN_HEALTH:-false}"
+
+require_nonempty_env() {
+  local name="$1"
+  local value="${2:-}"
+
+  if [[ -z "${value}" ]]; then
+    echo "Missing required secret: ${name}"
+    exit 1
+  fi
+}
+
+if [[ "${RUN_PORTAINER}" == "true" ]]; then
+  require_nonempty_env "INFISICAL_TOKEN" "${INFISICAL_TOKEN:-}"
+fi
+
+if [[ "${RUN_ANSIBLE}" == "true" || "${RUN_HOST_SYNC}" == "true" ]]; then
+  require_nonempty_env "INFISICAL_AGENT_CLIENT_ID" "${INFISICAL_AGENT_CLIENT_ID:-}"
+  require_nonempty_env "INFISICAL_AGENT_CLIENT_SECRET" "${INFISICAL_AGENT_CLIENT_SECRET:-}"
+fi
 
 setup_infisical
 

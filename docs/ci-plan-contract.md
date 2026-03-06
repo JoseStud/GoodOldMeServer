@@ -28,8 +28,8 @@ Then one mode payload:
 
 ## `meta` Mode Fields
 
-- Execution toggles: `run_infra_apply`, `run_ansible_bootstrap`, `run_portainer_apply`, `run_config_sync`, `run_health_redeploy`, `has_work`
-- Context: `stacks_sha`, `changed_stacks`, `config_stacks`, `structural_change`, `reason`, `changed_paths`
+- Execution toggles: `run_infra_apply`, `run_ansible_bootstrap`, `run_portainer_apply`, `run_host_sync`, `run_config_sync`, `run_health_redeploy`, `has_work`
+- Context: `stacks_sha`, `changed_stacks`, `host_sync_stacks`, `config_stacks`, `structural_change`, `reason`, `changed_paths`
 - Stage gates under `meta.stages`:
   - `stage_cloud_runner_guard`
   - `stage_secret_validation`
@@ -38,6 +38,7 @@ Then one mode payload:
   - `stage_inventory_handover`
   - `stage_network_preflight_ssh`
   - `stage_ansible_bootstrap`
+  - `stage_host_sync`
   - `stage_post_bootstrap_secret_check`
   - `stage_portainer_api_preflight`
   - `stage_portainer_apply`
@@ -67,12 +68,4 @@ The projection script validates:
 - requested mode matches `plan_json.mode`
 - required fields exist with expected types
 
-## Deprecation Policy
-
-`workflow_call` scalar outputs in `.github/workflows/reusable-detect-impact-resolve-plan.yml` are compatibility outputs and are deprecated. New consumers must use `plan_json` + projection script.
-
-Removal policy:
-
-1. Migrate all callers to `plan_json` projection jobs.
-2. Keep compatibility outputs for one cleanup cycle.
-3. Remove deprecated scalar outputs after callers no longer consume them.
+and emits scalar outputs as workflow commands.

@@ -91,7 +91,7 @@ flowchart TD
 
 ### Core Documentation
 
-- [**Configuration Management (Ansible)**](ansible.md) — Playbooks, roles, dynamic inventory, and the 6-phase provisioning lifecycle. Last reviewed: `2026-03-05`.
+- [**Configuration Management (Ansible)**](ansible.md) — Playbooks, roles, dynamic inventory, and the 7-phase provisioning lifecycle. Last reviewed: `2026-03-06`.
 - [**Application Workloads (Stacks)**](stacks.md) — All Docker Swarm stack configurations: Gateway, Auth, Management, Network, Observability, Media/AI, Uptime, Cloud. Last reviewed: `2026-03-05`.
 - [**Utilities (Scripts)**](scripts.md) — Helper scripts and manual execution wrappers. Last reviewed: `2026-03-05`.
 
@@ -106,8 +106,9 @@ flowchart TD
 
 - [**Network Architecture**](network-architecture.md) — Tailscale mesh, 3-manager Swarm topology, GlusterFS replication, overlay networks, DNS & ingress flow. Last reviewed: `2026-03-05`.
 - [**Infisical Secrets Workflow**](infisical-workflow.md) — Agent config, `.env.tmpl` templating, secret injection pipeline. Last reviewed: `2026-03-05`.
-- [**CI Impact Rules**](ci-impact-rules.md) — Centralized path filters and workflow impact-output mapping. Last reviewed: `2026-03-05`.
-- [**CI Plan Contract**](ci-plan-contract.md) — Canonical `plan_json` schema and projection/deprecation rules. Last reviewed: `2026-03-05`.
+- [**CI Impact Rules**](ci-impact-rules.md) — Centralized path filters and workflow impact-output mapping. Last reviewed: `2026-03-06`.
+- [**CI Plan Contract**](ci-plan-contract.md) — Canonical `plan_json` schema and projection rules for current workflow consumers. Last reviewed: `2026-03-06`.
+- [**Workflow Lifecycle**](workflow-lifecycle.md) — Active workflows, retired legacy workflows, and replacement entry points. Last reviewed: `2026-03-06`.
 - [**Infrastructure Orchestrator Cutover Checklist**](meta-pipeline-cutover-checklist.md) — Minimal first-run checklist (GitHub vars/secrets + Terraform workspace vars). Last reviewed: `2026-03-06`.
 - [**Deployment Runbook**](deployment-runbook.md) — Stack ordering, deploy commands, verification, rollback procedures. Last reviewed: `2026-03-05`.
 - [**Backup Strategy**](backup-strategy.md) — OCI Silver backup policy, GlusterFS redundancy, application-level backups, recovery. Last reviewed: `2026-03-05`.

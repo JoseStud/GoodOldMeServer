@@ -155,13 +155,14 @@ assert_eq "meta_push_portainer_filter" "run_infra_apply" "false" "$(read_plan_js
 assert_eq "meta_push_portainer_filter" "run_ansible_bootstrap" "false" "$(read_plan_json_field "${case3_out}" '.meta.run_ansible_bootstrap')"
 assert_eq "meta_push_portainer_filter" "run_portainer_apply" "true" "$(read_plan_json_field "${case3_out}" '.meta.run_portainer_apply')"
 
-# Case 4: meta repository_dispatch structural change
+# Case 4: meta repository_dispatch always runs full reconcile
 case4_env="${TMP_DIR}/case4.env"
 write_env_file "${case4_env}" \
-  "PAYLOAD_SCHEMA_VERSION=v3" \
+  "PAYLOAD_SCHEMA_VERSION=v4" \
   "PAYLOAD_STACKS_SHA=${HEAD_SHA}" \
   "PAYLOAD_SOURCE_SHA=${HEAD_SHA}" \
   "PAYLOAD_CHANGED_STACKS_JSON=[\"gateway\"]" \
+  "PAYLOAD_HOST_SYNC_STACKS_JSON=[\"gateway\"]" \
   "PAYLOAD_CONFIG_STACKS_JSON=[]" \
   "PAYLOAD_STRUCTURAL_CHANGE=true" \
   "PAYLOAD_REASON=structural-change" \
@@ -170,16 +171,19 @@ write_env_file "${case4_env}" \
   "PAYLOAD_SOURCE_RUN_ID=12345"
 case4_out="$(run_plan_case "meta_repo_dispatch_structural" "meta" "repository_dispatch" "${case4_env}")"
 assert_eq "meta_repo_dispatch_structural" "run_portainer_apply" "true" "$(read_plan_json_field "${case4_out}" '.meta.run_portainer_apply')"
+assert_eq "meta_repo_dispatch_structural" "run_host_sync" "true" "$(read_plan_json_field "${case4_out}" '.meta.run_host_sync')"
 assert_eq "meta_repo_dispatch_structural" "run_health_redeploy" "true" "$(read_plan_json_field "${case4_out}" '.meta.run_health_redeploy')"
-assert_eq "meta_repo_dispatch_structural" "run_config_sync" "false" "$(read_plan_json_field "${case4_out}" '.meta.run_config_sync')"
+assert_eq "meta_repo_dispatch_structural" "run_config_sync" "true" "$(read_plan_json_field "${case4_out}" '.meta.run_config_sync')"
+assert_eq "meta_repo_dispatch_structural" "stage_host_sync" "true" "$(read_plan_json_field "${case4_out}" '.meta.stages.stage_host_sync')"
 
-# Case 5: meta repository_dispatch config-only path
+# Case 5: meta repository_dispatch config-only payload still runs full reconcile
 case5_env="${TMP_DIR}/case5.env"
 write_env_file "${case5_env}" \
-  "PAYLOAD_SCHEMA_VERSION=v3" \
+  "PAYLOAD_SCHEMA_VERSION=v4" \
   "PAYLOAD_STACKS_SHA=${HEAD_SHA}" \
   "PAYLOAD_SOURCE_SHA=${HEAD_SHA}" \
   "PAYLOAD_CHANGED_STACKS_JSON=[]" \
+  "PAYLOAD_HOST_SYNC_STACKS_JSON=[]" \
   "PAYLOAD_CONFIG_STACKS_JSON=[\"auth\"]" \
   "PAYLOAD_STRUCTURAL_CHANGE=false" \
   "PAYLOAD_REASON=content-change" \
@@ -187,23 +191,29 @@ write_env_file "${case5_env}" \
   "PAYLOAD_SOURCE_REPO=example/stacks" \
   "PAYLOAD_SOURCE_RUN_ID=12345"
 case5_out="$(run_plan_case "meta_repo_dispatch_config" "meta" "repository_dispatch" "${case5_env}")"
-assert_eq "meta_repo_dispatch_config" "changed_stacks" "auth" "$(read_plan_json_field "${case5_out}" '.meta.changed_stacks')"
+assert_eq "meta_repo_dispatch_config" "changed_stacks" "" "$(read_plan_json_field "${case5_out}" '.meta.changed_stacks')"
 assert_eq "meta_repo_dispatch_config" "run_config_sync" "true" "$(read_plan_json_field "${case5_out}" '.meta.run_config_sync')"
+assert_eq "meta_repo_dispatch_config" "run_host_sync" "true" "$(read_plan_json_field "${case5_out}" '.meta.run_host_sync')"
 assert_eq "meta_repo_dispatch_config" "run_health_redeploy" "true" "$(read_plan_json_field "${case5_out}" '.meta.run_health_redeploy')"
+assert_eq "meta_repo_dispatch_config" "run_portainer_apply" "true" "$(read_plan_json_field "${case5_out}" '.meta.run_portainer_apply')"
 
-# Case 6: meta repository_dispatch no-op
+# Case 6: meta repository_dispatch with empty payload arrays still has work
 case6_env="${TMP_DIR}/case6.env"
 write_env_file "${case6_env}" \
   "VALIDATE_DISPATCH_CONTRACT=false" \
   "PAYLOAD_STACKS_SHA=${HEAD_SHA}" \
   "PAYLOAD_CHANGED_STACKS_JSON=[]" \
+  "PAYLOAD_HOST_SYNC_STACKS_JSON=[]" \
   "PAYLOAD_CONFIG_STACKS_JSON=[]" \
   "PAYLOAD_STRUCTURAL_CHANGE=false" \
   "PAYLOAD_REASON=no-op" \
   "PAYLOAD_CHANGED_PATHS_JSON=[]"
 case6_out="$(run_plan_case "meta_repo_dispatch_noop" "meta" "repository_dispatch" "${case6_env}")"
-assert_eq "meta_repo_dispatch_noop" "has_work" "false" "$(read_plan_json_field "${case6_out}" '.meta.has_work')"
-assert_eq "meta_repo_dispatch_noop" "run_health_redeploy" "false" "$(read_plan_json_field "${case6_out}" '.meta.run_health_redeploy')"
+assert_eq "meta_repo_dispatch_noop" "has_work" "true" "$(read_plan_json_field "${case6_out}" '.meta.has_work')"
+assert_eq "meta_repo_dispatch_noop" "run_config_sync" "true" "$(read_plan_json_field "${case6_out}" '.meta.run_config_sync')"
+assert_eq "meta_repo_dispatch_noop" "run_host_sync" "true" "$(read_plan_json_field "${case6_out}" '.meta.run_host_sync')"
+assert_eq "meta_repo_dispatch_noop" "run_health_redeploy" "true" "$(read_plan_json_field "${case6_out}" '.meta.run_health_redeploy')"
+assert_eq "meta_repo_dispatch_noop" "run_portainer_apply" "true" "$(read_plan_json_field "${case6_out}" '.meta.run_portainer_apply')"
 
 # Case 7: meta workflow_dispatch infra only
 case7_env="${TMP_DIR}/case7.env"
@@ -213,6 +223,7 @@ write_env_file "${case7_env}" \
   "INPUT_RUN_PORTAINER=false" \
   "INPUT_STACKS_SHA=" \
   "INPUT_CHANGED_STACKS_JSON=[]" \
+  "INPUT_HOST_SYNC_STACKS_JSON=[]" \
   "INPUT_CONFIG_STACKS_JSON=[]" \
   "INPUT_STRUCTURAL_CHANGE=false" \
   "INPUT_REASON=manual-dispatch" \
@@ -230,14 +241,55 @@ write_env_file "${case8_env}" \
   "INPUT_RUN_PORTAINER=false" \
   "INPUT_STACKS_SHA=${HEAD_SHA}" \
   "INPUT_CHANGED_STACKS_JSON=[\"gateway\"]" \
+  "INPUT_HOST_SYNC_STACKS_JSON=[\"gateway\",\"management\"]" \
   "INPUT_CONFIG_STACKS_JSON=[\"auth\"]" \
   "INPUT_STRUCTURAL_CHANGE=false" \
   "INPUT_REASON=manual-dispatch" \
   "INPUT_CHANGED_PATHS_JSON=[\"auth/config/configuration.yml\"]"
 case8_out="$(run_plan_case "meta_manual_stack_paths" "meta" "workflow_dispatch" "${case8_env}")"
-assert_eq "meta_manual_stack_paths" "changed_stacks" "auth,gateway" "$(read_plan_json_field "${case8_out}" '.meta.changed_stacks')"
+assert_eq "meta_manual_stack_paths" "changed_stacks" "gateway" "$(read_plan_json_field "${case8_out}" '.meta.changed_stacks')"
+assert_eq "meta_manual_stack_paths" "host_sync_stacks" "gateway,management" "$(read_plan_json_field "${case8_out}" '.meta.host_sync_stacks')"
 assert_eq "meta_manual_stack_paths" "run_config_sync" "true" "$(read_plan_json_field "${case8_out}" '.meta.run_config_sync')"
 assert_eq "meta_manual_stack_paths" "run_health_redeploy" "true" "$(read_plan_json_field "${case8_out}" '.meta.run_health_redeploy')"
+assert_eq "meta_manual_stack_paths" "run_host_sync" "true" "$(read_plan_json_field "${case8_out}" '.meta.run_host_sync')"
+assert_eq "meta_manual_stack_paths" "run_portainer_apply" "false" "$(read_plan_json_field "${case8_out}" '.meta.run_portainer_apply')"
+
+# Case 8b: meta workflow_dispatch host-sync-only path
+case8b_env="${TMP_DIR}/case8b.env"
+write_env_file "${case8b_env}" \
+  "INPUT_RUN_INFRA=false" \
+  "INPUT_RUN_ANSIBLE=false" \
+  "INPUT_RUN_PORTAINER=false" \
+  "INPUT_STACKS_SHA=${HEAD_SHA}" \
+  "INPUT_CHANGED_STACKS_JSON=[]" \
+  "INPUT_HOST_SYNC_STACKS_JSON=[\"management\"]" \
+  "INPUT_CONFIG_STACKS_JSON=[]" \
+  "INPUT_STRUCTURAL_CHANGE=false" \
+  "INPUT_REASON=manual-dispatch" \
+  "INPUT_CHANGED_PATHS_JSON=[\"management/.env.tmpl\"]"
+case8b_out="$(run_plan_case "meta_manual_host_sync_only" "meta" "workflow_dispatch" "${case8b_env}")"
+assert_eq "meta_manual_host_sync_only" "run_host_sync" "true" "$(read_plan_json_field "${case8b_out}" '.meta.run_host_sync')"
+assert_eq "meta_manual_host_sync_only" "run_health_redeploy" "false" "$(read_plan_json_field "${case8b_out}" '.meta.run_health_redeploy')"
+assert_eq "meta_manual_host_sync_only" "stage_inventory_handover" "true" "$(read_plan_json_field "${case8b_out}" '.meta.stages.stage_inventory_handover')"
+assert_eq "meta_manual_host_sync_only" "stage_host_sync" "true" "$(read_plan_json_field "${case8b_out}" '.meta.stages.stage_host_sync')"
+
+# Case 8c: bootstrap path absorbs host sync at end of full playbook
+case8c_env="${TMP_DIR}/case8c.env"
+write_env_file "${case8c_env}" \
+  "INPUT_RUN_INFRA=false" \
+  "INPUT_RUN_ANSIBLE=true" \
+  "INPUT_RUN_PORTAINER=true" \
+  "INPUT_STACKS_SHA=${HEAD_SHA}" \
+  "INPUT_CHANGED_STACKS_JSON=[]" \
+  "INPUT_HOST_SYNC_STACKS_JSON=[\"management\"]" \
+  "INPUT_CONFIG_STACKS_JSON=[]" \
+  "INPUT_STRUCTURAL_CHANGE=false" \
+  "INPUT_REASON=manual-dispatch" \
+  "INPUT_CHANGED_PATHS_JSON=[]"
+case8c_out="$(run_plan_case "meta_manual_bootstrap_with_host_sync" "meta" "workflow_dispatch" "${case8c_env}")"
+assert_eq "meta_manual_bootstrap_with_host_sync" "run_host_sync" "true" "$(read_plan_json_field "${case8c_out}" '.meta.run_host_sync')"
+assert_eq "meta_manual_bootstrap_with_host_sync" "stage_ansible_bootstrap" "true" "$(read_plan_json_field "${case8c_out}" '.meta.stages.stage_ansible_bootstrap')"
+assert_eq "meta_manual_bootstrap_with_host_sync" "stage_host_sync" "false" "$(read_plan_json_field "${case8c_out}" '.meta.stages.stage_host_sync')"
 
 # Case 9: meta invalid stacks SHA should fail
 case9_env="${TMP_DIR}/case9.env"
@@ -246,6 +298,7 @@ write_env_file "${case9_env}" \
   "INPUT_RUN_ANSIBLE=false" \
   "INPUT_RUN_PORTAINER=false" \
   "INPUT_STACKS_SHA=bad_sha" \
+  "INPUT_HOST_SYNC_STACKS_JSON=[]" \
   "INPUT_REASON=manual-dispatch"
 run_plan_case_expect_fail "meta_invalid_stacks_sha" "meta" "workflow_dispatch" "${case9_env}"
 
@@ -257,6 +310,7 @@ write_env_file "${case9b_env}" \
   "INPUT_RUN_PORTAINER=false" \
   "INPUT_STACKS_SHA=${HEAD_SHA}" \
   "INPUT_CHANGED_STACKS_JSON=[\"bad,stack\"]" \
+  "INPUT_HOST_SYNC_STACKS_JSON=[]" \
   "INPUT_CONFIG_STACKS_JSON=[]" \
   "INPUT_REASON=manual-dispatch"
 run_plan_case_expect_fail "meta_invalid_stack_json" "meta" "workflow_dispatch" "${case9b_env}"
@@ -313,13 +367,14 @@ assert_eq "iac_push_portainer_gitlink" "changed_tf_roots_json" '["terraform/port
 assert_eq "iac_push_portainer_gitlink" "stacks_sha" "${STACKS_SHA}" "$(read_plan_json_field "${case12_out}" '.iac.stacks_sha')"
 assert_eq "iac_push_portainer_gitlink" "tfc_workspace_matrix_json" '[]' "$(read_plan_json_field "${case12_out}" '.iac.tfc_workspace_matrix | tojson')"
 
-# Additional validator failure check for non-v3 dispatch schema
+# Additional validator failure check for non-v4 dispatch schema
 if (
   export EVENT_NAME="repository_dispatch"
   export PAYLOAD_SCHEMA_VERSION="v1"
   export PAYLOAD_STACKS_SHA="${HEAD_SHA}"
   export PAYLOAD_SOURCE_SHA="${HEAD_SHA}"
   export PAYLOAD_CHANGED_STACKS_JSON="[\"gateway\"]"
+  export PAYLOAD_HOST_SYNC_STACKS_JSON="[\"gateway\"]"
   export PAYLOAD_CONFIG_STACKS_JSON="[]"
   export PAYLOAD_STRUCTURAL_CHANGE="false"
   export PAYLOAD_REASON="content-change"
@@ -328,9 +383,9 @@ if (
   export PAYLOAD_SOURCE_RUN_ID="12345"
   "${VALIDATOR}" meta
 ); then
-  fail "dispatch_validator_v3_enforced: expected failure for schema v1"
+  fail "dispatch_validator_v4_enforced: expected failure for schema v1"
 else
-  pass "dispatch_validator_v3_enforced"
+  pass "dispatch_validator_v4_enforced"
 fi
 
 echo "PASS=${PASS_COUNT} FAIL=${FAIL_COUNT}"

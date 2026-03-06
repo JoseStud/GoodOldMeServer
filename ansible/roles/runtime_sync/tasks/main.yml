@@ -1,0 +1,103 @@
+---
+- name: Validate runtime sync controller secrets
+  ansible.builtin.assert:
+    that:
+      - runtime_sync_infisical_project_id | length > 0
+      - runtime_sync_infisical_agent_client_id | length > 0
+      - runtime_sync_infisical_agent_client_secret | length > 0
+    fail_msg: "Runtime sync requires INFISICAL_PROJECT_ID, INFISICAL_AGENT_CLIENT_ID, and INFISICAL_AGENT_CLIENT_SECRET on the controller."
+  delegate_to: localhost
+  run_once: true
+  become: false
+  no_log: true
+
+- name: Add Infisical signing key
+  ansible.builtin.apt_key:
+    url: https://dl.cloudsmith.io/public/infisical/infisical-core/gpg.2BA6932366A755776.gpg
+    state: present
+
+- name: Add Infisical apt repository
+  ansible.builtin.apt_repository:
+    repo: "deb https://dl.cloudsmith.io/public/infisical/infisical-core/deb/debian any-version main"
+    state: present
+    filename: infisical-core
+
+- name: Install runtime sync packages
+  ansible.builtin.apt:
+    name:
+      - curl
+      - infisical-core
+      - rsync
+    state: present
+    update_cache: true
+
+- name: Ensure runtime sync directories exist
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default('root') }}"
+    group: "{{ item.group | default('root') }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - path: "{{ runtime_sync_stacks_dest }}"
+      mode: "0750"
+    - path: /etc/infisical
+      mode: "0750"
+    - path: "{{ runtime_sync_agent_cache_dir }}"
+      mode: "0700"
+
+- name: Mirror trusted stacks checkout to host runtime path
+  ansible.posix.synchronize:
+    src: "{{ runtime_sync_stacks_src }}"
+    dest: "{{ runtime_sync_stacks_dest }}/"
+    archive: true
+    recursive: true
+    delete: true
+    rsync_path: "sudo rsync"
+    use_ssh_args: true
+    rsync_opts:
+      - "--exclude=.env"
+      - "--exclude=.git"
+      - "--exclude=.github"
+
+- name: Render runtime sync environment file
+  ansible.builtin.template:
+    src: runtime-sync.env.j2
+    dest: "{{ runtime_sync_agent_env_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Install local Portainer webhook helper
+  ansible.builtin.template:
+    src: portainer-stack-webhook.sh.j2
+    dest: "{{ runtime_sync_webhook_helper_path }}"
+    owner: root
+    group: root
+    mode: "0700"
+  notify: Restart infisical agent
+
+- name: Render Infisical agent config
+  ansible.builtin.template:
+    src: "{{ runtime_sync_agent_template_src }}"
+    dest: "{{ runtime_sync_agent_config_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart infisical agent
+
+- name: Install Infisical agent systemd unit
+  ansible.builtin.template:
+    src: infisical-agent.service.j2
+    dest: "{{ runtime_sync_agent_service_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart infisical agent
+
+- name: Ensure Infisical agent service is enabled
+  ansible.builtin.systemd:
+    name: infisical-agent
+    enabled: true
+    state: started
+    daemon_reload: true

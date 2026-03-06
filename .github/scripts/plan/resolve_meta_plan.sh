@@ -29,6 +29,7 @@ resolve_meta_mode() {
   run_portainer_apply="false"
   stacks_sha=""
   changed_stacks=""
+  host_sync_stacks=""
   config_stacks=""
   structural_change="false"
   reason=""
@@ -77,6 +78,12 @@ resolve_meta_mode() {
       changed_stacks="$(normalize_csv "${PAYLOAD_CHANGED_STACKS:-}")"
     fi
 
+    if [[ -n "${PAYLOAD_HOST_SYNC_STACKS_JSON:-}" && "${PAYLOAD_HOST_SYNC_STACKS_JSON:-}" != "null" ]]; then
+      host_sync_stacks="$(normalize_json_array_to_csv "${PAYLOAD_HOST_SYNC_STACKS_JSON}" '^[a-z0-9][a-z0-9-]*$' "PAYLOAD_HOST_SYNC_STACKS_JSON")"
+    else
+      host_sync_stacks="$(normalize_csv "${PAYLOAD_HOST_SYNC_STACKS:-}")"
+    fi
+
     if [[ -n "${PAYLOAD_CONFIG_STACKS_JSON:-}" && "${PAYLOAD_CONFIG_STACKS_JSON:-}" != "null" ]]; then
       config_stacks="$(normalize_json_array_to_csv "${PAYLOAD_CONFIG_STACKS_JSON}" '^[a-z0-9][a-z0-9-]*$' "PAYLOAD_CONFIG_STACKS_JSON")"
     else
@@ -92,9 +99,12 @@ resolve_meta_mode() {
       changed_paths="$(normalize_csv "${PAYLOAD_CHANGED_PATHS:-}")"
     fi
 
-    if [[ "${structural_change}" == "true" || "${reason}" == "structural-change" || "${reason}" == "manual-refresh" ]]; then
-      run_portainer_apply="true"
-    fi
+    # Any stacks dispatch now runs the full reconcile path regardless of the
+    # payload's narrowed intent arrays or structural-change hint.
+    run_portainer_apply="true"
+    run_host_sync="true"
+    run_config_sync="true"
+    run_health_redeploy="true"
   elif [[ "${EVENT_NAME}" == "workflow_dispatch" || "${EVENT_NAME}" == "workflow_call" ]]; then
     run_infra_apply="$(to_bool "${INPUT_RUN_INFRA:-}")"
     run_ansible_bootstrap="$(to_bool "${INPUT_RUN_ANSIBLE:-}")"
@@ -105,6 +115,12 @@ resolve_meta_mode() {
       changed_stacks="$(normalize_json_array_to_csv "${INPUT_CHANGED_STACKS_JSON}" '^[a-z0-9][a-z0-9-]*$' "INPUT_CHANGED_STACKS_JSON")"
     else
       changed_stacks="$(normalize_csv "${INPUT_CHANGED_STACKS:-}")"
+    fi
+
+    if [[ -n "${INPUT_HOST_SYNC_STACKS_JSON:-}" && "${INPUT_HOST_SYNC_STACKS_JSON:-}" != "null" ]]; then
+      host_sync_stacks="$(normalize_json_array_to_csv "${INPUT_HOST_SYNC_STACKS_JSON}" '^[a-z0-9][a-z0-9-]*$' "INPUT_HOST_SYNC_STACKS_JSON")"
+    else
+      host_sync_stacks="$(normalize_csv "${INPUT_HOST_SYNC_STACKS:-}")"
     fi
 
     if [[ -n "${INPUT_CONFIG_STACKS_JSON:-}" && "${INPUT_CONFIG_STACKS_JSON:-}" != "null" ]]; then
@@ -123,18 +139,21 @@ resolve_meta_mode() {
     fi
   fi
 
-  if [[ -n "${config_stacks}" ]]; then
-    changed_stacks="$(normalize_csv "${changed_stacks},${config_stacks}")"
-  fi
+  if [[ "${EVENT_NAME}" != "repository_dispatch" ]]; then
+    run_config_sync="false"
+    if [[ -n "${config_stacks}" ]]; then
+      run_config_sync="true"
+    fi
 
-  run_config_sync="false"
-  if [[ -n "${config_stacks}" ]]; then
-    run_config_sync="true"
-  fi
+    run_host_sync="false"
+    if [[ -n "${host_sync_stacks}" ]]; then
+      run_host_sync="true"
+    fi
 
-  run_health_redeploy="false"
-  if [[ -n "${changed_stacks}" ]]; then
-    run_health_redeploy="true"
+    run_health_redeploy="false"
+    if [[ -n "${changed_stacks}" ]]; then
+      run_health_redeploy="true"
+    fi
   fi
 
   if [[ -z "${reason}" ]]; then
@@ -142,6 +161,8 @@ resolve_meta_mode() {
       reason="infra-reconcile"
     elif [[ "${run_portainer_apply}" == "true" ]]; then
       reason="portainer-reconcile"
+    elif [[ "${run_host_sync}" == "true" ]]; then
+      reason="host-runtime-sync"
     elif [[ "${run_health_redeploy}" == "true" ]]; then
       reason="content-change"
     else
@@ -160,7 +181,7 @@ resolve_meta_mode() {
   fi
 
   has_work="false"
-  if [[ "${run_infra_apply}" == "true" || "${run_ansible_bootstrap}" == "true" || "${run_portainer_apply}" == "true" || "${run_config_sync}" == "true" || "${run_health_redeploy}" == "true" ]]; then
+  if [[ "${run_infra_apply}" == "true" || "${run_ansible_bootstrap}" == "true" || "${run_portainer_apply}" == "true" || "${run_host_sync}" == "true" || "${run_config_sync}" == "true" || "${run_health_redeploy}" == "true" ]]; then
     has_work="true"
   fi
 
@@ -170,12 +191,16 @@ resolve_meta_mode() {
   stage_infra_apply="${run_infra_apply}"
 
   stage_inventory_handover="false"
-  if [[ "${run_ansible_bootstrap}" == "true" || "${run_config_sync}" == "true" ]]; then
+  if [[ "${run_ansible_bootstrap}" == "true" || "${run_host_sync}" == "true" || "${run_config_sync}" == "true" ]]; then
     stage_inventory_handover="true"
   fi
 
   stage_network_preflight_ssh="${stage_inventory_handover}"
   stage_ansible_bootstrap="${run_ansible_bootstrap}"
+  stage_host_sync="false"
+  if [[ "${run_host_sync}" == "true" && "${run_ansible_bootstrap}" != "true" ]]; then
+    stage_host_sync="true"
+  fi
   stage_post_bootstrap_secret_check="${run_portainer_apply}"
 
   stage_portainer_api_preflight="false"
@@ -195,11 +220,13 @@ resolve_meta_mode() {
       --arg run_infra_apply "${run_infra_apply}" \
       --arg run_ansible_bootstrap "${run_ansible_bootstrap}" \
       --arg run_portainer_apply "${run_portainer_apply}" \
+      --arg run_host_sync "${run_host_sync}" \
       --arg run_config_sync "${run_config_sync}" \
       --arg run_health_redeploy "${run_health_redeploy}" \
       --arg has_work "${has_work}" \
       --arg stacks_sha "${stacks_sha}" \
       --arg changed_stacks "${changed_stacks}" \
+      --arg host_sync_stacks "${host_sync_stacks}" \
       --arg config_stacks "${config_stacks}" \
       --arg structural_change "${structural_change}" \
       --arg reason "${reason}" \
@@ -211,6 +238,7 @@ resolve_meta_mode() {
       --arg stage_inventory_handover "${stage_inventory_handover}" \
       --arg stage_network_preflight_ssh "${stage_network_preflight_ssh}" \
       --arg stage_ansible_bootstrap "${stage_ansible_bootstrap}" \
+      --arg stage_host_sync "${stage_host_sync}" \
       --arg stage_post_bootstrap_secret_check "${stage_post_bootstrap_secret_check}" \
       --arg stage_portainer_api_preflight "${stage_portainer_api_preflight}" \
       --arg stage_portainer_apply "${stage_portainer_apply}" \
@@ -224,11 +252,13 @@ resolve_meta_mode() {
           run_infra_apply: ($run_infra_apply == "true"),
           run_ansible_bootstrap: ($run_ansible_bootstrap == "true"),
           run_portainer_apply: ($run_portainer_apply == "true"),
+          run_host_sync: ($run_host_sync == "true"),
           run_config_sync: ($run_config_sync == "true"),
           run_health_redeploy: ($run_health_redeploy == "true"),
           has_work: ($has_work == "true"),
           stacks_sha: $stacks_sha,
           changed_stacks: $changed_stacks,
+          host_sync_stacks: $host_sync_stacks,
           config_stacks: $config_stacks,
           structural_change: ($structural_change == "true"),
           reason: $reason,
@@ -241,6 +271,7 @@ resolve_meta_mode() {
             stage_inventory_handover: ($stage_inventory_handover == "true"),
             stage_network_preflight_ssh: ($stage_network_preflight_ssh == "true"),
             stage_ansible_bootstrap: ($stage_ansible_bootstrap == "true"),
+            stage_host_sync: ($stage_host_sync == "true"),
             stage_post_bootstrap_secret_check: ($stage_post_bootstrap_secret_check == "true"),
             stage_portainer_api_preflight: ($stage_portainer_api_preflight == "true"),
             stage_portainer_apply: ($stage_portainer_apply == "true"),

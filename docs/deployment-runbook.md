@@ -24,7 +24,7 @@ Before deploying any stack, verify that all infrastructure layers are operationa
 | Docker Swarm initialized | `docker node ls` shows 3 managers (2 Ready + 1 Ready) | Re-run Ansible `swarm` role |
 | `traefik_proxy` network exists | `docker network ls \| grep traefik_proxy` | `docker network create --driver overlay --attachable traefik_proxy` |
 | Infisical Agent running | `systemctl status infisical-agent` | See [Agent Installation](infisical-workflow.md#installing-the-agent) |
-| `.env` files rendered | `ls /opt/stacks/*/.env` | Restart Infisical Agent or create manually |
+| `.env` files rendered | `ls /opt/stacks/*/.env` | Re-run `ansible-playbook playbooks/provision.yml --tags phase7_runtime_sync` |
 
 ## Deployment Order
 
@@ -57,7 +57,7 @@ flowchart TD
 
 ### Step 0: Management Stack (Ansible)
 
-The management stack (Portainer + Homarr) is deployed automatically by Ansible during Phase 6 of provisioning. If you need to deploy it manually:
+The management stack (Portainer + Homarr) is deployed automatically by Ansible during Phase 6 of provisioning, with the trusted compose staged onto the primary manager before deploy. If you need to deploy it manually:
 
 ```bash
 # Deploy the management stack directly
@@ -166,7 +166,7 @@ docker run --rm authelia/authelia:latest \
 #### Deploy
 
 ```bash
-# Auth .env is rendered by the Infisical Agent (stacks/auth/.env.tmpl)
+# Auth .env is rendered by the Ansible-managed Infisical Agent (stacks/auth/.env.tmpl)
 # If deploying before the Agent is running, manually create the .env:
 # echo "BASE_DOMAIN=example.com" > stacks/auth/.env
 docker stack deploy -c stacks/auth/docker-compose.yml auth
@@ -217,7 +217,7 @@ terraform -chdir=terraform/infra apply
 terraform -chdir=terraform/portainer-root apply
 ```
 
-For **manual deployment** (fallback), the Infisical Agent handles deployment automatically via its `exec.command`. Or deploy directly:
+For **manual deployment** (fallback), the Ansible-managed Infisical Agent handles deployment automatically via its `exec.command`. Or deploy directly:
 
 ```bash
 # Network
@@ -271,9 +271,9 @@ Every stack is linked to the `JoseStud/stacks` Git repository in Portainer with 
 **Automatic (private automation):**
 
 1. Push to `main` in the stacks repo triggers `stacks/.github/workflows/stacks-ci.yml` and `stacks/.github/workflows/stacks-dispatch-redeploy.yml`.
-2. The dispatch workflow computes changed stacks from `stacks.yaml`, then dispatches one `stacks-redeploy-intent-v3` event (schema `v3`) to this infra repo.
-3. Infra `infra-orchestrator.yml` validates secrets, runs Portainer apply when `structural_change=true`, runs config sync when `config_stacks` is non-empty, then triggers health-gated webhooks.
-4. Health gates use manifest dependencies: Gateway is checked first (`gateway-health.<BASE_DOMAIN>/healthz`) before Auth and downstream stacks.
+2. The dispatch workflow computes `changed_stacks`, `host_sync_stacks`, and `config_stacks`, then dispatches one `stacks-redeploy-intent-v4` event (schema `v4`) to this infra repo.
+3. Infra `infra-orchestrator.yml` treats every valid stacks dispatch as a full reconcile: it validates secrets, runs `phase7_runtime_sync`, runs `terraform/portainer-root apply`, runs `sync-configs`, then redeploys every Portainer-managed stack.
+4. Health gates use manifest dependencies and manifest order: Gateway is checked first (`gateway-health.<BASE_DOMAIN>/healthz`), then Auth, then the remaining Portainer-managed stacks. The Ansible-managed `management` stack stays outside this webhook flow.
 
 **Manual (one-off):**
 

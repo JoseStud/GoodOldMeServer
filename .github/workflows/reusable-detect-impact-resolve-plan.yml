@@ -38,6 +38,9 @@ on:
       changed_stacks_json:
         required: false
         type: string
+      host_sync_stacks_json:
+        required: false
+        type: string
       config_stacks_json:
         required: false
         type: string
@@ -58,6 +61,9 @@ on:
         required: false
         type: string
       dispatch_changed_stacks_json:
+        required: false
+        type: string
+      dispatch_host_sync_stacks_json:
         required: false
         type: string
       dispatch_config_stacks_json:
@@ -131,6 +137,7 @@ jobs:
           PAYLOAD_SCHEMA_VERSION: ${{ inputs.dispatch_schema_version }}
           PAYLOAD_STACKS_SHA: ${{ inputs.dispatch_stacks_sha }}
           PAYLOAD_CHANGED_STACKS_JSON: ${{ inputs.dispatch_changed_stacks_json }}
+          PAYLOAD_HOST_SYNC_STACKS_JSON: ${{ inputs.dispatch_host_sync_stacks_json }}
           PAYLOAD_CONFIG_STACKS_JSON: ${{ inputs.dispatch_config_stacks_json }}
           PAYLOAD_STRUCTURAL_CHANGE: ${{ inputs.dispatch_structural_change }}
           PAYLOAD_REASON: ${{ inputs.dispatch_reason }}
@@ -156,6 +163,7 @@ jobs:
           INPUT_RUN_PORTAINER: ${{ inputs.run_portainer_apply }}
           INPUT_STACKS_SHA: ${{ inputs.stacks_sha }}
           INPUT_CHANGED_STACKS_JSON: ${{ inputs.changed_stacks_json }}
+          INPUT_HOST_SYNC_STACKS_JSON: ${{ inputs.host_sync_stacks_json }}
           INPUT_CONFIG_STACKS_JSON: ${{ inputs.config_stacks_json }}
           INPUT_STRUCTURAL_CHANGE: ${{ inputs.structural_change }}
           INPUT_REASON: ${{ inputs.reason }}
@@ -164,6 +172,7 @@ jobs:
           PAYLOAD_SCHEMA_VERSION: ${{ inputs.dispatch_schema_version }}
           PAYLOAD_STACKS_SHA: ${{ inputs.dispatch_stacks_sha }}
           PAYLOAD_CHANGED_STACKS_JSON: ${{ inputs.dispatch_changed_stacks_json }}
+          PAYLOAD_HOST_SYNC_STACKS_JSON: ${{ inputs.dispatch_host_sync_stacks_json }}
           PAYLOAD_CONFIG_STACKS_JSON: ${{ inputs.dispatch_config_stacks_json }}
           PAYLOAD_STRUCTURAL_CHANGE: ${{ inputs.dispatch_structural_change }}
           PAYLOAD_REASON: ${{ inputs.dispatch_reason }}
