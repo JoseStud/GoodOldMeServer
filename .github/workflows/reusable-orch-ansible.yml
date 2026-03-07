@@ -21,8 +21,23 @@ env:
   SHADOW_MODE: ${{ vars.SHADOW_MODE || 'false' }}
 
 jobs:
+  validate-plan-json:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Bootstrap jq
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_jq: "true"
+
+      - name: Validate plan_json is valid JSON
+        run: |
+          printf '%s' "${{ inputs.plan_json || '{}' }}" > /tmp/plan.json
+          jq -e . /tmp/plan.json >/dev/null || (echo "Invalid JSON in inputs.plan_json" && exit 1)
+
   ansible-bootstrap:
-    if: ${{ fromJSON(inputs.plan_json).meta.stages.stage_ansible_bootstrap }}
+    needs: validate-plan-json
+    if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_ansible_bootstrap }}
     runs-on: ${{ inputs.runner_label }}
 
     steps:
@@ -47,7 +62,7 @@ jobs:
 
       - name: Run Ansible bootstrap
         env:
-          STACKS_SHA: ${{ fromJSON(inputs.plan_json).meta.stacks_sha }}
+          STACKS_SHA: ${{ fromJSON(inputs.plan_json || '{}').meta.stacks_sha }}
           INVENTORY_FILE: inventory-ci.yml
           ANSIBLE_TIMEOUT: ${{ vars.ANSIBLE_TIMEOUT || '30' }}
           INFISICAL_AGENT_CLIENT_ID: ${{ secrets.INFISICAL_AGENT_CLIENT_ID }}
@@ -57,7 +72,8 @@ jobs:
   # stage_host_sync and stage_ansible_bootstrap are mutually exclusive
   # (enforced by resolve_meta_plan.sh:105-109), so no dependency needed.
   host-sync:
-    if: ${{ fromJSON(inputs.plan_json).meta.stages.stage_host_sync }}
+    needs: validate-plan-json
+    if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_host_sync }}
     runs-on: ${{ inputs.runner_label }}
 
     steps:
@@ -82,7 +98,7 @@ jobs:
 
       - name: Sync host runtime assets
         env:
-          STACKS_SHA: ${{ fromJSON(inputs.plan_json).meta.stacks_sha }}
+          STACKS_SHA: ${{ fromJSON(inputs.plan_json || '{}').meta.stacks_sha }}
           INVENTORY_FILE: inventory-ci.yml
           ANSIBLE_TAGS: phase7_runtime_sync
           ANSIBLE_TIMEOUT: ${{ vars.ANSIBLE_TIMEOUT || '30' }}

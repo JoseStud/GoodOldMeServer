@@ -54,3 +54,5 @@ Active workflows consume `plan_json` directly with `fromJSON(...)`.
 - `.github/workflows/infra-orchestrator.yml` passes `plan_json` unchanged into its reusable stage workflows
 - `.github/workflows/reusable-orch-*.yml` read toggles and stage gates directly from `fromJSON(inputs.plan_json)`
 - no scalar projection script remains in the active workflow graph
+
+Note: reusable workflows now perform an early validation of `inputs.plan_json` and will fail fast if it is not valid JSON. Callers should ensure `plan_json` is well-formed (for example by invoking the reusable `reusable-resolve-plan.yml` which emits a canonical `plan_json`); workflows also gracefully handle empty outputs by falling back to an empty JSON object for parsing.

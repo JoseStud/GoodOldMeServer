@@ -23,8 +23,23 @@ env:
   TFC_WORKSPACE_INFRA: ${{ vars.TFC_WORKSPACE_INFRA || 'goodoldme-infra' }}
 
 jobs:
+  validate-plan-json:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Bootstrap jq
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_jq: "true"
+
+      - name: Validate plan_json is valid JSON
+        run: |
+          printf '%s' "${{ inputs.plan_json || '{}' }}" > /tmp/plan.json
+          jq -e . /tmp/plan.json >/dev/null || (echo "Invalid JSON in inputs.plan_json" && exit 1)
+
   infra-apply:
-    if: ${{ fromJSON(inputs.plan_json).meta.stages.stage_infra_apply }}
+    needs: validate-plan-json
+    if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_infra_apply }}
     runs-on: ubuntu-latest
 
     steps:
@@ -52,7 +67,7 @@ jobs:
         with:
           workspace: ${{ env.TFC_WORKSPACE_INFRA }}
           configuration_version: ${{ steps.upload.outputs.configuration_version_id }}
-          message: Infrastructure orchestrator infra apply (${{ fromJSON(inputs.plan_json).meta.reason }})
+          message: Infrastructure orchestrator infra apply (${{ fromJSON(inputs.plan_json || '{}').meta.reason }})
 
       - name: Wait for Terraform Cloud infra run
         env:
@@ -64,7 +79,7 @@ jobs:
 
   inventory-handover:
     needs: [infra-apply]
-    if: ${{ always() && fromJSON(inputs.plan_json).meta.stages.stage_inventory_handover && (needs.infra-apply.result == 'success' || needs.infra-apply.result == 'skipped') }}
+    if: ${{ !cancelled() && fromJSON(inputs.plan_json || '{}').meta.stages.stage_inventory_handover && (needs.infra-apply.result == 'success' || needs.infra-apply.result == 'skipped') }}
     runs-on: ubuntu-latest
 
     steps:
@@ -96,7 +111,7 @@ jobs:
   # allow-listed.  See docs/network-architecture.md § CI Runner Egress.
   network-preflight-ssh:
     needs: [inventory-handover]
-    if: ${{ fromJSON(inputs.plan_json).meta.stages.stage_network_preflight_ssh && needs.inventory-handover.result == 'success' }}
+    if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_network_preflight_ssh && needs.inventory-handover.result == 'success' }}
     runs-on: ${{ inputs.runner_label }}
 
     steps:
@@ -119,9 +134,9 @@ jobs:
       - name: Preflight SSH access checks
         env:
           NETWORK_ACCESS_POLICY_JSON: ${{ inputs.network_access_policy_json }}
-          RUN_ANSIBLE: ${{ fromJSON(inputs.plan_json).meta.run_ansible_bootstrap }}
-          RUN_HOST_SYNC: ${{ fromJSON(inputs.plan_json).meta.run_host_sync }}
-          RUN_CONFIG: ${{ fromJSON(inputs.plan_json).meta.run_config_sync }}
+          RUN_ANSIBLE: ${{ fromJSON(inputs.plan_json || '{}').meta.run_ansible_bootstrap }}
+          RUN_HOST_SYNC: ${{ fromJSON(inputs.plan_json || '{}').meta.run_host_sync }}
+          RUN_CONFIG: ${{ fromJSON(inputs.plan_json || '{}').meta.run_config_sync }}
           RUN_HEALTH: "false"
           RUN_PORTAINER: "false"
           INVENTORY_FILE: inventory-ci.yml

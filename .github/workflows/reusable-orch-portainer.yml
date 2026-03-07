@@ -27,8 +27,23 @@ env:
   TFC_WORKSPACE_PORTAINER: ${{ vars.TFC_WORKSPACE_PORTAINER || 'goodoldme-portainer' }}
 
 jobs:
+  validate-plan-json:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Bootstrap jq
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_jq: "true"
+
+      - name: Validate plan_json is valid JSON
+        run: |
+          printf '%s' "${{ inputs.plan_json || '{}' }}" > /tmp/plan.json
+          jq -e . /tmp/plan.json >/dev/null || (echo "Invalid JSON in inputs.plan_json" && exit 1)
+
   post-bootstrap-secret-check:
-    if: ${{ fromJSON(inputs.plan_json).meta.stages.stage_post_bootstrap_secret_check }}
+    needs: validate-plan-json
+    if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_post_bootstrap_secret_check }}
     runs-on: ubuntu-latest
 
     steps:
@@ -47,7 +62,7 @@ jobs:
 
   portainer-api-preflight:
     needs: [post-bootstrap-secret-check]
-    if: ${{ fromJSON(inputs.plan_json).meta.stages.stage_portainer_api_preflight && (needs.post-bootstrap-secret-check.result == 'success' || needs.post-bootstrap-secret-check.result == 'skipped') }}
+    if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_portainer_api_preflight && (needs.post-bootstrap-secret-check.result == 'success' || needs.post-bootstrap-secret-check.result == 'skipped') }}
     runs-on: ${{ inputs.runner_label }}
 
     steps:
@@ -65,15 +80,15 @@ jobs:
       - name: Preflight egress + Portainer API reachability
         env:
           NETWORK_ACCESS_POLICY_JSON: ${{ inputs.network_access_policy_json }}
-          RUN_HEALTH: ${{ fromJSON(inputs.plan_json).meta.run_health_redeploy }}
-          RUN_PORTAINER: ${{ fromJSON(inputs.plan_json).meta.run_portainer_apply }}
+          RUN_HEALTH: ${{ fromJSON(inputs.plan_json || '{}').meta.run_health_redeploy }}
+          RUN_PORTAINER: ${{ fromJSON(inputs.plan_json || '{}').meta.run_portainer_apply }}
           PORTAINER_ALLOWLIST_PROPAGATION_TIMEOUT_SECONDS: ${{ vars.PORTAINER_ALLOWLIST_PROPAGATION_TIMEOUT_SECONDS || '420' }}
           PORTAINER_ALLOWLIST_PROPAGATION_POLL_INTERVAL_SECONDS: ${{ vars.PORTAINER_ALLOWLIST_PROPAGATION_POLL_INTERVAL_SECONDS || '5' }}
         run: .github/scripts/stages/portainer_api_preflight.sh
 
   config-sync:
     needs: [post-bootstrap-secret-check]
-    if: ${{ always() && fromJSON(inputs.plan_json).meta.stages.stage_config_sync && (needs.post-bootstrap-secret-check.result == 'success' || needs.post-bootstrap-secret-check.result == 'skipped') }}
+    if: ${{ !cancelled() && fromJSON(inputs.plan_json || '{}').meta.stages.stage_config_sync && (needs.post-bootstrap-secret-check.result == 'success' || needs.post-bootstrap-secret-check.result == 'skipped') }}
     runs-on: ${{ inputs.runner_label }}
 
     steps:
@@ -98,7 +113,7 @@ jobs:
 
       - name: Sync stack configs only
         env:
-          STACKS_SHA: ${{ fromJSON(inputs.plan_json).meta.stacks_sha }}
+          STACKS_SHA: ${{ fromJSON(inputs.plan_json || '{}').meta.stacks_sha }}
           INVENTORY_FILE: inventory-ci.yml
           ANSIBLE_TAGS: sync-configs
           ANSIBLE_TIMEOUT: ${{ vars.ANSIBLE_TIMEOUT || '30' }}
@@ -106,13 +121,13 @@ jobs:
 
   portainer-apply:
     needs: [post-bootstrap-secret-check, portainer-api-preflight, config-sync]
-    if: ${{ always() && fromJSON(inputs.plan_json).meta.stages.stage_portainer_apply && (needs.post-bootstrap-secret-check.result == 'success' || needs.post-bootstrap-secret-check.result == 'skipped') && needs.portainer-api-preflight.result == 'success' && (needs.config-sync.result == 'success' || needs.config-sync.result == 'skipped') }}
+    if: ${{ !cancelled() && fromJSON(inputs.plan_json || '{}').meta.stages.stage_portainer_apply && (needs.post-bootstrap-secret-check.result == 'success' || needs.post-bootstrap-secret-check.result == 'skipped') && needs.portainer-api-preflight.result == 'success' && (needs.config-sync.result == 'success' || needs.config-sync.result == 'skipped') }}
     runs-on: ${{ inputs.runner_label }}
     env:
       TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TOKEN }}
       INFISICAL_TOKEN: ${{ secrets.INFISICAL_TOKEN }}
       TF_VAR_infisical_project_id: ${{ vars.INFISICAL_PROJECT_ID }}
-      STACKS_SHA: ${{ fromJSON(inputs.plan_json).meta.stacks_sha }}
+      STACKS_SHA: ${{ fromJSON(inputs.plan_json || '{}').meta.stacks_sha }}
 
     steps:
       - name: Checkout
@@ -131,7 +146,7 @@ jobs:
 
   health-gated-redeploy:
     needs: [portainer-api-preflight, portainer-apply, config-sync]
-    if: ${{ fromJSON(inputs.plan_json).meta.stages.stage_health_gated_redeploy && needs.portainer-api-preflight.result == 'success' && needs.portainer-apply.result == 'success' && needs.config-sync.result == 'success' }}
+    if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_health_gated_redeploy && needs.portainer-api-preflight.result == 'success' && needs.portainer-apply.result == 'success' && needs.config-sync.result == 'success' }}
     runs-on: ${{ inputs.runner_label }}
 
     steps:
@@ -152,6 +167,6 @@ jobs:
 
       - name: Trigger health-gated webhooks
         env:
-          STACKS_SHA: ${{ fromJSON(inputs.plan_json).meta.stacks_sha }}
+          STACKS_SHA: ${{ fromJSON(inputs.plan_json || '{}').meta.stacks_sha }}
           FULL_STACKS_RECONCILE: "true"
         run: .github/scripts/stages/health_gated_redeploy.sh

@@ -27,8 +27,23 @@ env:
   TFC_WORKSPACE_INFRA: ${{ vars.TFC_WORKSPACE_INFRA || 'goodoldme-infra' }}
 
 jobs:
+  validate-plan-json:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Bootstrap jq
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_jq: "true"
+
+      - name: Validate plan_json is valid JSON
+        run: |
+          printf '%s' "${{ inputs.plan_json || '{}' }}" > /tmp/plan.json
+          jq -e . /tmp/plan.json >/dev/null || (echo "Invalid JSON in inputs.plan_json" && exit 1)
+
   cloud-runner-guard:
-    if: ${{ fromJSON(inputs.plan_json).meta.stages.stage_cloud_runner_guard }}
+    needs: validate-plan-json
+    if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_cloud_runner_guard }}
     runs-on: ubuntu-latest
     outputs:
       runner_label: ${{ steps.guard.outputs.runner_label }}
@@ -43,7 +58,8 @@ jobs:
           echo "runner_label=${CLOUD_STATIC_RUNNER_LABEL}" >> "${GITHUB_OUTPUT}"
 
   stacks-sha-trust:
-    if: ${{ fromJSON(inputs.plan_json).meta.stacks_sha != '' }}
+    needs: validate-plan-json
+    if: ${{ fromJSON(inputs.plan_json || '{}').meta.stacks_sha != '' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -62,10 +78,11 @@ jobs:
           WAIT_FOR_SUCCESS: "true"
           WAIT_TIMEOUT_SECONDS: ${{ vars.STACKS_SHA_TRUST_WAIT_TIMEOUT_SECONDS || '900' }}
           POLL_INTERVAL_SECONDS: ${{ vars.STACKS_SHA_TRUST_POLL_INTERVAL_SECONDS || '15' }}
-        run: .github/scripts/stacks/verify_trusted_stacks_sha.sh "${{ fromJSON(inputs.plan_json).meta.stacks_sha }}"
+        run: .github/scripts/stacks/verify_trusted_stacks_sha.sh "${{ fromJSON(inputs.plan_json || '{}').meta.stacks_sha }}"
 
   secret-validation:
-    if: ${{ fromJSON(inputs.plan_json).meta.stages.stage_secret_validation }}
+    needs: validate-plan-json
+    if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_secret_validation }}
     runs-on: ubuntu-latest
 
     steps:
@@ -81,19 +98,19 @@ jobs:
 
       - name: Validate required secret paths
         env:
-          RUN_INFRA: ${{ fromJSON(inputs.plan_json).meta.run_infra_apply }}
-          RUN_ANSIBLE: ${{ fromJSON(inputs.plan_json).meta.run_ansible_bootstrap }}
-          RUN_PORTAINER: ${{ fromJSON(inputs.plan_json).meta.run_portainer_apply }}
-          RUN_HOST_SYNC: ${{ fromJSON(inputs.plan_json).meta.run_host_sync }}
-          RUN_HEALTH: ${{ fromJSON(inputs.plan_json).meta.run_health_redeploy }}
+          RUN_INFRA: ${{ fromJSON(inputs.plan_json || '{}').meta.run_infra_apply }}
+          RUN_ANSIBLE: ${{ fromJSON(inputs.plan_json || '{}').meta.run_ansible_bootstrap }}
+          RUN_PORTAINER: ${{ fromJSON(inputs.plan_json || '{}').meta.run_portainer_apply }}
+          RUN_HOST_SYNC: ${{ fromJSON(inputs.plan_json || '{}').meta.run_host_sync }}
+          RUN_HEALTH: ${{ fromJSON(inputs.plan_json || '{}').meta.run_health_redeploy }}
           INFISICAL_TOKEN: ${{ secrets.INFISICAL_TOKEN }}
           INFISICAL_AGENT_CLIENT_ID: ${{ secrets.INFISICAL_AGENT_CLIENT_ID }}
           INFISICAL_AGENT_CLIENT_SECRET: ${{ secrets.INFISICAL_AGENT_CLIENT_SECRET }}
         run: .github/scripts/stages/secret_validation.sh
 
   network-policy-sync:
-    needs: [cloud-runner-guard, stacks-sha-trust, secret-validation]
-    if: ${{ always() && fromJSON(inputs.plan_json).meta.stages.stage_network_policy_sync && needs.cloud-runner-guard.result == 'success' && needs.secret-validation.result == 'success' && (needs.stacks-sha-trust.result == 'success' || needs.stacks-sha-trust.result == 'skipped') }}
+    needs: [validate-plan-json, cloud-runner-guard, stacks-sha-trust, secret-validation]
+    if: ${{ !cancelled() && fromJSON(inputs.plan_json || '{}').meta.stages.stage_network_policy_sync && needs.cloud-runner-guard.result == 'success' && needs.secret-validation.result == 'success' && (needs.stacks-sha-trust.result == 'success' || needs.stacks-sha-trust.result == 'skipped') }}
     runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
     outputs:
       network_access_policy_json: ${{ steps.sync.outputs.network_access_policy_json }}
