@@ -37,7 +37,7 @@ These values are managed by automation after bootstrap and are not operator-owne
 | Item | Requirement | Owner | Notes | Checkbox |
 |------|-------------|-------|-------|----------|
 | `TFC_TOKEN` | Required | Platform | Terraform Cloud API/team token with run and state output access. | [ ] |
-| `INFISICAL_TOKEN` | Required | Security | Needed for the local `terraform/portainer-root` apply path. | [ ] |
+| `INFISICAL_TOKEN` | Required | Security | Needed anywhere `terraform/portainer-root` runs, including the orchestrator `portainer-apply` stage. | [ ] |
 | `INFISICAL_AGENT_CLIENT_ID` | Required | Security | Universal Auth client id used by the Ansible-managed host runtime sync and local webhook helper. | [ ] |
 | `INFISICAL_AGENT_CLIENT_SECRET` | Required | Security | Universal Auth client secret used by the Ansible-managed host runtime sync and local webhook helper. | [ ] |
 | `STACKS_REPO_READ_TOKEN` | Required | Security | Token used for trust verification of `stacks_sha` dispatch payloads. | [ ] |

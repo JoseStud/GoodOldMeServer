@@ -1,10 +1,10 @@
 # GoodOldMeServer
 
-Personal homelab/cloud server infrastructure using a three-tier architecture:
+Personal homelab/cloud server infrastructure using a four-layer architecture:
 
 1. **Terraform** provisions cloud resources across Oracle Cloud (2× Ampere A1.Flex workers) and Google Cloud (1× e2-micro Swarm witness)
-2. **Ansible** bootstraps nodes through 5 phases: system user → Docker → Tailscale mesh → GlusterFS (replica-3-arbiter-1) → Docker Swarm (3-manager cluster)
-3. **Docker Swarm** stacks deploy application workloads (8 stacks) behind Traefik reverse proxy with Authelia SSO, using Infisical for secret management
+2. **Ansible** bootstraps nodes through 7 phases: system user + storage → Docker → Tailscale mesh → GlusterFS → Docker Swarm → Portainer bootstrap → host runtime sync
+3. **Docker Swarm** runs 8 stacks behind Traefik with Authelia SSO, using Infisical-rendered runtime env files and Portainer GitOps for the Portainer-managed stacks
 4. **Infrastructure Orchestrator (GitHub Actions)** orchestrates secret validation → infra apply → inventory handover → Ansible bootstrap → Portainer apply → health-gated stack redeploy
 
 ## Prerequisites
@@ -28,17 +28,17 @@ Personal homelab/cloud server infrastructure using a three-tier architecture:
 # 2. Local fallback: provision cloud infrastructure
 terraform -chdir=terraform/infra apply
 
-# 3. Local fallback: bootstrap nodes (Docker, Tailscale, GlusterFS, Swarm)
+# 3. Local fallback: bootstrap nodes end-to-end
 ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml
 
-# 4. Local fallback: create Portainer-managed GitOps stacks + webhooks
+# 4. Local fallback: create/update Portainer-managed stacks + webhooks
 terraform -chdir=terraform/portainer-root apply
 
-# 5. Deploy stacks (see deployment runbook for full procedure)
-docker stack deploy -c stacks/gateway/docker-compose.yml gateway
-docker stack deploy -c stacks/auth/docker-compose.yml auth
-# ... remaining stacks in any order
+# 5. Break-glass direct docker stack deploys are documented separately
+# See docs/deployment-runbook.md for the current host-synced /opt/stacks flow
 ```
+
+Ansible Phase 6 bootstraps the `management` stack. The remaining Portainer-managed stacks are normally converged by `terraform/portainer-root` and redeployed through webhooks rather than direct `docker stack deploy` calls from this checkout.
 
 For the full deployment procedure, see the [Deployment Runbook](docs/deployment-runbook.md).
 For first-time pipeline setup, use the [Infrastructure Orchestrator Cutover Checklist](docs/meta-pipeline-cutover-checklist.md).

@@ -12,26 +12,27 @@ All stacks run on a 3-manager Docker Swarm cluster:
 | OCI Worker 2 | OCI (A1.Flex, 2 OCPU, 12 GB) | Manager + workloads | `location=cloud` |
 | GCP Witness | GCP (e2-micro, 0.25 vCPU, 1 GB) | Manager (quorum only) | `role=witness` |
 
-All workloads are constrained to `node.labels.location == cloud` (OCI nodes). The GCP witness only participates in Raft consensus.
+Most user-facing and stateful workloads are constrained to `node.labels.location == cloud` (OCI nodes). Exceptions are the manager-scoped `socket-proxy` and `portainer-server`, plus the global `portainer-agent`, `promtail`, and `node-exporter`.
 
 ## Stack Overview
 
 | Stack | Services | Constraint | Depends On |
 |-------|----------|------------|------------|
-| **gateway** | traefik, socket-proxy | `location == cloud` (replicated: 2) | — |
+| **gateway** | traefik, socket-proxy | `traefik`: `location == cloud` (replicas: 2); `socket-proxy`: `node.role == manager` | — |
 | **auth** | authelia, authelia-db | `location == cloud` | gateway |
-| **management** | homarr, portainer-server, portainer-agent | `location == cloud` (homarr), `node.role == manager` (server), global (agent) | gateway, auth |
+| **management** | homarr, portainer-server, portainer-agent | `location == cloud` (homarr), `node.role == manager` (server), global (agent) | — (bootstrapped by Ansible Phase 6) |
 | **network** | vaultwarden, vaultwarden-db, pihole-1, pihole-2, orbital-sync | `location == cloud` | gateway, auth |
 | **observability** | prometheus, loki, promtail, node-exporter, grafana, alertmanager | `location == cloud` (stateful), global (promtail, node-exporter) | gateway, auth |
 | **media** | open-webui, openclaw-gateway, openclaw-cli | `location == cloud` | gateway, auth |
 | **uptime** | uptime-kuma | `location == cloud` | gateway, auth |
-| **cloud** | filebrowser | `location == cloud` | gateway |
+| **cloud** | filebrowser | `location == cloud` | gateway, auth |
 
 ## Deployment Order
 
-1. **gateway** — Traefik + docker-socket-proxy (creates the `traefik_proxy` overlay network)
+0. **management** — Bootstrapped by Ansible Phase 6; not Portainer-managed
+1. **gateway** — Traefik + docker-socket-proxy (uses the pre-created `traefik_proxy` overlay network)
 2. **auth** — Authelia SSO (referenced as `authelia@docker` middleware by other stacks)
-3. **All other stacks** — No ordering constraints among themselves
+3. **All other Portainer-managed stacks** — No ordering constraints among themselves beyond `stacks/stacks.yaml` dependencies
 
 See [Deployment Runbook](deployment-runbook.md) for step-by-step commands.
 
@@ -72,7 +73,7 @@ All stacks follow these conventions:
 ### Gateway
 
 - **Traefik v3** — Reverse proxy, runs as 2 replicas on OCI workers
-- **docker-socket-proxy** — Read-only proxy to the Docker socket (Traefik connects here instead of directly to `/var/run/docker.sock`)
+- **docker-socket-proxy** — Read-only proxy to the Docker socket (Traefik connects here instead of directly to `/var/run/docker.sock`). This service is manager-scoped, so it can land on either OCI node or the GCP witness.
 - HTTP→HTTPS redirect on all traffic
 - ACME certificates stored in a GlusterFS-backed bind-mount volume `traefik_acme` at `/mnt/swarm-shared/gateway/traefik_acme`, shared between both replicas
 - Prometheus metrics exposed on a dedicated entrypoint (`:8082/metrics`)
@@ -159,7 +160,7 @@ Per-stack secrets are in their own Infisical paths:
 |-------|----------|---------------|--------------------------|
 | gateway | `stacks/gateway/.env.tmpl` | `/stacks/gateway` | `CLOUDFLARE_API_TOKEN` (from `/infrastructure`), `ACME_EMAIL`, `DOCKER_SOCKET_PROXY_URL` |
 | auth | `stacks/auth/.env.tmpl` | `/stacks/identity` | `AUTHELIA_JWT_SECRET`, `AUTHELIA_SESSION_SECRET`, `POSTGRES_PASSWORD`, `AUTHELIA_NOTIFIER_SMTP_USERNAME`, `AUTHELIA_NOTIFIER_SMTP_PASSWORD`, `AUTHELIA_NOTIFIER_SMTP_SENDER`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_JWKS_0_KEY` |
-| management | `stacks/management/.env.tmpl` | `/stacks/management` | `HOMARR_SECRET_KEY` |
+| management | `stacks/management/.env.tmpl` | `/stacks/management` | `HOMARR_SECRET_KEY`, `PORTAINER_ADMIN_PASSWORD_HASH`, `PORTAINER_AUTOMATION_ALLOWED_CIDRS` |
 | network | `stacks/network/.env.tmpl` | `/stacks/network` | `VW_DB_PASS`, `VW_ADMIN_TOKEN`, `PIHOLE_PASSWORD` |
 | observability | `stacks/observability/.env.tmpl` | `/stacks/observability` | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET`, `ALERTMANAGER_WEBHOOK_URL` |
 | ai-interface | `stacks/media/ai-interface/.env.tmpl` | `/stacks/ai-interface` | `ARCH_PC_IP` |
@@ -174,17 +175,17 @@ Some stacks require configuration files that are bind-mounted from GlusterFS at 
 
 ```bash
 # Sync all config files to GlusterFS
-ansible-playbook playbooks/provision.yml --tags sync-configs
+ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags sync-configs
 ```
 
 Stacks that are self-configuring (no config files needed): **gateway**, **management**, **network**, **media/ai-interface**, **uptime**, **cloud**.
 
 ## Host Runtime Sync
 
-Host runtime assets are Ansible-managed. Use `phase7_runtime_sync` to mirror the trusted `stacks/` checkout to `/opt/stacks`, render `/etc/infisical/agent.yaml`, and refresh the local webhook helper/service on every node:
+Host runtime assets are Ansible-managed. Use `phase7_runtime_sync` to mirror the trusted `stacks/` checkout to `/opt/stacks`, render `/etc/infisical/agent.yaml`, and refresh the local webhook helper/service on every node. The management stack template is the exception to the webhook pattern: it renders `/opt/stacks/management/.env` and then runs a direct `docker stack deploy`, while the Portainer-managed templates call the local webhook helper on the primary manager.
 
 ```bash
-ansible-playbook playbooks/provision.yml --tags phase7_runtime_sync
+ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase7_runtime_sync
 ```
 
 ## Adding a New Stack
@@ -194,6 +195,6 @@ ansible-playbook playbooks/provision.yml --tags phase7_runtime_sync
 3. Create `.env.tmpl` for the Infisical Agent to render
 4. If the stack needs config files, add them under `stacks/<name>/config/` and add a sync task to `ansible/roles/glusterfs/tasks/sync-configs.yml`
 5. Register the stack in `stacks/infisical-agent.yaml` so host-sync-only template changes can update the runtime path
-6. Run `ansible-playbook playbooks/provision.yml --tags phase7_runtime_sync` to converge `/opt/stacks` and the agent config
-7. Deploy: `docker stack deploy -c stacks/<name>/docker-compose.yml <name>` (management only) or let Portainer/webhook automation own the normal deploy path for Portainer-managed stacks
+6. Run `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase7_runtime_sync` to converge `/opt/stacks` and the agent config
+7. Deploy: use direct `docker stack deploy` only for non-Portainer-managed stacks; otherwise let the normal Terraform + Portainer webhook automation own the deploy path
 8. Update this document and the [Deployment Runbook](deployment-runbook.md)

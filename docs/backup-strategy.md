@@ -59,9 +59,9 @@ The block volumes contain `/mnt/app_data`, which holds the GlusterFS brick (`/mn
 
 ```
 /mnt/app_data/gluster_brick/
-├── auth/authelia/config/
+├── auth/{authelia/config,authelia-db}/
 ├── ai-interface/{open-webui,openclaw/config}/
-├── observability/{prometheus_data,loki_data,grafana_data,prometheus,loki,promtail}/
+├── observability/{prometheus_data,loki_data,grafana_data,prometheus,loki,promtail,alertmanager,alertmanager_data}/
 ├── gateway/traefik_acme/
 ├── management/{homarr/appdata,portainer/data}/
 ├── network/{vaultwarden/data,vaultwarden-db,pihole/node*/etc-*}/

@@ -71,7 +71,7 @@ Use this as the source of truth for whether a value is operator-managed or autom
 | `/stacks/network` | `VW_DB_PASS`, `VW_ADMIN_TOKEN`, `PIHOLE_PASSWORD` | Required | Operator | Required for network stack stateful services |
 | `/stacks/observability` | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET`, `ALERTMANAGER_WEBHOOK_URL` | Required | Operator | Required for observability deploy and alert routing |
 | `/stacks/ai-interface` | `ARCH_PC_IP` | Required | Operator | Required for Open WebUI upstream reachability |
-| GitHub `vars.*`/`secrets.*` bootstrap set | `INFISICAL_MACHINE_IDENTITY_ID`, `INFISICAL_PROJECT_ID`, `TFC_*`, `CLOUD_STATIC_RUNNER_LABEL`, `TFC_TOKEN`, `INFISICAL_TOKEN` | Required | Platform | Required for pipeline execution; `INFISICAL_TOKEN` is only needed by the local `terraform/portainer-root` apply path |
+| GitHub `vars.*`/`secrets.*` bootstrap set | `INFISICAL_MACHINE_IDENTITY_ID`, `INFISICAL_PROJECT_ID`, `TFC_*`, `CLOUD_STATIC_RUNNER_LABEL`, `TFC_TOKEN`, `INFISICAL_TOKEN` | Required | Platform | Required for pipeline execution; `INFISICAL_TOKEN` is needed anywhere `terraform/portainer-root` runs, including the orchestrator `portainer-apply` stage |
 
 ### Steady-State / Optional
 
@@ -190,7 +190,7 @@ The management stack (Portainer + Homarr) is deployed by Ansible, not Terraform,
 
 While Infisical manages infrastructure and application secrets, a few bootstrap values must be stored directly in GitHub (Settings → Security → Secrets and variables → Actions) for CI/CD pipelines.
 
-The workflow authenticates to Infisical via **OIDC** (not Universal Auth), so no client ID/secret pair is needed.
+Most workflow stage scripts authenticate to Infisical via **OIDC**. The Terraform-based `terraform/portainer-root` apply path still needs `INFISICAL_TOKEN` because the Terraform provider reads Infisical directly during local/runner-side execution.
 
 #### Variables (`vars.*`)
 
@@ -213,7 +213,7 @@ The workflow authenticates to Infisical via **OIDC** (not Universal Auth), so no
 
 | Variable | How to Get | Used By |
 |----------|-----------|---------|
-| `INFISICAL_TOKEN` (infra repo) | Infisical service token with project read/write scope for automation paths | Required by the local `terraform/portainer-root` apply path |
+| `INFISICAL_TOKEN` (infra repo) | Infisical service token with project read/write scope for automation paths | Required by any local/runner-side `terraform/portainer-root` apply, including `.github/workflows/reusable-orch-portainer.yml` |
 | `INFRA_REPO_DISPATCH_TOKEN` (stacks repo) | Fine-grained GitHub token with `contents:write` + repository dispatch access on this infra repo | `stacks/.github/workflows/stacks-dispatch-redeploy.yml` dispatches `stacks-redeploy-intent-v5` to this repo |
 | `INFISICAL_AGENT_CLIENT_ID` (infra repo) | Universal Auth client id for the host-side Infisical Agent | Ansible `phase7_runtime_sync` and local Portainer webhook helper |
 | `INFISICAL_AGENT_CLIENT_SECRET` (infra repo) | Universal Auth client secret for the host-side Infisical Agent | Ansible `phase7_runtime_sync` and local Portainer webhook helper |
@@ -228,7 +228,7 @@ Terraform is split into two workspaces/roots:
 1. `goodoldme-infra` (`terraform/infra`) for OCI + GCP provisioning
 2. `goodoldme-portainer` (`terraform/portainer-root`) for Portainer stack/webhook management
 
-Both use the `infisical/infisical` provider with OIDC-backed environment credentials.
+Both use the `infisical/infisical` provider with runtime-supplied authentication variables. In practice, that means Terraform Cloud workspace auth variables for `goodoldme-infra`, and `INFISICAL_TOKEN` for local or runner-side `goodoldme-portainer` applies.
 
 ### Infra Workspace (`terraform/infra`)
 
@@ -337,7 +337,7 @@ Generate the Universal Auth credentials in Infisical under **Access Control → 
 Run the managed convergence path with:
 
 ```bash
-ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --tags phase7_runtime_sync
+ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase7_runtime_sync
 ```
 
 Verify the managed runtime state with:

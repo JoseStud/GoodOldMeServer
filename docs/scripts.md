@@ -1,6 +1,6 @@
 # Scripts & Utilities
 
-This document catalogs helper scripts in `scripts/` and CI automation scripts in `.github/scripts/`.
+This document catalogs operator-facing helper scripts in `scripts/` plus the direct CI entrypoints in `.github/scripts/` that workflows invoke. Internal test files under `.github/scripts/tests/` and shared library helpers under `.github/scripts/lib/` are intentionally omitted from the main catalog.
 
 ## Catalog
 
@@ -23,10 +23,26 @@ This document catalogs helper scripts in `scripts/` and CI automation scripts in
 | `.github/scripts/stacks/verify_trusted_stacks_sha.sh` | Verify requested stacks SHA ancestry and CI status against stacks repo. | Arg: `<STACKS_SHA>`. Env: `STACKS_REPO_READ_TOKEN` or `GITHUB_TOKEN`; optional owner/repo/branch/api vars. | `0` when trusted; `1` on invalid SHA, API failure, failed checks/status, or trust violations. | Idempotent read-only verification. | `bash`, `curl`, `jq`, GitHub API token with repo read/check access. | `.github/scripts/stacks/verify_trusted_stacks_sha.sh 0123456789abcdef0123456789abcdef01234567` |
 | `.github/scripts/tfc/wait_for_tfc_run.sh` | Poll Terraform Cloud run until terminal success/failure/timeout. | Args: `<RUN_ID> <WORKSPACE_NAME>`. Env: `TFC_TOKEN`; optional `TFC_API_URL`, `WAIT_TIMEOUT_SECONDS`, `POLL_INTERVAL_SECONDS`, `TFC_ORGANIZATION`. | `0` on `planned_and_finished` or `applied`; `1` on failed terminal states or timeout. | Idempotent polling behavior. | `bash`, `curl`, `jq`. | `TFC_TOKEN=... .github/scripts/tfc/wait_for_tfc_run.sh run-abc123 goodoldme-infra` |
 
+## Workflow Stage Wrappers
+
+These wrappers under `.github/scripts/stages/` are invoked directly by the reusable workflows and compose the lower-level helpers listed above.
+
+| Script | Invoked By | Responsibility |
+|-------|------------|----------------|
+| `.github/scripts/stages/ansible_run.sh` | `reusable-orch-ansible.yml`, `reusable-orch-portainer.yml` | Checks out the trusted `STACKS_SHA`, logs into Infisical, mints an ephemeral SSH certificate, and runs `ansible/playbooks/provision.yml` with optional tag scoping |
+| `.github/scripts/stages/health_gated_redeploy.sh` | `reusable-orch-portainer.yml` | Checks out the trusted stacks ref, logs into Infisical, and triggers `trigger_webhooks_with_gates.sh` for the full Portainer-managed reconcile |
+| `.github/scripts/stages/infra_apply.sh` | `reusable-orch-infra.yml` | Wraps `wait_for_tfc_run.sh` with the orchestrator’s manual-confirm and terminal-status expectations |
+| `.github/scripts/stages/network_policy_sync.sh` | `reusable-orch-preflight.yml` | Builds the canonical access policy and syncs it to Terraform Cloud plus Infisical |
+| `.github/scripts/stages/portainer_api_preflight.sh` | `reusable-orch-portainer.yml` | Reads `PORTAINER_API_URL` from Infisical, waits for allowlist propagation, and runs network reachability preflight checks |
+| `.github/scripts/stages/portainer_apply.sh` | `reusable-orch-portainer.yml` | Verifies `operations=false`, then runs `terraform/portainer-root` init/plan/apply with optional `STACKS_SHA` pinning |
+| `.github/scripts/stages/post_bootstrap_secret_check.sh` | `reusable-orch-portainer.yml` | Verifies that bootstrap-managed Portainer secrets already exist in Infisical before Terraform tries to use them |
+| `.github/scripts/stages/secret_validation.sh` | `reusable-orch-preflight.yml` | Fail-closed validation for the exact secret sets required by the current plan toggles |
+| `.github/scripts/stages/tfc_speculative_preflight.sh` | `validate-terraform.yml` | Resolves the Terraform Cloud workspace name for speculative validation and fails early on missing inputs |
+
 ## Notes
 
 - CI scripts are intended to run inside GitHub Actions jobs with explicit env contracts.
-- Reusable planner workflow: `.github/workflows/reusable-resolve-plan.yml` centralizes push/dispatch normalization and `.github/scripts/plan/resolve_ci_plan.sh` execution for the orchestrator workflow.
+- Reusable planner workflow: `.github/workflows/reusable-resolve-plan.yml` centralizes push/dispatch normalization and `.github/scripts/plan/resolve_ci_plan.sh` execution for the orchestrator workflow. Meta-mode plan construction is delegated internally to `.github/scripts/plan/resolve_meta_plan.sh`.
 - Reusable stage workflows: `.github/workflows/reusable-orch-*.yml` consume `plan_json` directly with `fromJSON(...)` and do not rely on a scalar projection layer.
 - Composite bootstrap action: `.github/actions/bootstrap-tools/action.yml` installs pinned `jq`/`yq`/`nc`/`infisical` versions from `.github/ci/tool-versions.lock` with SHA256 verification and optional Infisical OIDC login.
 - Archived scripts are retained for historical reference and should not be used in the normal deployment path.

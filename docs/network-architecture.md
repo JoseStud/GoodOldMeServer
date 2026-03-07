@@ -70,7 +70,7 @@ All 3 nodes (2 OCI workers + 1 GCP witness) are connected via a [Tailscale](http
 
 ### How It's Provisioned
 
-1. Ansible Phase 3 installs Tailscale on every node via the official install script
+1. Ansible Phase 3 installs Tailscale on every node via the official APT repository
 2. Each node authenticates with `tailscale up --authkey=$TAILSCALE_AUTH_KEY --ssh`
 3. After authentication, nodes discover each other through Tailscale's coordination server
 4. Direct WireGuard tunnels are established (or relayed through Tailscale DERP if direct connectivity isn't possible)
@@ -81,7 +81,8 @@ All 3 nodes (2 OCI workers + 1 GCP witness) are connected via a [Tailscale](http
 |-----------|-------------------|
 | **Docker Swarm** | `swarm init` and `swarm join` use `--advertise-addr <tailscale_ip>` so all Raft and gossip traffic flows over encrypted tunnels |
 | **GlusterFS** | Brick endpoints use Tailscale IPv4 addresses — replication traffic is encrypted without needing separate TLS configuration |
-| **Ansible (GCP)** | The GCP witness has no public IPv4 — Ansible reaches it via its Tailscale IPv6 address |
+
+Initial Ansible connectivity to the GCP witness still uses its public IPv6 (`witness_ipv6`) because Tailscale is not available until after Phase 3 completes.
 
 ## Docker Swarm Topology
 
@@ -125,9 +126,10 @@ Labels are applied by the Ansible `swarm` role and used in `deploy.placement.con
 |-------|-------|-----------|---------|
 | `location` | `cloud` | OCI workers | Identifies workload-eligible nodes |
 | `role` | `witness` | GCP instance | Identifies quorum-only node |
-| *(built-in)* | `node.role == manager` | All 3 nodes | socket-proxy, Portainer server |
-| *(built-in)* | `node.role == worker` | OCI workers | All application stacks |
+| *(built-in)* | `node.role == manager` | All 3 nodes | Manager-scoped services such as `socket-proxy` and `portainer-server` |
 | *(built-in)* | `node.hostname` | Per-instance | Pi-hole pinning (`app-worker-1`, `app-worker-2`) |
+
+Global services such as `portainer-agent`, `promtail`, and `node-exporter` do not rely on labels at all.
 
 ### Overlay Networks
 
@@ -211,7 +213,7 @@ With the `replica 3 arbiter 1` configuration, the GCP witness node acts as a tie
 ```mermaid
 flowchart TD
     DNS[DNS: *.example.com → OCI Public IPs] --> FW[OCI Gateway NSG<br/>Allow TCP 80, 443]
-    FW --> T[Traefik :80 / :443<br/>host-mode ports on managers]
+    FW --> T[Traefik :80 / :443<br/>host-mode ports on OCI workers]
     T -->|HTTP→HTTPS redirect| T443[Traefik :443 TLS termination]
     T443 -->|Host header match| R{Router}
     R -->|auth.domain| AUTH[Authelia :9091]

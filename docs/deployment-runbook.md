@@ -20,11 +20,11 @@ Before deploying any stack, verify that all infrastructure layers are operationa
 | `PORTAINER_ADMIN_PASSWORD` set | `echo $PORTAINER_ADMIN_PASSWORD` is non-empty | `export PORTAINER_ADMIN_PASSWORD='...'` (bcrypt-hashed by Ansible and written to `/stacks/management` during bootstrap) |
 | Tailscale mesh active | `tailscale status` on each node shows 3 peers | `tailscale up --authkey=...` |
 | GlusterFS mounted | `df -h /mnt/swarm-shared` on OCI nodes | `mount -t glusterfs localhost:/swarm_data /mnt/swarm-shared` |
-| Config files synced | `ls /mnt/swarm-shared/auth/authelia/config/configuration.yml` | `ansible-playbook playbooks/provision.yml --tags sync-configs` |
+| Config files synced | `ls /mnt/swarm-shared/auth/authelia/config/configuration.yml` | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags sync-configs` |
 | Docker Swarm initialized | `docker node ls` shows 3 managers (2 Ready + 1 Ready) | Re-run Ansible `swarm` role |
 | `traefik_proxy` network exists | `docker network ls \| grep traefik_proxy` | `docker network create --driver overlay --attachable traefik_proxy` |
 | Infisical Agent running | `systemctl status infisical-agent` | See [Agent Installation](infisical-workflow.md#installing-the-agent) |
-| `.env` files rendered | `ls /opt/stacks/*/.env` | Re-run `ansible-playbook playbooks/provision.yml --tags phase7_runtime_sync` |
+| `.env` files rendered | `ls /opt/stacks/*/.env` | Re-run `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase7_runtime_sync` |
 
 ## Deployment Order
 
@@ -55,15 +55,18 @@ flowchart TD
 
 ## Deploy Commands
 
+Unless noted otherwise, direct CLI examples below assume you are on the primary manager and `phase7_runtime_sync` has already rendered `/opt/stacks/*/.env`.
+
 ### Step 0: Management Stack (Ansible)
 
-The management stack (Portainer + Homarr) is deployed automatically by Ansible during Phase 6 of provisioning, with the trusted compose staged onto the primary manager before deploy. If you need to deploy it manually:
+The management stack (Portainer + Homarr) is deployed automatically by Ansible during Phase 6 of provisioning, with the trusted compose staged onto the primary manager before deploy. If you need to deploy it manually in break-glass mode, either rely on the rendered `/opt/stacks/management/.env` or pass every required variable explicitly:
 
 ```bash
 # Deploy the management stack directly
 BASE_DOMAIN=example.com HOMARR_SECRET_KEY="your-key" TZ=Etc/UTC \
   PORTAINER_ADMIN_PASSWORD_HASH='$2b$12$...' \
-  docker stack deploy -c stacks/management/docker-compose.yml management
+  PORTAINER_AUTOMATION_ALLOWED_CIDRS='203.0.113.10/32,2001:db8::/128' \
+  docker stack deploy -c /opt/stacks/management/docker-compose.yml management
 ```
 
 > **Note:** `PORTAINER_ADMIN_PASSWORD_HASH` must be a valid bcrypt hash. Generate one with:
@@ -84,13 +87,13 @@ curl -s http://localhost:9000/api/system/status | jq .
 ### Step 1: Gateway
 
 ```bash
-docker stack deploy -c stacks/gateway/docker-compose.yml gateway
+docker stack deploy -c /opt/stacks/gateway/docker-compose.yml gateway
 ```
 
 **Verify:**
 ```bash
 docker stack services gateway
-# Expected: socket-proxy (1/1), traefik (2/2 replicated on OCI workers)
+# Expected: socket-proxy (1/1 on a manager), traefik (2/2 replicated on OCI workers)
 
 # Test Traefik is responding
 curl -I http://localhost:80
@@ -106,7 +109,7 @@ Authelia requires config files and secrets to be prepared before the stack will 
 **1. Sync config files to GlusterFS:**
 
 ```bash
-ansible-playbook playbooks/provision.yml --tags sync-configs
+ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags sync-configs
 # This copies stacks/auth/config/* to /mnt/swarm-shared/auth/authelia/config/
 # and stacks/observability/config/* to their respective GlusterFS paths
 ```
@@ -130,7 +133,7 @@ vim stacks/auth/config/users_database.yml
 #       - 'admins'
 
 # Re-sync to GlusterFS
-ansible-playbook playbooks/provision.yml --tags sync-configs
+ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags sync-configs
 ```
 
 **3. Generate OIDC keys and hash the Grafana client secret:**
@@ -150,7 +153,7 @@ docker run --rm authelia/authelia:latest \
   authelia crypto hash generate argon2 --password '<GF_OIDC_CLIENT_SECRET value>'
 # Paste the resulting hash into stacks/auth/config/configuration.yml under:
 #   identity_providers.oidc.clients[0].client_secret
-# Then re-sync: ansible-playbook playbooks/provision.yml --tags sync-configs
+# Then re-sync: ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags sync-configs
 ```
 
 **4. Add SMTP secrets to Infisical** (under `/stacks/identity`):
@@ -166,10 +169,9 @@ docker run --rm authelia/authelia:latest \
 #### Deploy
 
 ```bash
-# Auth .env is rendered by the Ansible-managed Infisical Agent (stacks/auth/.env.tmpl)
-# If deploying before the Agent is running, manually create the .env:
-# echo "BASE_DOMAIN=example.com" > stacks/auth/.env
-docker stack deploy -c stacks/auth/docker-compose.yml auth
+# Auth requires the rendered /opt/stacks/auth/.env. If phase7 runtime sync has not
+# completed yet, finish that first instead of trying to handcraft a partial .env.
+docker stack deploy -c /opt/stacks/auth/docker-compose.yml auth
 ```
 
 **Verify:**
@@ -221,28 +223,19 @@ For **manual deployment** (fallback), the Ansible-managed Infisical Agent handle
 
 ```bash
 # Network
-docker stack deploy -c stacks/network/docker-compose.yml network
+docker stack deploy -c /opt/stacks/network/docker-compose.yml network
 
-# Observability (.env rendered by Infisical Agent — stacks/observability/.env.tmpl)
-# If deploying before the Agent is running, manually create the .env:
-# cat > stacks/observability/.env << 'EOF'
-# BASE_DOMAIN=example.com
-# GF_OIDC_CLIENT_ID=grafana
-# GF_OIDC_CLIENT_SECRET=your-secure-secret
-# EOF
-docker stack deploy -c stacks/observability/docker-compose.yml observability
+# Observability
+docker stack deploy -c /opt/stacks/observability/docker-compose.yml observability
 
-# Media / AI Interface (.env rendered by Infisical Agent — stacks/media/ai-interface/.env.tmpl)
-# If deploying before the Agent is running:
-# cp stacks/media/ai-interface/.env.example stacks/media/ai-interface/.env
-# Edit .env to set ARCH_PC_IP and BASE_DOMAIN
-docker stack deploy -c stacks/media/ai-interface/docker-compose.yml ai-interface
+# Media / AI Interface
+docker stack deploy -c /opt/stacks/media/ai-interface/docker-compose.yml ai-interface
 
 # Uptime
-docker stack deploy -c stacks/uptime/docker-compose.yml uptime
+docker stack deploy -c /opt/stacks/uptime/docker-compose.yml uptime
 
 # Cloud
-docker stack deploy -c stacks/cloud/docker-compose.yml cloud
+docker stack deploy -c /opt/stacks/cloud/docker-compose.yml cloud
 ```
 
 ### Full Verification
@@ -293,7 +286,7 @@ You can still deploy directly with the Docker CLI when needed:
 
 ```bash
 # Re-deploy (idempotent — only updates changed services)
-docker stack deploy -c stacks/<stack>/docker-compose.yml <stack>
+docker stack deploy -c /opt/stacks/<stack>/docker-compose.yml <stack>
 
 # Or update a single service (e.g., to pull a newer image)
 docker service update --image <new-image> <stack>_<service>
@@ -348,14 +341,16 @@ docker service rollback network_vaultwarden
 For a full stack rollback, you'll need to redeploy with the previous docker-compose.yml (use Git history):
 
 ```bash
-# Checkout the previous version of the compose file
+# Checkout the previous version of the compose file in the trusted controller checkout
 git -C stacks checkout HEAD~1 -- <stack>/docker-compose.yml
 
-# Re-deploy
-docker stack deploy -c stacks/<stack>/docker-compose.yml <stack>
+# Re-sync the host runtime copy, then re-deploy from /opt/stacks
+ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase7_runtime_sync
+docker stack deploy -c /opt/stacks/<stack>/docker-compose.yml <stack>
 
 # Don't forget to restore the current version after
 git -C stacks checkout main -- <stack>/docker-compose.yml
+ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase7_runtime_sync
 ```
 
 ## Troubleshooting

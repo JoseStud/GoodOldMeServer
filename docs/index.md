@@ -1,9 +1,9 @@
 # GoodOldMeServer Documentation
 
-Welcome to the centralized GoodOldMeServer documentation. This repository manages the infrastructure, configuration, and workloads for the GoodOldMeServer environment using a three-tier architecture approach:
+Welcome to the centralized GoodOldMeServer documentation. This repository manages the infrastructure, configuration, and workloads for the GoodOldMeServer environment using a four-layer architecture approach:
 
 1. **Infrastructure Provisioning** — Terraform provisions cloud resources across OCI (2× Ampere A1 workers) and GCP (1× e2-micro Swarm witness)
-2. **Configuration Management** — Ansible bootstraps nodes: system users, Docker, Tailscale mesh networking, GlusterFS distributed storage, and a 3-manager Docker Swarm cluster
+2. **Configuration Management** — Ansible bootstraps system users, storage, Docker, Tailscale, GlusterFS, a 3-manager Docker Swarm cluster, Portainer bootstrap, and host runtime sync
 3. **Application Workloads** — Docker Swarm stacks with Infisical-managed secrets, routed through Traefik reverse proxy with Authelia SSO
 4. **Infrastructure Orchestrator** — GitHub Actions orchestrates secret validation, Terraform apply, inventory handover, Ansible bootstrap, Portainer apply, and health-gated webhook redeploys
 
@@ -70,8 +70,10 @@ flowchart TD
         TS[Tailscale mesh]
         GFS[glusterfs role<br/>replica-3-arbiter-1 volume]
         SWM[swarm role<br/>3-manager cluster]
+        PTB[portainer_bootstrap role<br/>management stack + API key]
+        RTS[runtime_sync role<br/>/opt/stacks + Infisical Agent]
         ANS --> INV
-        INV --> USR --> STR --> DOCK --> TS --> GFS --> SWM
+        INV --> USR --> STR --> DOCK --> TS --> GFS --> SWM --> PTB --> RTS
     end
 
     subgraph Workloads [Application Workloads — Docker Swarm]
@@ -91,9 +93,9 @@ flowchart TD
 
 ### Core Documentation
 
-- [**Configuration Management (Ansible)**](ansible.md) — Playbooks, roles, dynamic inventory, and the 7-phase provisioning lifecycle. Last reviewed: `2026-03-06`.
-- [**Application Workloads (Stacks)**](stacks.md) — All Docker Swarm stack configurations: Gateway, Auth, Management, Network, Observability, Media/AI, Uptime, Cloud. Last reviewed: `2026-03-05`.
-- [**Utilities (Scripts)**](scripts.md) — Helper scripts and manual execution wrappers. Last reviewed: `2026-03-05`.
+- [**Configuration Management (Ansible)**](ansible.md) — Playbooks, roles, dynamic inventory, and the 7-phase provisioning lifecycle. Last reviewed: `2026-03-07`.
+- [**Application Workloads (Stacks)**](stacks.md) — All Docker Swarm stack configurations: Gateway, Auth, Management, Network, Observability, Media/AI, Uptime, Cloud. Last reviewed: `2026-03-07`.
+- [**Utilities (Scripts)**](scripts.md) — Helper scripts and manual execution wrappers. Last reviewed: `2026-03-07`.
 
 ### Infrastructure as Code (Terraform)
 
@@ -104,15 +106,15 @@ flowchart TD
 
 ### Architecture & Operations
 
-- [**Network Architecture**](network-architecture.md) — Tailscale mesh, 3-manager Swarm topology, GlusterFS replication, overlay networks, DNS & ingress flow. Last reviewed: `2026-03-05`.
-- [**Infisical Secrets Workflow**](infisical-workflow.md) — Agent config, `.env.tmpl` templating, secret injection pipeline. Last reviewed: `2026-03-05`.
+- [**Network Architecture**](network-architecture.md) — Tailscale mesh, 3-manager Swarm topology, GlusterFS replication, overlay networks, DNS & ingress flow. Last reviewed: `2026-03-07`.
+- [**Infisical Secrets Workflow**](infisical-workflow.md) — Agent config, `.env.tmpl` templating, secret injection pipeline. Last reviewed: `2026-03-07`.
 - [**CI Orchestrator Execution Rules**](ci-orchestrator-execution-rules.md) — Push and dispatch planning rules for the active infrastructure workflows. Last reviewed: `2026-03-07`.
 - [**CI Plan Contract**](ci-plan-contract.md) — Canonical `plan_json` schema and direct workflow-consumption rules. Last reviewed: `2026-03-07`.
 - [**GitHub Actions Workflows**](github-actions-workflows.md) — Public workflow entry points plus reusable stage workflow inputs, outputs, and artifacts. Last reviewed: `2026-03-07`.
 - [**Workflow Lifecycle**](workflow-lifecycle.md) — Active workflows, retired legacy workflows, and replacement entry points. Last reviewed: `2026-03-07`.
-- [**Infrastructure Orchestrator Cutover Checklist**](meta-pipeline-cutover-checklist.md) — Minimal first-run checklist (GitHub vars/secrets + Terraform workspace vars). Last reviewed: `2026-03-06`.
-- [**Deployment Runbook**](deployment-runbook.md) — Stack ordering, deploy commands, verification, rollback procedures. Last reviewed: `2026-03-05`.
-- [**Backup Strategy**](backup-strategy.md) — OCI Silver backup policy, GlusterFS redundancy, application-level backups, recovery. Last reviewed: `2026-03-05`.
+- [**Infrastructure Orchestrator Cutover Checklist**](meta-pipeline-cutover-checklist.md) — Minimal first-run checklist (GitHub vars/secrets + Terraform workspace vars). Last reviewed: `2026-03-07`.
+- [**Deployment Runbook**](deployment-runbook.md) — Stack ordering, deploy commands, verification, rollback procedures. Last reviewed: `2026-03-07`.
+- [**Backup Strategy**](backup-strategy.md) — OCI Silver backup policy, GlusterFS redundancy, application-level backups, recovery. Last reviewed: `2026-03-07`.
 
 ### Guides & External Setups
 

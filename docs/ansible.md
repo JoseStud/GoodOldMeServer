@@ -99,18 +99,20 @@ This eliminates the need to distribute individual public keys to each node.
 
 The `ansible/playbooks/provision.yml` playbook runs all 7 phases sequentially. It starts by waiting for SSH connectivity (up to 300s with 10s delay), gathering facts, and verifying with a ping.
 
+Examples below assume you run commands from the repository root.
+
 ## Tags Matrix
 
 | Phase | Tags | Includes | Example `--tags` | Example `--skip-tags` |
 |------|------|----------|------------------|-----------------------|
-| Phase 1: Base system | `phase1_base` | `system_user`, `storage` (OCI only) | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --tags phase1_base` | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --skip-tags phase1_base` |
-| Phase 2: Docker | `phase2_docker` | `docker` role | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --tags phase2_docker` | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --skip-tags phase2_docker` |
-| Phase 3: Tailscale | `phase3_tailscale` | Tailscale install/auth/verify tasks | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --tags phase3_tailscale` | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --skip-tags phase3_tailscale` |
-| Phase 4: GlusterFS | `phase4_glusterfs` | `glusterfs` role + config sync include | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --tags phase4_glusterfs` | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --skip-tags phase4_glusterfs` |
-| Phase 4b: Config sync only | `sync-configs` | `roles/glusterfs/tasks/sync-configs.yml` | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --tags sync-configs` | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --skip-tags sync-configs` |
-| Phase 5: Swarm | `phase5_swarm` | `swarm` role | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --tags phase5_swarm` | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --skip-tags phase5_swarm` |
-| Phase 6: Portainer bootstrap | `phase6_portainer` | `portainer_bootstrap` role (first OCI node only) | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --tags phase6_portainer` | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --skip-tags phase6_portainer` |
-| Phase 7: Runtime sync | `phase7_runtime_sync` | `runtime_sync` role (`/opt/stacks`, agent config, helper, service) | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --tags phase7_runtime_sync` | `ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --skip-tags phase7_runtime_sync` |
+| Phase 1: Base system | `phase1_base` | `system_user`, `storage` (OCI only) | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase1_base` | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --skip-tags phase1_base` |
+| Phase 2: Docker | `phase2_docker` | `docker` role | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase2_docker` | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --skip-tags phase2_docker` |
+| Phase 3: Tailscale | `phase3_tailscale` | Tailscale install/auth/verify tasks | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase3_tailscale` | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --skip-tags phase3_tailscale` |
+| Phase 4: GlusterFS | `phase4_glusterfs` | `glusterfs` role + config sync include | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase4_glusterfs` | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --skip-tags phase4_glusterfs` |
+| Phase 4b: Config sync only | `sync-configs` | `roles/glusterfs/tasks/sync-configs.yml` | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags sync-configs` | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --skip-tags sync-configs` |
+| Phase 5: Swarm | `phase5_swarm` | `swarm` role | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase5_swarm` | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --skip-tags phase5_swarm` |
+| Phase 6: Portainer bootstrap | `phase6_portainer` | `portainer_bootstrap` role (first OCI node only) | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase6_portainer` | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --skip-tags phase6_portainer` |
+| Phase 7: Runtime sync | `phase7_runtime_sync` | `runtime_sync` role (`/opt/stacks`, agent config, helper, service) | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase7_runtime_sync` | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --skip-tags phase7_runtime_sync` |
 
 ## Runtime & Failure Expectations by Phase
 
@@ -158,7 +160,7 @@ After this phase, all 3 nodes (2 OCI + 1 GCP) can communicate over Tailscale's e
 
 ### Phase 4: GlusterFS Distributed Storage
 
-**Applies to:** OCI nodes only
+**Applies to:** OCI nodes + GCP witness (arbiter)
 
 | Role | What It Does |
 |------|-------------|
@@ -166,7 +168,7 @@ After this phase, all 3 nodes (2 OCI + 1 GCP) can communicate over Tailscale's e
 
 **Detailed flow:**
 1. Install `glusterfs-server`, start `glusterd` service
-2. Gather Tailscale IPv4 address (`tailscale ip -4`) on each OCI node
+2. Gather Tailscale IPv4 address (`tailscale ip -4`) on each participating node
 3. Create brick directory at `/mnt/app_data/gluster_brick`
 4. **Peer probing** — Each node probes the other (bidirectional, idempotent)
 5. **Volume creation** — From the first OCI node, creates `swarm_data` as `replica 3 arbiter 1 transport tcp` using both OCI nodes' Tailscale IPs as full brick endpoints and the GCP witness Tailscale IP as the arbiter brick
@@ -175,10 +177,10 @@ After this phase, all 3 nodes (2 OCI + 1 GCP) can communicate over Tailscale's e
 
 ```
 /mnt/swarm-shared/
-├── auth/{authelia/config,authelia-db}/
+├── auth/authelia/config/
 ├── ai-interface/open-webui/
 ├── ai-interface/openclaw/config/
-├── observability/{prometheus_data,loki_data,grafana_data,prometheus,loki,promtail}/
+├── observability/{prometheus_data,loki_data,grafana_data,prometheus,loki,promtail,alertmanager,alertmanager_data}/
 ├── gateway/traefik_acme/
 ├── management/{homarr/appdata,portainer/data}/
 ├── network/{vaultwarden/data,vaultwarden-db,pihole/node{1,2}/{etc-pihole,etc-dnsmasq.d}}/
@@ -285,7 +287,6 @@ ansible/
     │   └── tasks/main.yml           # APT repo install Docker, enable service
     ├── glusterfs/
     │   ├── defaults/main.yml        # service_user / service_group (defaults: media-srv)
-    │   ├── templates/               # (reserved for future Jinja2 templates)
     │   └── tasks/main.yml           # GlusterFS replica-3-arbiter-1 volume + shared dirs
     ├── swarm/
     │   └── tasks/main.yml           # 3-manager Swarm init + overlay network
@@ -306,11 +307,11 @@ ansible/
 export TAILSCALE_AUTH_KEY="..."
 
 # Run the full provisioning playbook
-ansible-playbook -i inventory/terraform.yml playbooks/provision.yml
+ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml
 
 # Run against specific groups
-ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --limit oci_nodes
-ansible-playbook -i inventory/terraform.yml playbooks/provision.yml --limit gcp_witness
+ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --limit oci_nodes
+ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --limit gcp_witness
 ```
 
-> **Prerequisites:** Terraform infra must be applied first. Local runs read from Terraform state (`inventory/terraform.yml`), while CI uses the rendered `inventory-ci.yml` artifact. Ensure your SSH certificate is valid.
+> **Prerequisites:** Terraform infra must be applied first. Local runs read from Terraform state (`ansible/inventory/terraform.yml`), while CI uses the rendered `inventory-ci.yml` artifact. Ensure your SSH certificate is valid.
