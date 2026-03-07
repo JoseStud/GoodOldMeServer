@@ -290,7 +290,7 @@ The management stack is **not** in this list.
 
 1. Create the compose file in `github.com/JoseStud/stacks`
 2. Add a new entry in `stacks/stacks.yaml` (`compose_path`, `portainer_managed`, `depends_on`, optional health checks)
-3. Run `terraform -chdir=terraform/portainer-root apply` (or trigger `infra-orchestrator.yml` with `run_portainer_apply=true`)
+3. Run `terraform -chdir=terraform/portainer-root apply` (or merge the corresponding `terraform/portainer-root` / `terraform/portainer` change to `main` so `infra-orchestrator.yml` applies it automatically)
 
 ## Private Webhook Automation
 

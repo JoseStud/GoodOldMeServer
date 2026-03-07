@@ -45,7 +45,7 @@ All plans share:
 
 - `push`: uses `meta_*` path filters to derive infra/apply/bootstrap/Portainer apply behavior for infra-repo changes.
 - `repository_dispatch`: accepts only `stacks-redeploy-intent-v5` with the minimal `v5` payload and always resolves to the full stacks reconcile path.
-- `workflow_dispatch` and `workflow_call`: support manual infra/bootstrap/Portainer operations only. `stacks_sha` is a trusted checkout override, not a stack-selection control.
+- `resolve_ci_plan.sh` meta mode accepts only `push` and `repository_dispatch`. Any other event name is invalid.
 
 ## Projection Layer
 

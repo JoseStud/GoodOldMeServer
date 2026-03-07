@@ -9,64 +9,6 @@ on:
       - ".ansible-lint"
   repository_dispatch:
     types: [stacks-redeploy-intent-v5]
-  workflow_dispatch:
-    inputs:
-      run_infra_apply:
-        description: "Create infra run and wait for manual confirm/apply in Terraform Cloud"
-        required: false
-        default: false
-        type: boolean
-      run_ansible_bootstrap:
-        description: "Run Ansible provision playbook"
-        required: false
-        default: false
-        type: boolean
-      run_portainer_apply:
-        description: "Run local Terraform apply for Portainer workspace (TFC remote state)"
-        required: false
-        default: false
-        type: boolean
-      dry_run:
-        description: "Dry-run mode (non-mutating stages only)"
-        required: false
-        default: false
-        type: boolean
-      stacks_sha:
-        description: "Optional stacks repository commit SHA"
-        required: false
-        type: string
-      reason:
-        description: "Execution reason label"
-        required: false
-        default: "manual-dispatch"
-        type: string
-      break_glass_policy_json:
-        description: "Optional break-glass override for network_access_policy JSON"
-        required: false
-        type: string
-  workflow_call:
-    inputs:
-      run_infra_apply:
-        required: false
-        type: boolean
-      run_ansible_bootstrap:
-        required: false
-        type: boolean
-      run_portainer_apply:
-        required: false
-        type: boolean
-      dry_run:
-        required: false
-        type: boolean
-      stacks_sha:
-        required: false
-        type: string
-      reason:
-        required: false
-        type: string
-      break_glass_policy_json:
-        required: false
-        type: string
 
 permissions:
   id-token: write
@@ -80,7 +22,7 @@ env:
   TFC_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
   TFC_WORKSPACE_INFRA: ${{ vars.TFC_WORKSPACE_INFRA || 'goodoldme-infra' }}
   TFC_WORKSPACE_PORTAINER: ${{ vars.TFC_WORKSPACE_PORTAINER || 'goodoldme-portainer' }}
-  SHADOW_MODE: ${{ ((github.event_name == 'workflow_dispatch' && inputs.dry_run) || (github.event_name == 'workflow_call' && inputs.dry_run)) && 'true' || vars.SHADOW_MODE || 'false' }}
+  SHADOW_MODE: ${{ vars.SHADOW_MODE || 'false' }}
 
 concurrency:
   group: infra-orchestrator-${{ github.ref_name || github.event.repository.default_branch || 'main' }}
@@ -93,12 +35,6 @@ jobs:
       source_event_name: ${{ github.event_name }}
       push_before: ${{ github.event.before }}
       push_sha: ${{ github.sha }}
-
-      run_infra_apply: ${{ inputs.run_infra_apply }}
-      run_ansible_bootstrap: ${{ inputs.run_ansible_bootstrap }}
-      run_portainer_apply: ${{ inputs.run_portainer_apply }}
-      stacks_sha: ${{ inputs.stacks_sha }}
-      reason: ${{ inputs.reason }}
 
       dispatch_schema_version: ${{ github.event.client_payload.schema_version }}
       dispatch_payload_json: ${{ toJson(github.event.client_payload) }}
@@ -239,8 +175,6 @@ jobs:
 
       - name: Build and sync network policy
         id: sync
-        env:
-          BREAK_GLASS_POLICY_JSON: ${{ inputs.break_glass_policy_json }}
         run: .github/scripts/stages/network_policy_sync.sh
 
   infra-apply:

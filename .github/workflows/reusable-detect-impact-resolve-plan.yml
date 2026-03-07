@@ -14,22 +14,6 @@ on:
         required: false
         type: string
 
-      run_infra_apply:
-        required: false
-        type: boolean
-      run_ansible_bootstrap:
-        required: false
-        type: boolean
-      run_portainer_apply:
-        required: false
-        type: boolean
-      stacks_sha:
-        required: false
-        type: string
-      reason:
-        required: false
-        type: string
-
       dispatch_schema_version:
         required: false
         type: string
@@ -117,12 +101,6 @@ jobs:
           PUSH_SHA: ${{ inputs.push_sha }}
           PUSH_BEFORE_SHA: ${{ inputs.push_before }}
           GITHUB_SHA_CURRENT: ${{ inputs.push_sha }}
-
-          INPUT_RUN_INFRA: ${{ inputs.run_infra_apply }}
-          INPUT_RUN_ANSIBLE: ${{ inputs.run_ansible_bootstrap }}
-          INPUT_RUN_PORTAINER: ${{ inputs.run_portainer_apply }}
-          INPUT_STACKS_SHA: ${{ inputs.stacks_sha }}
-          INPUT_REASON: ${{ inputs.reason }}
 
           PAYLOAD_SCHEMA_VERSION: ${{ inputs.dispatch_schema_version }}
           PAYLOAD_STACKS_SHA: ${{ inputs.dispatch_stacks_sha }}

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Meta-mode plan resolver: computes orchestrator execution plan from push,
-# repository_dispatch, workflow_dispatch, or workflow_call events.
+# Meta-mode plan resolver: computes orchestrator execution plan from push
+# or repository_dispatch events.
 
 set -euo pipefail
 
@@ -75,12 +75,9 @@ resolve_meta_mode() {
     run_host_sync="true"
     run_config_sync="true"
     run_health_redeploy="true"
-  elif [[ "${EVENT_NAME}" == "workflow_dispatch" || "${EVENT_NAME}" == "workflow_call" ]]; then
-    run_infra_apply="$(to_bool "${INPUT_RUN_INFRA:-}")"
-    run_ansible_bootstrap="$(to_bool "${INPUT_RUN_ANSIBLE:-}")"
-    run_portainer_apply="$(to_bool "${INPUT_RUN_PORTAINER:-}")"
-    stacks_sha="$(normalize_nullable "${INPUT_STACKS_SHA:-}")"
-    reason="$(normalize_nullable "${INPUT_REASON:-}")"
+  else
+    echo "Unsupported EVENT_NAME for meta mode: ${EVENT_NAME}. Expected push or repository_dispatch."
+    exit 1
   fi
 
   if [[ -z "${reason}" ]]; then

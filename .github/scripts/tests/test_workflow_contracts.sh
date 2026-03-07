@@ -5,6 +5,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 ORCHESTRATOR="${ROOT_DIR}/.github/workflows/infra-orchestrator.yml"
 VALIDATION="${ROOT_DIR}/.github/workflows/infra-validation.yml"
+LINT="${ROOT_DIR}/.github/workflows/lint-github-actions.yml"
 REUSABLE="${ROOT_DIR}/.github/workflows/reusable-detect-impact-resolve-plan.yml"
 
 if ! command -v yq >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
@@ -67,17 +68,8 @@ assert_no_match() {
 dispatch_types="$(yq '.on.repository_dispatch.types' "${ORCHESTRATOR}" | jq -c '.')"
 assert_eq "orchestrator_dispatch" "types" '["stacks-redeploy-intent-v5"]' "${dispatch_types}"
 
-workflow_dispatch_inputs="$(yq '.on.workflow_dispatch.inputs | keys | sort' "${ORCHESTRATOR}" | jq -c '.')"
-assert_eq "orchestrator_inputs" "workflow_dispatch" '["break_glass_policy_json","dry_run","reason","run_ansible_bootstrap","run_infra_apply","run_portainer_apply","stacks_sha"]' "${workflow_dispatch_inputs}"
-
-workflow_call_inputs="$(yq '.on.workflow_call.inputs | keys | sort' "${ORCHESTRATOR}" | jq -c '.')"
-assert_eq "orchestrator_inputs" "workflow_call" '["break_glass_policy_json","dry_run","reason","run_ansible_bootstrap","run_infra_apply","run_portainer_apply","stacks_sha"]' "${workflow_call_inputs}"
-
-assert_absent "orchestrator_inputs_removed" '.on.workflow_dispatch.inputs.changed_stacks_json' "${ORCHESTRATOR}"
-assert_absent "orchestrator_inputs_removed" '.on.workflow_dispatch.inputs.host_sync_stacks_json' "${ORCHESTRATOR}"
-assert_absent "orchestrator_inputs_removed" '.on.workflow_dispatch.inputs.config_stacks_json' "${ORCHESTRATOR}"
-assert_absent "orchestrator_inputs_removed" '.on.workflow_dispatch.inputs.structural_change' "${ORCHESTRATOR}"
-assert_absent "orchestrator_inputs_removed" '.on.workflow_dispatch.inputs.changed_paths_json' "${ORCHESTRATOR}"
+assert_absent "orchestrator_triggers_removed" '.on.workflow_dispatch' "${ORCHESTRATOR}"
+assert_absent "orchestrator_triggers_removed" '.on.workflow_call' "${ORCHESTRATOR}"
 
 health_redeploy_full_reconcile="$(yq -r '.jobs."health-gated-redeploy".steps[] | select(.name == "Trigger health-gated webhooks") | .env.FULL_STACKS_RECONCILE' "${ORCHESTRATOR}")"
 assert_eq "orchestrator_redeploy" "full_reconcile_env" "true" "${health_redeploy_full_reconcile}"
@@ -100,9 +92,15 @@ else
 fi
 
 reusable_inputs="$(yq '.on.workflow_call.inputs | keys | sort' "${REUSABLE}" | jq -c '.')"
-assert_eq "reusable_contract" "inputs" '["dispatch_payload_json","dispatch_reason","dispatch_schema_version","dispatch_source_repo","dispatch_source_run_id","dispatch_source_sha","dispatch_stacks_sha","push_before","push_sha","reason","run_ansible_bootstrap","run_infra_apply","run_portainer_apply","source_event_name","stacks_sha"]' "${reusable_inputs}"
+assert_eq "reusable_contract" "inputs" '["dispatch_payload_json","dispatch_reason","dispatch_schema_version","dispatch_source_repo","dispatch_source_run_id","dispatch_source_sha","dispatch_stacks_sha","push_before","push_sha","source_event_name"]' "${reusable_inputs}"
 assert_absent "reusable_contract" '.on.workflow_call.inputs.plan_mode' "${REUSABLE}"
 assert_absent "reusable_contract" '.on.workflow_call.inputs.changed_stacks_json' "${REUSABLE}"
+
+validation_dispatch_present="$(yq '.on | has("workflow_dispatch")' "${VALIDATION}" | jq -c '.')"
+assert_eq "validation_dispatch" "present" "true" "${validation_dispatch_present}"
+
+lint_dispatch_present="$(yq '.on | has("workflow_dispatch")' "${LINT}" | jq -c '.')"
+assert_eq "lint_dispatch" "present" "true" "${lint_dispatch_present}"
 
 assert_absent "validation_jobs_removed" '.jobs."detect-impact"' "${VALIDATION}"
 assert_absent "validation_jobs_removed" '.jobs."project-impact"' "${VALIDATION}"

@@ -203,64 +203,20 @@ assert_eq "meta_repo_dispatch_full_reconcile" "run_health_redeploy" "true" "$(re
 assert_eq "meta_repo_dispatch_full_reconcile" "reason" "full-reconcile" "$(read_plan_json_field "${case4_out}" '.meta.reason')"
 assert_eq "meta_repo_dispatch_full_reconcile" "stacks_sha" "${HEAD_SHA}" "$(read_plan_json_field "${case4_out}" '.meta.stacks_sha')"
 
-# Case 5: workflow_dispatch infra only
+# Case 5: workflow_dispatch is no longer supported for meta mode
 case5_env="${TMP_DIR}/case5.env"
-write_env_file "${case5_env}" \
-  "INPUT_RUN_INFRA=true" \
-  "INPUT_RUN_ANSIBLE=false" \
-  "INPUT_RUN_PORTAINER=false" \
-  "INPUT_STACKS_SHA=" \
-  "INPUT_REASON=manual-dispatch"
-case5_out="$(run_plan_case "meta_manual_infra_only" "meta" "workflow_dispatch" "${case5_env}")"
-assert_eq "meta_manual_infra_only" "run_infra_apply" "true" "$(read_plan_json_field "${case5_out}" '.meta.run_infra_apply')"
-assert_eq "meta_manual_infra_only" "run_host_sync" "false" "$(read_plan_json_field "${case5_out}" '.meta.run_host_sync')"
-assert_eq "meta_manual_infra_only" "run_health_redeploy" "false" "$(read_plan_json_field "${case5_out}" '.meta.run_health_redeploy')"
+write_env_file "${case5_env}"
+run_plan_case_expect_fail "meta_workflow_dispatch_removed" "meta" "workflow_dispatch" "${case5_env}"
 
-# Case 6: workflow_dispatch portainer apply only remains manual infra/bootstrap behavior
+# Case 6: iac mode is retired
 case6_env="${TMP_DIR}/case6.env"
-write_env_file "${case6_env}" \
-  "INPUT_RUN_INFRA=false" \
-  "INPUT_RUN_ANSIBLE=false" \
-  "INPUT_RUN_PORTAINER=true" \
-  "INPUT_STACKS_SHA=${HEAD_SHA}" \
-  "INPUT_REASON=manual-dispatch"
-case6_out="$(run_plan_case "meta_manual_portainer_only" "meta" "workflow_dispatch" "${case6_env}")"
-assert_eq "meta_manual_portainer_only" "run_portainer_apply" "true" "$(read_plan_json_field "${case6_out}" '.meta.run_portainer_apply')"
-assert_eq "meta_manual_portainer_only" "run_config_sync" "false" "$(read_plan_json_field "${case6_out}" '.meta.run_config_sync')"
-assert_eq "meta_manual_portainer_only" "run_health_redeploy" "false" "$(read_plan_json_field "${case6_out}" '.meta.run_health_redeploy')"
+write_env_file "${case6_env}"
+run_plan_case_expect_fail "iac_mode_removed" "iac" "push" "${case6_env}"
 
-# Case 7: manual stacks_sha without runtime flags is a no-op
+# Case 7: validator rejects legacy v4 schema
 case7_env="${TMP_DIR}/case7.env"
-write_env_file "${case7_env}" \
-  "INPUT_RUN_INFRA=false" \
-  "INPUT_RUN_ANSIBLE=false" \
-  "INPUT_RUN_PORTAINER=false" \
-  "INPUT_STACKS_SHA=${HEAD_SHA}" \
-  "INPUT_REASON=manual-dispatch"
-case7_out="$(run_plan_case "meta_manual_stacks_sha_noop" "meta" "workflow_dispatch" "${case7_env}")"
-assert_eq "meta_manual_stacks_sha_noop" "has_work" "false" "$(read_plan_json_field "${case7_out}" '.meta.has_work')"
-assert_eq "meta_manual_stacks_sha_noop" "stage_secret_validation" "false" "$(read_plan_json_field "${case7_out}" '.meta.stages.stage_secret_validation')"
-
-# Case 8: invalid stacks SHA should fail
-case8_env="${TMP_DIR}/case8.env"
-write_env_file "${case8_env}" \
-  "INPUT_RUN_INFRA=false" \
-  "INPUT_RUN_ANSIBLE=false" \
-  "INPUT_RUN_PORTAINER=false" \
-  "INPUT_STACKS_SHA=bad_sha" \
-  "INPUT_REASON=manual-dispatch"
-run_plan_case_expect_fail "meta_invalid_stacks_sha" "meta" "workflow_dispatch" "${case8_env}"
-
-# Case 9: iac mode is retired
-case9_env="${TMP_DIR}/case9.env"
-write_env_file "${case9_env}" \
-  "INPUT_REASON=manual-dispatch"
-run_plan_case_expect_fail "iac_mode_removed" "iac" "workflow_dispatch" "${case9_env}"
-
-# Case 10: validator rejects legacy v4 schema
-case10_env="${TMP_DIR}/case10.env"
 legacy_payload_json="$(jq -c '.schema_version = "v4"' <<<"${dispatch_payload_json}")"
-write_env_file "${case10_env}" \
+write_env_file "${case7_env}" \
   "EVENT_NAME=repository_dispatch" \
   "PAYLOAD_JSON=${legacy_payload_json}" \
   "PAYLOAD_SCHEMA_VERSION=v4" \
@@ -269,12 +225,12 @@ write_env_file "${case10_env}" \
   "PAYLOAD_REASON=full-reconcile" \
   "PAYLOAD_SOURCE_REPO=example/stacks" \
   "PAYLOAD_SOURCE_RUN_ID=12345"
-run_validator_expect_fail "dispatch_validator_v4_rejected" "${case10_env}"
+run_validator_expect_fail "dispatch_validator_v4_rejected" "${case7_env}"
 
-# Case 11: validator rejects wrong reason
-case11_env="${TMP_DIR}/case11.env"
+# Case 8: validator rejects wrong reason
+case8_env="${TMP_DIR}/case8.env"
 wrong_reason_payload_json="$(jq -c '.reason = "manual-refresh"' <<<"${dispatch_payload_json}")"
-write_env_file "${case11_env}" \
+write_env_file "${case8_env}" \
   "EVENT_NAME=repository_dispatch" \
   "PAYLOAD_JSON=${wrong_reason_payload_json}" \
   "PAYLOAD_SCHEMA_VERSION=v5" \
@@ -283,12 +239,12 @@ write_env_file "${case11_env}" \
   "PAYLOAD_REASON=manual-refresh" \
   "PAYLOAD_SOURCE_REPO=example/stacks" \
   "PAYLOAD_SOURCE_RUN_ID=12345"
-run_validator_expect_fail "dispatch_validator_reason_rejected" "${case11_env}"
+run_validator_expect_fail "dispatch_validator_reason_rejected" "${case8_env}"
 
-# Case 12: validator rejects removed selective fields
-case12_env="${TMP_DIR}/case12.env"
+# Case 9: validator rejects removed selective fields
+case9_env="${TMP_DIR}/case9.env"
 removed_field_payload_json="$(jq -c '.changed_stacks = ["gateway"]' <<<"${dispatch_payload_json}")"
-write_env_file "${case12_env}" \
+write_env_file "${case9_env}" \
   "EVENT_NAME=repository_dispatch" \
   "PAYLOAD_JSON=${removed_field_payload_json}" \
   "PAYLOAD_SCHEMA_VERSION=v5" \
@@ -297,7 +253,7 @@ write_env_file "${case12_env}" \
   "PAYLOAD_REASON=full-reconcile" \
   "PAYLOAD_SOURCE_REPO=example/stacks" \
   "PAYLOAD_SOURCE_RUN_ID=12345"
-run_validator_expect_fail "dispatch_validator_removed_field_rejected" "${case12_env}"
+run_validator_expect_fail "dispatch_validator_removed_field_rejected" "${case9_env}"
 
 echo "PASS=${PASS_COUNT} FAIL=${FAIL_COUNT}"
 

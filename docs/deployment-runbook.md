@@ -12,8 +12,8 @@ Before deploying any stack, verify that all infrastructure layers are operationa
 |-------------|---------------|-----|
 | Cutover checklist complete | Review [Infrastructure Orchestrator Cutover Checklist](meta-pipeline-cutover-checklist.md) and confirm all required items | Complete missing GitHub/TFC/Infisical prerequisites before deploy |
 | Automation-managed variables understood | Review [Variable Ownership & Mutability](infisical-workflow.md#variable-ownership--mutability) | Do not manually edit automation-managed variables outside their owning workflow |
-| Terraform infra workspace applied | Terraform Cloud run for `goodoldme-infra` succeeds (or `terraform -chdir=terraform/infra output`) | Run `infra-orchestrator.yml` with `run_infra_apply=true` or `terraform -chdir=terraform/infra apply` |
-| Terraform Portainer workspace applied | Local CI apply for `terraform/portainer-root` succeeds against TFC remote state (`goodoldme-portainer`) (or `terraform -chdir=terraform/portainer-root output`) | Run `infra-orchestrator.yml` with `run_portainer_apply=true` or `terraform -chdir=terraform/portainer-root apply` |
+| Terraform infra workspace applied | Terraform Cloud run for `goodoldme-infra` succeeds (or `terraform -chdir=terraform/infra output`) | Merge/push a change under `terraform/infra`, `terraform/oci`, or `terraform/gcp` to `main` so `infra-orchestrator.yml` runs automatically, or use `terraform -chdir=terraform/infra apply` |
+| Terraform Portainer workspace applied | Local CI apply for `terraform/portainer-root` succeeds against TFC remote state (`goodoldme-portainer`) (or `terraform -chdir=terraform/portainer-root output`) | Merge/push a change under `terraform/portainer` or `terraform/portainer-root` to `main` so `infra-orchestrator.yml` runs automatically, or use `terraform -chdir=terraform/portainer-root apply` |
 | Cloud static runner ready | `vars.CLOUD_STATIC_RUNNER_LABEL` is set and workflow logs show deterministic IPv4/IPv6 egress | Configure runner label and egress routing, then re-run |
 | Ansible provisioning complete | SSH into nodes, verify Docker/Tailscale/GlusterFS/Portainer | Re-run `ansible-playbook` |
 | Portainer running | `curl -s http://localhost:9000/api/system/status` returns HTTP 200 | Re-run Ansible `portainer_bootstrap` role |
@@ -308,7 +308,7 @@ Stacks are now managed declaratively via the `portainer` Terraform module. To ad
 
 1. Create the `docker-compose.yml` in the stacks repo under `<name>/`
 2. Add a new entry to `stacks/stacks.yaml` with `compose_path`, `portainer_managed`, dependencies, and optional health check metadata
-3. Run `terraform -chdir=terraform/portainer-root apply` (or trigger `infra-orchestrator.yml` with `run_portainer_apply=true`) — the stack, webhook, and Infisical secret are all created automatically
+3. Run `terraform -chdir=terraform/portainer-root apply` (or merge the corresponding `terraform/portainer-root` / `terraform/portainer` change to `main` so `infra-orchestrator.yml` applies it automatically) — the stack, webhook, and Infisical secret are all created automatically
 
 The webhook URL is written to Infisical `/deployments` as `WEBHOOK_URL_<STACK_NAME>` and appended to the combined `PORTAINER_WEBHOOK_URLS` secret.
 
