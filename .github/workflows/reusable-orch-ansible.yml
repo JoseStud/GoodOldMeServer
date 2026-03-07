@@ -1,0 +1,59 @@
+name: Reusable Orchestrator Ansible
+
+on:
+  workflow_call:
+    inputs:
+      plan_json:
+        required: true
+        type: string
+      runner_label:
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  INFISICAL_MACHINE_IDENTITY_ID: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
+  INFISICAL_PROJECT_ID: ${{ vars.INFISICAL_PROJECT_ID }}
+  INFISICAL_SSH_CA_ID: ${{ vars.INFISICAL_SSH_CA_ID }}
+  SHADOW_MODE: ${{ vars.SHADOW_MODE || 'false' }}
+
+jobs:
+  ansible-bootstrap:
+    if: ${{ fromJSON(inputs.plan_json).meta.stages.stage_ansible_bootstrap }}
+    runs-on: ${{ inputs.runner_label }}
+
+    steps:
+      - name: Prepare Ansible stage
+        uses: ./.github/actions/prepare-ansible-stage
+        with:
+          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
+
+      - name: Run Ansible bootstrap
+        env:
+          STACKS_SHA: ${{ fromJSON(inputs.plan_json).meta.stacks_sha }}
+          INVENTORY_FILE: inventory-ci.yml
+          INFISICAL_AGENT_CLIENT_ID: ${{ secrets.INFISICAL_AGENT_CLIENT_ID }}
+          INFISICAL_AGENT_CLIENT_SECRET: ${{ secrets.INFISICAL_AGENT_CLIENT_SECRET }}
+        run: .github/scripts/stages/ansible_run.sh
+
+  host-sync:
+    if: ${{ fromJSON(inputs.plan_json).meta.stages.stage_host_sync }}
+    runs-on: ${{ inputs.runner_label }}
+
+    steps:
+      - name: Prepare Ansible stage
+        uses: ./.github/actions/prepare-ansible-stage
+        with:
+          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
+
+      - name: Sync host runtime assets
+        env:
+          STACKS_SHA: ${{ fromJSON(inputs.plan_json).meta.stacks_sha }}
+          INVENTORY_FILE: inventory-ci.yml
+          ANSIBLE_TAGS: phase7_runtime_sync
+          INFISICAL_AGENT_CLIENT_ID: ${{ secrets.INFISICAL_AGENT_CLIENT_ID }}
+          INFISICAL_AGENT_CLIENT_SECRET: ${{ secrets.INFISICAL_AGENT_CLIENT_SECRET }}
+        run: .github/scripts/stages/ansible_run.sh

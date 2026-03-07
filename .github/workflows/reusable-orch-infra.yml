@@ -1,0 +1,105 @@
+name: Reusable Orchestrator Infra
+
+on:
+  workflow_call:
+    inputs:
+      plan_json:
+        required: true
+        type: string
+      runner_label:
+        required: true
+        type: string
+      network_access_policy_json:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  SHADOW_MODE: ${{ vars.SHADOW_MODE || 'false' }}
+  TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+  TFC_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
+  TFC_WORKSPACE_INFRA: ${{ vars.TFC_WORKSPACE_INFRA || 'goodoldme-infra' }}
+
+jobs:
+  infra-apply:
+    if: ${{ fromJSON(inputs.plan_json).meta.stages.stage_infra_apply }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Prepare Terraform stage
+        uses: ./.github/actions/prepare-terraform-stage
+
+      - name: Upload infra configuration
+        id: upload
+        uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.0.0
+        with:
+          workspace: ${{ env.TFC_WORKSPACE_INFRA }}
+          directory: terraform/infra
+
+      - name: Create Terraform Cloud Infra Run
+        id: tfc-run
+        uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.0
+        with:
+          workspace: ${{ env.TFC_WORKSPACE_INFRA }}
+          configuration_version: ${{ steps.upload.outputs.configuration_version_id }}
+          message: Infrastructure orchestrator infra apply (${{ fromJSON(inputs.plan_json).meta.reason }})
+
+      - name: Wait for Terraform Cloud infra run
+        env:
+          RUN_ID: ${{ steps.tfc-run.outputs.run_id }}
+          TFC_WORKSPACE: ${{ env.TFC_WORKSPACE_INFRA }}
+          WAIT_TIMEOUT_SECONDS: ${{ vars.TFC_INFRA_APPLY_WAIT_TIMEOUT_SECONDS || '7200' }}
+          POLL_INTERVAL_SECONDS: ${{ vars.TFC_PLAN_POLL_INTERVAL_SECONDS || '10' }}
+        run: .github/scripts/stages/infra_apply.sh
+
+  inventory-handover:
+    needs: [infra-apply]
+    if: ${{ always() && fromJSON(inputs.plan_json).meta.stages.stage_inventory_handover && (needs.infra-apply.result == 'success' || needs.infra-apply.result == 'skipped') }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Prepare jq runner
+        uses: ./.github/actions/prepare-jq-runner
+
+      - name: Render deterministic Ansible inventory
+        env:
+          OUTPUT_FILE: inventory-ci.yml
+          TFC_WORKSPACE_INFRA: ${{ env.TFC_WORKSPACE_INFRA }}
+        run: .github/scripts/tfc/render_inventory_from_tfc_outputs.sh "${TFC_WORKSPACE_INFRA}" "${OUTPUT_FILE}"
+
+      - name: Upload CI inventory artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: inventory-ci
+          path: inventory-ci.yml
+          if-no-files-found: error
+
+  network-preflight-ssh:
+    needs: [inventory-handover]
+    if: ${{ fromJSON(inputs.plan_json).meta.stages.stage_network_preflight_ssh && needs.inventory-handover.result == 'success' }}
+    runs-on: ${{ inputs.runner_label }}
+
+    steps:
+      - name: Prepare jq runner
+        uses: ./.github/actions/prepare-jq-runner
+        with:
+          install_netcat: "true"
+
+      - name: Download CI inventory artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: inventory-ci
+          path: .
+
+      - name: Preflight SSH access checks
+        env:
+          NETWORK_ACCESS_POLICY_JSON: ${{ inputs.network_access_policy_json }}
+          RUN_ANSIBLE: ${{ fromJSON(inputs.plan_json).meta.run_ansible_bootstrap }}
+          RUN_HOST_SYNC: ${{ fromJSON(inputs.plan_json).meta.run_host_sync }}
+          RUN_CONFIG: ${{ fromJSON(inputs.plan_json).meta.run_config_sync }}
+          RUN_HEALTH: "false"
+          RUN_PORTAINER: "false"
+          INVENTORY_FILE: inventory-ci.yml
+        run: .github/scripts/network/preflight_network_access.sh

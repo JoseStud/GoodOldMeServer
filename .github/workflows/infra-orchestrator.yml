@@ -14,16 +14,6 @@ permissions:
   id-token: write
   contents: read
 
-env:
-  INFISICAL_MACHINE_IDENTITY_ID: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
-  INFISICAL_PROJECT_ID: ${{ vars.INFISICAL_PROJECT_ID }}
-  INFISICAL_SSH_CA_ID: ${{ vars.INFISICAL_SSH_CA_ID }}
-  TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
-  TFC_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
-  TFC_WORKSPACE_INFRA: ${{ vars.TFC_WORKSPACE_INFRA || 'goodoldme-infra' }}
-  TFC_WORKSPACE_PORTAINER: ${{ vars.TFC_WORKSPACE_PORTAINER || 'goodoldme-portainer' }}
-  SHADOW_MODE: ${{ vars.SHADOW_MODE || 'false' }}
-
 concurrency:
   group: infra-orchestrator-${{ github.ref_name || github.event.repository.default_branch || 'main' }}
   cancel-in-progress: false
@@ -35,7 +25,6 @@ jobs:
       source_event_name: ${{ github.event_name }}
       push_before: ${{ github.event.before }}
       push_sha: ${{ github.sha }}
-
       dispatch_schema_version: ${{ github.event.client_payload.schema_version }}
       dispatch_payload_json: ${{ toJson(github.event.client_payload) }}
       dispatch_stacks_sha: ${{ github.event.client_payload.stacks_sha }}
@@ -44,429 +33,35 @@ jobs:
       dispatch_source_run_id: ${{ github.event.client_payload.source_run_id }}
       dispatch_source_sha: ${{ github.event.client_payload.source_sha }}
 
-  project-plan:
+  preflight:
     needs: [resolve-context]
-    runs-on: ubuntu-latest
-    outputs:
-      run_infra_apply: ${{ steps.project.outputs.run_infra_apply }}
-      run_ansible_bootstrap: ${{ steps.project.outputs.run_ansible_bootstrap }}
-      run_portainer_apply: ${{ steps.project.outputs.run_portainer_apply }}
-      run_host_sync: ${{ steps.project.outputs.run_host_sync }}
-      run_config_sync: ${{ steps.project.outputs.run_config_sync }}
-      run_health_redeploy: ${{ steps.project.outputs.run_health_redeploy }}
-      has_work: ${{ steps.project.outputs.has_work }}
-      stacks_sha: ${{ steps.project.outputs.stacks_sha }}
-      reason: ${{ steps.project.outputs.reason }}
-      stage_cloud_runner_guard: ${{ steps.project.outputs.stage_cloud_runner_guard }}
-      stage_secret_validation: ${{ steps.project.outputs.stage_secret_validation }}
-      stage_network_policy_sync: ${{ steps.project.outputs.stage_network_policy_sync }}
-      stage_infra_apply: ${{ steps.project.outputs.stage_infra_apply }}
-      stage_inventory_handover: ${{ steps.project.outputs.stage_inventory_handover }}
-      stage_network_preflight_ssh: ${{ steps.project.outputs.stage_network_preflight_ssh }}
-      stage_ansible_bootstrap: ${{ steps.project.outputs.stage_ansible_bootstrap }}
-      stage_host_sync: ${{ steps.project.outputs.stage_host_sync }}
-      stage_post_bootstrap_secret_check: ${{ steps.project.outputs.stage_post_bootstrap_secret_check }}
-      stage_portainer_api_preflight: ${{ steps.project.outputs.stage_portainer_api_preflight }}
-      stage_portainer_apply: ${{ steps.project.outputs.stage_portainer_apply }}
-      stage_config_sync: ${{ steps.project.outputs.stage_config_sync }}
-      stage_health_gated_redeploy: ${{ steps.project.outputs.stage_health_gated_redeploy }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Bootstrap jq
-        uses: ./.github/actions/bootstrap-tools
-        with:
-          install_jq: "true"
-
-      - name: Project meta outputs from canonical plan_json
-        id: project
-        env:
-          PLAN_JSON: ${{ needs.resolve-context.outputs.plan_json }}
-        run: .github/scripts/plan/project_plan_outputs.sh meta
-
-  cloud-runner-guard:
-    needs: [project-plan]
-    if: ${{ needs.project-plan.outputs.stage_cloud_runner_guard == 'true' }}
-    runs-on: ubuntu-latest
-    outputs:
-      runner_label: ${{ steps.guard.outputs.runner_label }}
-
-    steps:
-      - name: Verify cloud runner guard
-        id: guard
-        env:
-          CLOUD_STATIC_RUNNER_LABEL: ${{ vars.CLOUD_STATIC_RUNNER_LABEL }}
-        run: |
-          : "${CLOUD_STATIC_RUNNER_LABEL:?Missing required variable: CLOUD_STATIC_RUNNER_LABEL}"
-          echo "runner_label=${CLOUD_STATIC_RUNNER_LABEL}" >> "${GITHUB_OUTPUT}"
-
-  stacks-sha-trust:
-    needs: [project-plan]
-    if: ${{ needs.project-plan.outputs.stacks_sha != '' && (needs.project-plan.outputs.stage_ansible_bootstrap == 'true' || needs.project-plan.outputs.stage_host_sync == 'true' || needs.project-plan.outputs.stage_portainer_apply == 'true' || needs.project-plan.outputs.stage_config_sync == 'true' || needs.project-plan.outputs.stage_health_gated_redeploy == 'true') }}
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Bootstrap jq
-        uses: ./.github/actions/bootstrap-tools
-        with:
-          install_jq: "true"
-
-      - name: Verify trusted stacks SHA
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          STACKS_REPO_READ_TOKEN: ${{ secrets.STACKS_REPO_READ_TOKEN }}
-          WAIT_FOR_SUCCESS: "true"
-          WAIT_TIMEOUT_SECONDS: ${{ vars.STACKS_SHA_TRUST_WAIT_TIMEOUT_SECONDS || '900' }}
-          POLL_INTERVAL_SECONDS: ${{ vars.STACKS_SHA_TRUST_POLL_INTERVAL_SECONDS || '15' }}
-        run: .github/scripts/stacks/verify_trusted_stacks_sha.sh "${{ needs.project-plan.outputs.stacks_sha }}"
-
-  secret-validation:
-    needs: [project-plan]
-    if: ${{ needs.project-plan.outputs.stage_secret_validation == 'true' }}
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Bootstrap infisical + login
-        uses: ./.github/actions/bootstrap-tools
-        with:
-          install_infisical: "true"
-          infisical_login: "true"
-          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
-
-      - name: Validate required secret paths
-        env:
-          RUN_INFRA: ${{ needs.project-plan.outputs.run_infra_apply }}
-          RUN_ANSIBLE: ${{ needs.project-plan.outputs.run_ansible_bootstrap }}
-          RUN_PORTAINER: ${{ needs.project-plan.outputs.run_portainer_apply }}
-          RUN_HOST_SYNC: ${{ needs.project-plan.outputs.run_host_sync }}
-          RUN_HEALTH: ${{ needs.project-plan.outputs.run_health_redeploy }}
-          INFISICAL_TOKEN: ${{ secrets.INFISICAL_TOKEN }}
-          INFISICAL_AGENT_CLIENT_ID: ${{ secrets.INFISICAL_AGENT_CLIENT_ID }}
-          INFISICAL_AGENT_CLIENT_SECRET: ${{ secrets.INFISICAL_AGENT_CLIENT_SECRET }}
-        run: .github/scripts/stages/secret_validation.sh
-
-  network-policy-sync:
-    needs: [project-plan, cloud-runner-guard, secret-validation]
-    if: ${{ needs.project-plan.outputs.stage_network_policy_sync == 'true' }}
-    runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
-    outputs:
-      network_access_policy_json: ${{ steps.sync.outputs.network_access_policy_json }}
-      portainer_automation_allowed_cidrs: ${{ steps.sync.outputs.portainer_automation_allowed_cidrs }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Bootstrap jq + infisical + login
-        uses: ./.github/actions/bootstrap-tools
-        with:
-          install_jq: "true"
-          install_infisical: "true"
-          infisical_login: "true"
-          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
-
-      - name: Build and sync network policy
-        id: sync
-        run: .github/scripts/stages/network_policy_sync.sh
-
-  infra-apply:
-    needs: [project-plan, secret-validation, network-policy-sync]
-    if: ${{ needs.project-plan.outputs.stage_infra_apply == 'true' }}
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Bootstrap jq
-        uses: ./.github/actions/bootstrap-tools
-        with:
-          install_jq: "true"
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Upload infra configuration
-        id: upload
-        uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.0.0
-        with:
-          workspace: ${{ env.TFC_WORKSPACE_INFRA }}
-          directory: terraform/infra
-
-      - name: Create Terraform Cloud Infra Run
-        id: tfc-run
-        uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.0
-        with:
-          workspace: ${{ env.TFC_WORKSPACE_INFRA }}
-          configuration_version: ${{ steps.upload.outputs.configuration_version_id }}
-          message: "Infrastructure orchestrator infra apply (${{ needs.project-plan.outputs.reason }})"
-
-      - name: Wait for Terraform Cloud infra run
-        env:
-          RUN_ID: ${{ steps.tfc-run.outputs.run_id }}
-          TFC_WORKSPACE: ${{ env.TFC_WORKSPACE_INFRA }}
-          WAIT_TIMEOUT_SECONDS: ${{ vars.TFC_INFRA_APPLY_WAIT_TIMEOUT_SECONDS || '7200' }}
-          POLL_INTERVAL_SECONDS: ${{ vars.TFC_PLAN_POLL_INTERVAL_SECONDS || '10' }}
-        run: .github/scripts/stages/infra_apply.sh
-
-  inventory-handover:
-    needs: [project-plan, secret-validation, infra-apply]
-    if: ${{ always() && needs.project-plan.outputs.stage_inventory_handover == 'true' && needs.secret-validation.result == 'success' && (needs.infra-apply.result == 'success' || needs.infra-apply.result == 'skipped') }}
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Bootstrap jq
-        uses: ./.github/actions/bootstrap-tools
-        with:
-          install_jq: "true"
-
-      - name: Render deterministic Ansible inventory
-        env:
-          OUTPUT_FILE: inventory-ci.yml
-          TFC_WORKSPACE_INFRA: ${{ env.TFC_WORKSPACE_INFRA }}
-        run: .github/scripts/tfc/render_inventory_from_tfc_outputs.sh "${TFC_WORKSPACE_INFRA}" "${OUTPUT_FILE}"
-
-      - name: Upload CI inventory artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: inventory-ci
-          path: inventory-ci.yml
-          if-no-files-found: error
-
-  network-preflight-ssh:
-    needs: [project-plan, cloud-runner-guard, secret-validation, network-policy-sync, inventory-handover]
-    if: ${{ needs.project-plan.outputs.stage_network_preflight_ssh == 'true' && needs.cloud-runner-guard.result == 'success' && needs.secret-validation.result == 'success' && needs.network-policy-sync.result == 'success' && needs.inventory-handover.result == 'success' }}
-    runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Bootstrap jq + netcat
-        uses: ./.github/actions/bootstrap-tools
-        with:
-          install_jq: "true"
-          install_netcat: "true"
-
-      - name: Download CI inventory artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: inventory-ci
-          path: .
-
-      - name: Preflight SSH access checks
-        env:
-          NETWORK_ACCESS_POLICY_JSON: ${{ needs.network-policy-sync.outputs.network_access_policy_json }}
-          RUN_ANSIBLE: ${{ needs.project-plan.outputs.run_ansible_bootstrap }}
-          RUN_HOST_SYNC: ${{ needs.project-plan.outputs.run_host_sync }}
-          RUN_CONFIG: ${{ needs.project-plan.outputs.run_config_sync }}
-          RUN_HEALTH: "false"
-          RUN_PORTAINER: "false"
-          INVENTORY_FILE: inventory-ci.yml
-        run: .github/scripts/network/preflight_network_access.sh
-
-  ansible-bootstrap:
-    needs: [project-plan, stacks-sha-trust, secret-validation, cloud-runner-guard, network-preflight-ssh, inventory-handover]
-    if: ${{ needs.project-plan.outputs.stage_ansible_bootstrap == 'true' && (needs.stacks-sha-trust.result == 'success' || needs.stacks-sha-trust.result == 'skipped') }}
-    runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          submodules: recursive
-
-      - name: Bootstrap infisical + login
-        uses: ./.github/actions/bootstrap-tools
-        with:
-          install_infisical: "true"
-          infisical_login: "true"
-          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
-
-      - name: Download CI inventory artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: inventory-ci
-          path: .
-
-      - name: Run Ansible bootstrap
-        env:
-          STACKS_SHA: ${{ needs.project-plan.outputs.stacks_sha }}
-          INVENTORY_FILE: inventory-ci.yml
-          INFISICAL_AGENT_CLIENT_ID: ${{ secrets.INFISICAL_AGENT_CLIENT_ID }}
-          INFISICAL_AGENT_CLIENT_SECRET: ${{ secrets.INFISICAL_AGENT_CLIENT_SECRET }}
-        run: .github/scripts/stages/ansible_run.sh
-
-  host-sync:
-    needs: [project-plan, stacks-sha-trust, secret-validation, cloud-runner-guard, network-preflight-ssh, inventory-handover]
-    if: ${{ needs.project-plan.outputs.stage_host_sync == 'true' && needs.stacks-sha-trust.result == 'success' && needs.secret-validation.result == 'success' && needs.cloud-runner-guard.result == 'success' && needs.network-preflight-ssh.result == 'success' && needs.inventory-handover.result == 'success' }}
-    runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          submodules: recursive
-
-      - name: Bootstrap infisical + login
-        uses: ./.github/actions/bootstrap-tools
-        with:
-          install_infisical: "true"
-          infisical_login: "true"
-          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
-
-      - name: Download CI inventory artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: inventory-ci
-          path: .
-
-      - name: Sync host runtime assets
-        env:
-          STACKS_SHA: ${{ needs.project-plan.outputs.stacks_sha }}
-          INVENTORY_FILE: inventory-ci.yml
-          ANSIBLE_TAGS: phase7_runtime_sync
-          INFISICAL_AGENT_CLIENT_ID: ${{ secrets.INFISICAL_AGENT_CLIENT_ID }}
-          INFISICAL_AGENT_CLIENT_SECRET: ${{ secrets.INFISICAL_AGENT_CLIENT_SECRET }}
-        run: .github/scripts/stages/ansible_run.sh
-
-  post-bootstrap-secret-check:
-    needs: [project-plan, secret-validation, ansible-bootstrap]
-    if: ${{ always() && needs.project-plan.outputs.stage_post_bootstrap_secret_check == 'true' && needs.secret-validation.result == 'success' && (needs.ansible-bootstrap.result == 'success' || (needs.ansible-bootstrap.result == 'skipped' && needs.project-plan.outputs.stage_ansible_bootstrap != 'true')) }}
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Bootstrap infisical + login
-        uses: ./.github/actions/bootstrap-tools
-        with:
-          install_infisical: "true"
-          infisical_login: "true"
-          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
-
-      - name: Validate bootstrap-managed Portainer secrets
-        run: .github/scripts/stages/post_bootstrap_secret_check.sh
-
-  portainer-api-preflight:
-    needs: [project-plan, cloud-runner-guard, secret-validation, network-policy-sync, host-sync, post-bootstrap-secret-check]
-    if: ${{ always() && needs.project-plan.outputs.stage_portainer_api_preflight == 'true' && needs.cloud-runner-guard.result == 'success' && needs.secret-validation.result == 'success' && needs.network-policy-sync.result == 'success' && needs.post-bootstrap-secret-check.result == 'success' && (needs.host-sync.result == 'success' || (needs.host-sync.result == 'skipped' && needs.project-plan.outputs.stage_host_sync != 'true')) }}
-    runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Bootstrap jq + infisical + login
-        uses: ./.github/actions/bootstrap-tools
-        with:
-          install_jq: "true"
-          install_infisical: "true"
-          infisical_login: "true"
-          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
-
-      - name: Preflight egress + Portainer API reachability
-        env:
-          NETWORK_ACCESS_POLICY_JSON: ${{ needs.network-policy-sync.outputs.network_access_policy_json }}
-          RUN_HEALTH: ${{ needs.project-plan.outputs.run_health_redeploy }}
-          RUN_PORTAINER: ${{ needs.project-plan.outputs.run_portainer_apply }}
-          PORTAINER_ALLOWLIST_PROPAGATION_TIMEOUT_SECONDS: ${{ vars.PORTAINER_ALLOWLIST_PROPAGATION_TIMEOUT_SECONDS || '420' }}
-          PORTAINER_ALLOWLIST_PROPAGATION_POLL_INTERVAL_SECONDS: ${{ vars.PORTAINER_ALLOWLIST_PROPAGATION_POLL_INTERVAL_SECONDS || '5' }}
-        run: .github/scripts/stages/portainer_api_preflight.sh
-
-  portainer-apply:
-    needs: [project-plan, stacks-sha-trust, secret-validation, cloud-runner-guard, network-policy-sync, post-bootstrap-secret-check, portainer-api-preflight, config-sync]
-    if: ${{ always() && needs.project-plan.outputs.stage_portainer_apply == 'true' && needs.secret-validation.result == 'success' && needs.cloud-runner-guard.result == 'success' && needs.network-policy-sync.result == 'success' && needs.post-bootstrap-secret-check.result == 'success' && needs.portainer-api-preflight.result == 'success' && (needs.stacks-sha-trust.result == 'success' || (needs.stacks-sha-trust.result == 'skipped' && needs.project-plan.outputs.stacks_sha == '')) && (needs.config-sync.result == 'success' || (needs.config-sync.result == 'skipped' && needs.project-plan.outputs.stage_config_sync != 'true')) }}
-    runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
-    env:
-      TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TOKEN }}
-      INFISICAL_TOKEN: ${{ secrets.INFISICAL_TOKEN }}
-      TF_VAR_infisical_project_id: ${{ vars.INFISICAL_PROJECT_ID }}
-      STACKS_SHA: ${{ needs.project-plan.outputs.stacks_sha }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Bootstrap jq
-        uses: ./.github/actions/bootstrap-tools
-        with:
-          install_jq: "true"
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Terraform plan/apply (local operations mode)
-        run: .github/scripts/stages/portainer_apply.sh
-
-  config-sync:
-    needs: [project-plan, stacks-sha-trust, secret-validation, cloud-runner-guard, network-preflight-ssh, inventory-handover, host-sync]
-    if: ${{ needs.project-plan.outputs.stage_config_sync == 'true' && needs.stacks-sha-trust.result == 'success' && needs.secret-validation.result == 'success' && needs.cloud-runner-guard.result == 'success' && needs.network-preflight-ssh.result == 'success' && needs.inventory-handover.result == 'success' && needs.host-sync.result == 'success' }}
-    runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          submodules: recursive
-
-      - name: Bootstrap infisical + login
-        uses: ./.github/actions/bootstrap-tools
-        with:
-          install_infisical: "true"
-          infisical_login: "true"
-          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
-
-      - name: Download CI inventory artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: inventory-ci
-          path: .
-
-      - name: Sync stack configs only
-        env:
-          STACKS_SHA: ${{ needs.project-plan.outputs.stacks_sha }}
-          INVENTORY_FILE: inventory-ci.yml
-          ANSIBLE_TAGS: sync-configs
-        run: .github/scripts/stages/ansible_run.sh
-
-  health-gated-redeploy:
-    needs: [project-plan, stacks-sha-trust, secret-validation, cloud-runner-guard, host-sync, portainer-api-preflight, portainer-apply, config-sync]
-    if: ${{ needs.project-plan.outputs.stage_health_gated_redeploy == 'true' && needs.stacks-sha-trust.result == 'success' && needs.secret-validation.result == 'success' && needs.cloud-runner-guard.result == 'success' && needs.host-sync.result == 'success' && needs.portainer-api-preflight.result == 'success' && needs.portainer-apply.result == 'success' && needs.config-sync.result == 'success' }}
-    runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          submodules: recursive
-
-      - name: Bootstrap yq + infisical + login
-        uses: ./.github/actions/bootstrap-tools
-        with:
-          install_yq: "true"
-          install_infisical: "true"
-          infisical_login: "true"
-          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
-
-      - name: Trigger health-gated webhooks
-        env:
-          STACKS_SHA: ${{ needs.project-plan.outputs.stacks_sha }}
-          FULL_STACKS_RECONCILE: "true"
-        run: .github/scripts/stages/health_gated_redeploy.sh
+    uses: ./.github/workflows/reusable-orch-preflight.yml
+    secrets: inherit
+    with:
+      plan_json: ${{ needs.resolve-context.outputs.plan_json }}
+
+  infra:
+    needs: [resolve-context, preflight]
+    uses: ./.github/workflows/reusable-orch-infra.yml
+    secrets: inherit
+    with:
+      plan_json: ${{ needs.resolve-context.outputs.plan_json }}
+      runner_label: ${{ needs.preflight.outputs.runner_label }}
+      network_access_policy_json: ${{ needs.preflight.outputs.network_access_policy_json }}
+
+  ansible:
+    needs: [resolve-context, preflight, infra]
+    uses: ./.github/workflows/reusable-orch-ansible.yml
+    secrets: inherit
+    with:
+      plan_json: ${{ needs.resolve-context.outputs.plan_json }}
+      runner_label: ${{ needs.preflight.outputs.runner_label }}
+
+  portainer:
+    needs: [resolve-context, preflight, ansible]
+    uses: ./.github/workflows/reusable-orch-portainer.yml
+    secrets: inherit
+    with:
+      plan_json: ${{ needs.resolve-context.outputs.plan_json }}
+      runner_label: ${{ needs.preflight.outputs.runner_label }}
+      network_access_policy_json: ${{ needs.preflight.outputs.network_access_policy_json }}

@@ -1,0 +1,117 @@
+name: Validate Planner Contracts
+
+on:
+  pull_request:
+    paths:
+      - ".github/ci/**"
+      - ".github/actions/**"
+      - ".github/workflows/**"
+      - ".github/scripts/**"
+      - "stacks/**"
+  push:
+    paths:
+      - ".github/ci/**"
+      - ".github/actions/**"
+      - ".github/workflows/**"
+      - ".github/scripts/**"
+      - "stacks/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: read
+  statuses: read
+  pull-requests: read
+
+concurrency:
+  group: validate-planner-contracts-${{ github.ref_name || github.event.repository.default_branch || 'main' }}
+  cancel-in-progress: true
+
+jobs:
+  planner-contract-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Prepare jq runner
+        uses: ./.github/actions/prepare-jq-runner
+        with:
+          install_yq: "true"
+
+      - name: Run resolver contract tests
+        run: bash .github/scripts/tests/test_resolve_ci_plan.sh
+
+      - name: Run webhook gate tests
+        run: bash .github/scripts/tests/test_trigger_webhooks_with_gates.sh
+
+      - name: Run network preflight tests
+        run: bash .github/scripts/tests/test_preflight_network_access.sh
+
+      - name: Run Portainer apply tests
+        run: bash .github/scripts/tests/test_portainer_apply.sh
+
+  bootstrap-tools-smoke:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Load tool lock
+        id: lock
+        run: |
+          set -euo pipefail
+          source .github/ci/tool-versions.lock
+          {
+            echo "jq_version=${JQ_VERSION}"
+            echo "yq_version=${YQ_VERSION}"
+            echo "netcat_version=${NETCAT_DEB_VERSION}"
+            echo "infisical_version=${INFISICAL_VERSION}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Bootstrap all pinned tools
+        id: bootstrap
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_jq: "true"
+          install_yq: "true"
+          install_netcat: "true"
+          install_infisical: "true"
+
+      - name: Assert pinned versions
+        run: |
+          set -euo pipefail
+          [[ "${{ steps.bootstrap.outputs.jq_version_installed }}" == "${{ steps.lock.outputs.jq_version }}" ]]
+          [[ "${{ steps.bootstrap.outputs.yq_version_installed }}" == "${{ steps.lock.outputs.yq_version }}" ]]
+          [[ "${{ steps.bootstrap.outputs.nc_version_installed }}" == "${{ steps.lock.outputs.netcat_version }}" ]]
+          [[ "${{ steps.bootstrap.outputs.infisical_version_installed }}" == "${{ steps.lock.outputs.infisical_version }}" ]]
+
+  workflow-contracts:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Prepare jq runner
+        uses: ./.github/actions/prepare-jq-runner
+        with:
+          install_yq: "true"
+
+      - name: Run workflow contract tests
+        run: bash .github/scripts/tests/test_workflow_contracts.sh
+
+  stacks-sha-trust:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Prepare jq runner
+        uses: ./.github/actions/prepare-jq-runner
+
+      - name: Resolve current stacks gitlink SHA
+        id: stacks-gitlink
+        run: |
+          set -euo pipefail
+          echo "sha=$(git rev-parse HEAD:stacks)" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify trusted stacks SHA
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          STACKS_REPO_READ_TOKEN: ${{ secrets.STACKS_REPO_READ_TOKEN }}
+        run: .github/scripts/stacks/verify_trusted_stacks_sha.sh "${{ steps.stacks-gitlink.outputs.sha }}"

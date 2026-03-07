@@ -52,8 +52,8 @@ Use this as the source of truth for whether a value is operator-managed or autom
 | `/stacks/management/PORTAINER_ADMIN_PASSWORD_HASH` | Platform | Auto-generated/re-written by Ansible `portainer_bootstrap` on bootstrap runs. Do not set manually. |
 | `/management/PORTAINER_URL`, `/management/PORTAINER_API_URL`, `/management/PORTAINER_API_KEY` | Platform | Auto-written by Ansible `portainer_bootstrap` after bootstrap (API key may be rotated). Do not set manually. |
 | `/deployments/PORTAINER_WEBHOOK_URLS` + `/deployments/WEBHOOK_URL_*` | Platform | Auto-written by Terraform `portainer` module on Portainer workspace apply. Do not edit manually. |
-| `TF_VAR_network_access_policy` (Terraform Cloud env var) | Security | Auto-created/updated by `infra-orchestrator.yml` `network-policy-sync` job. Do not set manually outside policy sync flow. |
-| `/stacks/management/PORTAINER_AUTOMATION_ALLOWED_CIDRS` | Security | Auto-synced by `infra-orchestrator.yml` from `network_access_policy.portainer_api.source_ranges`. Do not set manually outside break-glass recovery. |
+| `TF_VAR_network_access_policy` (Terraform Cloud env var) | Security | Auto-created/updated by `infra-orchestrator.yml` preflight stage (`reusable-orch-preflight.yml` / `network-policy-sync`). Do not set manually outside policy sync flow. |
+| `/stacks/management/PORTAINER_AUTOMATION_ALLOWED_CIDRS` | Security | Auto-synced by `infra-orchestrator.yml` preflight stage from `network_access_policy.portainer_api.source_ranges`. Do not set manually outside break-glass recovery. |
 
 > For first-run setup and required GitHub/TFC inputs, see [Infrastructure Orchestrator Cutover Checklist](meta-pipeline-cutover-checklist.md).
 
@@ -196,9 +196,9 @@ The workflow authenticates to Infisical via **OIDC** (not Universal Auth), so no
 
 | Variable | How to Get | Used By |
 |----------|-----------|---------|
-| `INFISICAL_MACHINE_IDENTITY_ID` | Infisical → Access Control → Machine Identities → OIDC Auth → Identity ID | `infra-orchestrator.yml` OIDC login |
+| `INFISICAL_MACHINE_IDENTITY_ID` | Infisical → Access Control → Machine Identities → OIDC Auth → Identity ID | Reusable orchestrator stages that log into Infisical via OIDC |
 | `INFISICAL_PROJECT_ID` | Infisical → Project Settings → Project ID | Terraform/Ansible workflows and webhook runner secret reads |
-| `INFISICAL_SSH_CA_ID` | Infisical → SSH Management → SSH CA details | `infra-orchestrator.yml` ephemeral SSH cert signing |
+| `INFISICAL_SSH_CA_ID` | Infisical → SSH Management → SSH CA details | Reusable Ansible/config-sync stages that mint ephemeral SSH certs |
 | `TFC_ORGANIZATION` (or `TFC_ORG`) | Terraform Cloud organization slug | Infrastructure orchestrator + infrastructure validation Terraform Cloud API calls |
 | `CLOUD_STATIC_RUNNER_LABEL` | Label of your static-egress private runner | Infrastructure orchestrator jobs that require deterministic egress + private reachability |
 | `TFC_WORKSPACE_INFRA` | Terraform Cloud → Workspace name (`goodoldme-infra`) | Infra workspace apply (`terraform/infra`) |
@@ -217,7 +217,7 @@ The workflow authenticates to Infisical via **OIDC** (not Universal Auth), so no
 | `INFRA_REPO_DISPATCH_TOKEN` (stacks repo) | Fine-grained GitHub token with `contents:write` + repository dispatch access on this infra repo | `stacks/.github/workflows/stacks-dispatch-redeploy.yml` dispatches `stacks-redeploy-intent-v5` to this repo |
 | `INFISICAL_AGENT_CLIENT_ID` (infra repo) | Universal Auth client id for the host-side Infisical Agent | Ansible `phase7_runtime_sync` and local Portainer webhook helper |
 | `INFISICAL_AGENT_CLIENT_SECRET` (infra repo) | Universal Auth client secret for the host-side Infisical Agent | Ansible `phase7_runtime_sync` and local Portainer webhook helper |
-| `TFC_TOKEN` (infra repo) | Terraform Cloud Team/API token with workspace run access | `infra-orchestrator.yml` Terraform Cloud run/apply + state output inventory handover |
+| `TFC_TOKEN` (infra repo) | Terraform Cloud Team/API token with workspace run access | Orchestrator reusable workflows for Terraform Cloud run/apply + state output inventory handover |
 
 ---
 
@@ -304,7 +304,7 @@ Flow:
 1. Push to `main` in stacks repo
 2. `stacks-ci.yml` completes successfully with repo-level validation
 3. The dispatch workflow emits exactly one `stacks-redeploy-intent-v5` event with the minimal `v5` payload
-4. Infra `infra-orchestrator.yml` runs the fixed full-reconcile path: secret validation -> `phase7_runtime_sync` -> `sync-configs` -> SHA-pinned Portainer apply -> health-gated webhook redeploy.
+4. Infra `infra-orchestrator.yml` runs the fixed full-reconcile path through reusable stages: preflight -> infra -> ansible (`phase7_runtime_sync`) -> portainer (`sync-configs`, SHA-pinned Portainer apply, health-gated webhook redeploy).
 
 ### `stacks-redeploy-intent-v5` Dispatch Contract
 

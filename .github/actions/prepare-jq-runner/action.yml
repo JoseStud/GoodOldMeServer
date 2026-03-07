@@ -1,0 +1,25 @@
+name: Prepare jq Runner
+description: Checkout the repository and install jq, with optional yq and netcat.
+
+inputs:
+  install_yq:
+    description: Install yq alongside jq.
+    required: false
+    default: "false"
+  install_netcat:
+    description: Install netcat alongside jq.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Bootstrap jq runner
+      uses: ./.github/actions/bootstrap-tools
+      with:
+        install_jq: "true"
+        install_yq: ${{ inputs.install_yq }}
+        install_netcat: ${{ inputs.install_netcat }}

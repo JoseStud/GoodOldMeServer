@@ -2,21 +2,19 @@
 
 This document is the single source of truth for:
 
-- fixed-suite validation in `.github/workflows/infra-validation.yml`
+- validation entry points in `.github/workflows/validate-planner-contracts.yml`, `.github/workflows/validate-terraform.yml`, and `.github/workflows/validate-ansible.yml`
 - infra-repo push execution in `.github/workflows/infra-orchestrator.yml`
 - canonical planning in `.github/workflows/reusable-resolve-plan.yml`
 
 ## Validation Behavior
 
-`infra-validation.yml` does not do path-derived project selection. On every relevant trigger it always runs:
+Validation is split by concern instead of being bundled into a single workflow:
 
-- planner contract tests
-- bootstrap-tools smoke
-- `terraform fmt`
-- `terraform validate` for `terraform/infra`, `terraform/oci`, `terraform/gcp`, `terraform/portainer-root`, and `terraform/portainer`
-- the fixed Terraform Cloud speculative plan for the infra workspace (`terraform/infra`)
-- ansible lint + syntax
-- trusted stacks SHA verification for the current `HEAD:stacks` gitlink
+- `validate-planner-contracts.yml` runs planner shell tests, workflow contract checks, bootstrap-tools smoke, and trusted stacks SHA verification for the current `HEAD:stacks` gitlink
+- `validate-terraform.yml` runs `terraform fmt`, `terraform validate` for `terraform/infra`, `terraform/oci`, `terraform/gcp`, `terraform/portainer-root`, and `terraform/portainer`, plus the fixed Terraform Cloud speculative plan for `terraform/infra`
+- `validate-ansible.yml` runs ansible lint + syntax checks
+
+None of the active validation workflows do path-derived project selection inside the workflow body. Each workflow is triggered only by the path set relevant to its concern.
 
 ## Orchestrator Push Behavior
 
@@ -37,6 +35,14 @@ Once triggered, the planner always emits the same push toggles:
 - `run_config_sync=false`
 - `run_health_redeploy=false`
 - `reason=infra-repo-push`
+
+The top-level orchestrator remains thin and stable:
+
+- `resolve-context` emits canonical `plan_json`
+- `preflight` runs cloud-runner-guard, optional stacks SHA trust, secret validation, and network policy sync
+- `infra` runs infra apply, inventory handover, and SSH network preflight
+- `ansible` runs bootstrap and/or host runtime sync
+- `portainer` runs post-bootstrap checks, Portainer API preflight, optional config sync, Portainer apply, and optional health-gated redeploy
 
 ## Dispatch Notes
 

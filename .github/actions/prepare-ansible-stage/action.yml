@@ -1,0 +1,57 @@
+name: Prepare Ansible Stage
+description: Checkout with recursive submodules, log into Infisical, and optionally download the CI inventory artifact.
+
+inputs:
+  infisical_machine_identity_id:
+    description: Machine identity id for Infisical OIDC login.
+    required: true
+  install_jq:
+    description: Install jq alongside Infisical.
+    required: false
+    default: "false"
+  install_yq:
+    description: Install yq alongside Infisical.
+    required: false
+    default: "false"
+  install_netcat:
+    description: Install netcat alongside Infisical.
+    required: false
+    default: "false"
+  download_inventory:
+    description: Download the CI inventory artifact.
+    required: false
+    default: "true"
+  inventory_artifact_name:
+    description: Inventory artifact name to download.
+    required: false
+    default: inventory-ci
+  inventory_path:
+    description: Destination path for the inventory artifact.
+    required: false
+    default: .
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        submodules: recursive
+
+    - name: Bootstrap Ansible stage
+      uses: ./.github/actions/bootstrap-tools
+      with:
+        install_jq: ${{ inputs.install_jq }}
+        install_yq: ${{ inputs.install_yq }}
+        install_netcat: ${{ inputs.install_netcat }}
+        install_infisical: "true"
+        infisical_login: "true"
+        infisical_machine_identity_id: ${{ inputs.infisical_machine_identity_id }}
+
+    - name: Download CI inventory artifact
+      if: ${{ inputs.download_inventory == 'true' }}
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.inventory_artifact_name }}
+        path: ${{ inputs.inventory_path }}

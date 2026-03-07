@@ -1,0 +1,116 @@
+name: Reusable Orchestrator Portainer
+
+on:
+  workflow_call:
+    inputs:
+      plan_json:
+        required: true
+        type: string
+      runner_label:
+        required: true
+        type: string
+      network_access_policy_json:
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  INFISICAL_MACHINE_IDENTITY_ID: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
+  INFISICAL_PROJECT_ID: ${{ vars.INFISICAL_PROJECT_ID }}
+  INFISICAL_SSH_CA_ID: ${{ vars.INFISICAL_SSH_CA_ID }}
+  INFISICAL_PROJECT_ID_VALUE: ${{ vars.INFISICAL_PROJECT_ID }}
+  SHADOW_MODE: ${{ vars.SHADOW_MODE || 'false' }}
+  TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+  TFC_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
+  TFC_WORKSPACE_PORTAINER: ${{ vars.TFC_WORKSPACE_PORTAINER || 'goodoldme-portainer' }}
+
+jobs:
+  post-bootstrap-secret-check:
+    if: ${{ fromJSON(inputs.plan_json).meta.stages.stage_post_bootstrap_secret_check }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Prepare Infisical runner
+        uses: ./.github/actions/prepare-infisical-runner
+        with:
+          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
+
+      - name: Validate bootstrap-managed Portainer secrets
+        run: .github/scripts/stages/post_bootstrap_secret_check.sh
+
+  portainer-api-preflight:
+    needs: [post-bootstrap-secret-check]
+    if: ${{ fromJSON(inputs.plan_json).meta.stages.stage_portainer_api_preflight && needs.post-bootstrap-secret-check.result == 'success' }}
+    runs-on: ${{ inputs.runner_label }}
+
+    steps:
+      - name: Prepare Infisical runner
+        uses: ./.github/actions/prepare-infisical-runner
+        with:
+          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
+          install_jq: "true"
+
+      - name: Preflight egress + Portainer API reachability
+        env:
+          NETWORK_ACCESS_POLICY_JSON: ${{ inputs.network_access_policy_json }}
+          RUN_HEALTH: ${{ fromJSON(inputs.plan_json).meta.run_health_redeploy }}
+          RUN_PORTAINER: ${{ fromJSON(inputs.plan_json).meta.run_portainer_apply }}
+          PORTAINER_ALLOWLIST_PROPAGATION_TIMEOUT_SECONDS: ${{ vars.PORTAINER_ALLOWLIST_PROPAGATION_TIMEOUT_SECONDS || '420' }}
+          PORTAINER_ALLOWLIST_PROPAGATION_POLL_INTERVAL_SECONDS: ${{ vars.PORTAINER_ALLOWLIST_PROPAGATION_POLL_INTERVAL_SECONDS || '5' }}
+        run: .github/scripts/stages/portainer_api_preflight.sh
+
+  config-sync:
+    if: ${{ fromJSON(inputs.plan_json).meta.stages.stage_config_sync }}
+    runs-on: ${{ inputs.runner_label }}
+
+    steps:
+      - name: Prepare Ansible stage
+        uses: ./.github/actions/prepare-ansible-stage
+        with:
+          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
+
+      - name: Sync stack configs only
+        env:
+          STACKS_SHA: ${{ fromJSON(inputs.plan_json).meta.stacks_sha }}
+          INVENTORY_FILE: inventory-ci.yml
+          ANSIBLE_TAGS: sync-configs
+        run: .github/scripts/stages/ansible_run.sh
+
+  portainer-apply:
+    needs: [post-bootstrap-secret-check, portainer-api-preflight, config-sync]
+    if: ${{ always() && fromJSON(inputs.plan_json).meta.stages.stage_portainer_apply && needs.post-bootstrap-secret-check.result == 'success' && needs.portainer-api-preflight.result == 'success' && (needs.config-sync.result == 'success' || (needs.config-sync.result == 'skipped' && fromJSON(inputs.plan_json).meta.stages.stage_config_sync != true)) }}
+    runs-on: ${{ inputs.runner_label }}
+    env:
+      TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TOKEN }}
+      INFISICAL_TOKEN: ${{ secrets.INFISICAL_TOKEN }}
+      TF_VAR_infisical_project_id: ${{ vars.INFISICAL_PROJECT_ID }}
+      STACKS_SHA: ${{ fromJSON(inputs.plan_json).meta.stacks_sha }}
+
+    steps:
+      - name: Prepare Terraform stage
+        uses: ./.github/actions/prepare-terraform-stage
+
+      - name: Terraform plan/apply (local operations mode)
+        run: .github/scripts/stages/portainer_apply.sh
+
+  health-gated-redeploy:
+    needs: [portainer-api-preflight, portainer-apply, config-sync]
+    if: ${{ fromJSON(inputs.plan_json).meta.stages.stage_health_gated_redeploy && needs.portainer-api-preflight.result == 'success' && needs.portainer-apply.result == 'success' && needs.config-sync.result == 'success' }}
+    runs-on: ${{ inputs.runner_label }}
+
+    steps:
+      - name: Prepare Ansible stage
+        uses: ./.github/actions/prepare-ansible-stage
+        with:
+          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
+          install_yq: "true"
+          download_inventory: "false"
+
+      - name: Trigger health-gated webhooks
+        env:
+          STACKS_SHA: ${{ fromJSON(inputs.plan_json).meta.stacks_sha }}
+          FULL_STACKS_RECONCILE: "true"
+        run: .github/scripts/stages/health_gated_redeploy.sh

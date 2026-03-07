@@ -1,0 +1,101 @@
+name: Reusable Orchestrator Preflight
+
+on:
+  workflow_call:
+    inputs:
+      plan_json:
+        required: true
+        type: string
+    outputs:
+      runner_label:
+        value: ${{ jobs.cloud-runner-guard.outputs.runner_label }}
+      network_access_policy_json:
+        value: ${{ jobs.network-policy-sync.outputs.network_access_policy_json }}
+      portainer_automation_allowed_cidrs:
+        value: ${{ jobs.network-policy-sync.outputs.portainer_automation_allowed_cidrs }}
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  INFISICAL_MACHINE_IDENTITY_ID: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
+  INFISICAL_PROJECT_ID: ${{ vars.INFISICAL_PROJECT_ID }}
+  SHADOW_MODE: ${{ vars.SHADOW_MODE || 'false' }}
+  TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+  TFC_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
+  TFC_WORKSPACE_INFRA: ${{ vars.TFC_WORKSPACE_INFRA || 'goodoldme-infra' }}
+
+jobs:
+  cloud-runner-guard:
+    if: ${{ fromJSON(inputs.plan_json).meta.stages.stage_cloud_runner_guard }}
+    runs-on: ubuntu-latest
+    outputs:
+      runner_label: ${{ steps.guard.outputs.runner_label }}
+
+    steps:
+      - name: Verify cloud runner guard
+        id: guard
+        env:
+          CLOUD_STATIC_RUNNER_LABEL: ${{ vars.CLOUD_STATIC_RUNNER_LABEL }}
+        run: |
+          : "${CLOUD_STATIC_RUNNER_LABEL:?Missing required variable: CLOUD_STATIC_RUNNER_LABEL}"
+          echo "runner_label=${CLOUD_STATIC_RUNNER_LABEL}" >> "${GITHUB_OUTPUT}"
+
+  stacks-sha-trust:
+    if: ${{ fromJSON(inputs.plan_json).meta.stacks_sha != '' && (fromJSON(inputs.plan_json).meta.stages.stage_ansible_bootstrap == true || fromJSON(inputs.plan_json).meta.stages.stage_host_sync == true || fromJSON(inputs.plan_json).meta.stages.stage_portainer_apply == true || fromJSON(inputs.plan_json).meta.stages.stage_config_sync == true || fromJSON(inputs.plan_json).meta.stages.stage_health_gated_redeploy == true) }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Prepare jq runner
+        uses: ./.github/actions/prepare-jq-runner
+
+      - name: Verify trusted stacks SHA
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          STACKS_REPO_READ_TOKEN: ${{ secrets.STACKS_REPO_READ_TOKEN }}
+          WAIT_FOR_SUCCESS: "true"
+          WAIT_TIMEOUT_SECONDS: ${{ vars.STACKS_SHA_TRUST_WAIT_TIMEOUT_SECONDS || '900' }}
+          POLL_INTERVAL_SECONDS: ${{ vars.STACKS_SHA_TRUST_POLL_INTERVAL_SECONDS || '15' }}
+        run: .github/scripts/stacks/verify_trusted_stacks_sha.sh "${{ fromJSON(inputs.plan_json).meta.stacks_sha }}"
+
+  secret-validation:
+    if: ${{ fromJSON(inputs.plan_json).meta.stages.stage_secret_validation }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Prepare Infisical runner
+        uses: ./.github/actions/prepare-infisical-runner
+        with:
+          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
+
+      - name: Validate required secret paths
+        env:
+          RUN_INFRA: ${{ fromJSON(inputs.plan_json).meta.run_infra_apply }}
+          RUN_ANSIBLE: ${{ fromJSON(inputs.plan_json).meta.run_ansible_bootstrap }}
+          RUN_PORTAINER: ${{ fromJSON(inputs.plan_json).meta.run_portainer_apply }}
+          RUN_HOST_SYNC: ${{ fromJSON(inputs.plan_json).meta.run_host_sync }}
+          RUN_HEALTH: ${{ fromJSON(inputs.plan_json).meta.run_health_redeploy }}
+          INFISICAL_TOKEN: ${{ secrets.INFISICAL_TOKEN }}
+          INFISICAL_AGENT_CLIENT_ID: ${{ secrets.INFISICAL_AGENT_CLIENT_ID }}
+          INFISICAL_AGENT_CLIENT_SECRET: ${{ secrets.INFISICAL_AGENT_CLIENT_SECRET }}
+        run: .github/scripts/stages/secret_validation.sh
+
+  network-policy-sync:
+    needs: [cloud-runner-guard, secret-validation]
+    if: ${{ fromJSON(inputs.plan_json).meta.stages.stage_network_policy_sync }}
+    runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
+    outputs:
+      network_access_policy_json: ${{ steps.sync.outputs.network_access_policy_json }}
+      portainer_automation_allowed_cidrs: ${{ steps.sync.outputs.portainer_automation_allowed_cidrs }}
+
+    steps:
+      - name: Prepare Infisical runner
+        uses: ./.github/actions/prepare-infisical-runner
+        with:
+          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
+          install_jq: "true"
+
+      - name: Build and sync network policy
+        id: sync
+        run: .github/scripts/stages/network_policy_sync.sh

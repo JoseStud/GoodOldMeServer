@@ -47,16 +47,10 @@ All plans share:
 - `repository_dispatch`: accepts only `stacks-redeploy-intent-v5` with the minimal `v5` payload and always resolves to the full stacks reconcile path.
 - `resolve_ci_plan.sh` meta mode accepts only `push` and `repository_dispatch`. Any other event name is invalid.
 
-## Projection Layer
+## Workflow Consumption
 
-Workflows that need scalar outputs must project them from `plan_json` using:
+Active workflows consume `plan_json` directly with `fromJSON(...)`.
 
-- `.github/scripts/plan/project_plan_outputs.sh meta`
-
-The projection script validates:
-
-- schema version (`ci-plan-v1`)
-- requested mode matches `plan_json.mode`
-- required fields exist with expected types
-
-and emits scalar outputs as workflow commands.
+- `.github/workflows/infra-orchestrator.yml` passes `plan_json` unchanged into its reusable stage workflows
+- `.github/workflows/reusable-orch-*.yml` read toggles and stage gates directly from `fromJSON(inputs.plan_json)`
+- no scalar projection script remains in the active workflow graph

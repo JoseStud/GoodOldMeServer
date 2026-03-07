@@ -105,11 +105,11 @@ Expected dispatch payload example:
 
 | Item | Requirement | Owner | Notes | Checkbox |
 |------|-------------|-------|-------|----------|
-| Run `infra-validation.yml` and confirm planner/speculative-plan jobs pass | Required | Operator | Use the validation workflow manual button or let PR/push automation run it before the first orchestrator execution. | [ ] |
+| Run `validate-planner-contracts.yml`, `validate-terraform.yml`, and `validate-ansible.yml` and confirm their key jobs pass | Required | Operator | Use each workflow's manual button or let PR/push automation run them before the first orchestrator execution. | [ ] |
 | Verify `stacks-ci.yml` passes in stacks repo | Required | Platform | Repo-level validation must pass before dispatching the full reconcile. | [ ] |
 | Verify cloud runner deterministic dual-stack egress | Required | Platform | `curl -4 https://api.ipify.org` and `curl -6 https://api64.ipify.org` from runner. | [ ] |
 | Merge a representative infra change to `main` | Required | Operator | A change under `terraform/infra`, `terraform/oci`, or `terraform/gcp` should trigger `infra-orchestrator.yml` automatically and start the infra run sequence. | [ ] |
 | Confirm/apply infra run in Terraform Cloud UI when prompted | Required | Operator | Required because Auto Apply is disabled. | [ ] |
 | Confirm dispatch path validates `schema_version=v5` and waits for trusted `stacks_sha` checks | Required | Platform | `stacks-sha-trust` should pass before stack SHA is consumed by later stages, including host sync and config sync. | [ ] |
 | Retire legacy workflow checks and runbooks | Required | Platform | Remove old `IaC Validation` / `Meta Pipeline` checks, stop using retired workflow entry points, and standardize on the active workflow set in [Workflow Lifecycle](workflow-lifecycle.md). | [ ] |
-| Ensure CI governance checks are required | Required | Platform | Include `Lint GitHub Actions` and shell contract tests (`Infrastructure Validation / planner-contract-tests`) in required PR checks. | [ ] |
+| Ensure CI governance checks are required | Required | Platform | Include `Lint GitHub Actions / lint`, `Validate Planner Contracts / workflow-contracts`, `Validate Terraform / tfc-speculative-plan`, and `Validate Ansible / ansible-validate` in required PR checks. | [ ] |

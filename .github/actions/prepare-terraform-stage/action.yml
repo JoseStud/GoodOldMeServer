@@ -1,0 +1,22 @@
+name: Prepare Terraform Stage
+description: Checkout the repository, install jq, and configure Terraform.
+
+inputs:
+  install_jq:
+    description: Install jq before setting up Terraform.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Bootstrap Terraform stage
+      uses: ./.github/actions/bootstrap-tools
+      with:
+        install_jq: ${{ inputs.install_jq }}
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3

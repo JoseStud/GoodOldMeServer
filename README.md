@@ -43,8 +43,9 @@ docker stack deploy -c stacks/auth/docker-compose.yml auth
 For the full deployment procedure, see the [Deployment Runbook](docs/deployment-runbook.md).
 For first-time pipeline setup, use the [Infrastructure Orchestrator Cutover Checklist](docs/meta-pipeline-cutover-checklist.md).
 For active vs retired GitHub Actions entry points, see the [Workflow Lifecycle](docs/workflow-lifecycle.md).
+For workflow responsibilities, triggers, and reusable inputs/outputs, see [GitHub Actions Workflows](docs/github-actions-workflows.md).
 For CI orchestration planning behavior, see the [CI Orchestrator Execution Rules](docs/ci-orchestrator-execution-rules.md).
-For CI plan schema and projection rules, see the [CI Plan Contract](docs/ci-plan-contract.md).
+For the canonical `plan_json` schema and consumption rules, see the [CI Plan Contract](docs/ci-plan-contract.md).
 
 ## Documentation
 

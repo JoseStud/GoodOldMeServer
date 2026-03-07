@@ -1,0 +1,70 @@
+name: Validate Ansible
+
+on:
+  pull_request:
+    paths:
+      - "ansible/**"
+      - ".ansible-lint"
+      - ".github/ci/**"
+      - ".github/actions/**"
+      - ".github/workflows/**"
+      - ".github/scripts/**"
+  push:
+    paths:
+      - "ansible/**"
+      - ".ansible-lint"
+      - ".github/ci/**"
+      - ".github/actions/**"
+      - ".github/workflows/**"
+      - ".github/scripts/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: read
+  statuses: read
+  pull-requests: read
+
+concurrency:
+  group: validate-ansible-${{ github.ref_name || github.event.repository.default_branch || 'main' }}
+  cancel-in-progress: true
+
+jobs:
+  ansible-validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install Ansible tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pipx
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+          source .github/ci/tool-versions.lock
+          pipx install "ansible-core==${ANSIBLE_CORE_VERSION}"
+          pipx install "ansible-lint==${ANSIBLE_LINT_VERSION}"
+          ansible-playbook --version | head -n1 | grep -F "core ${ANSIBLE_CORE_VERSION}"
+          ansible-lint --version | head -n1 | grep -F "ansible-lint ${ANSIBLE_LINT_VERSION}"
+          ansible-galaxy collection install -r ansible/requirements.yml --force-with-deps
+
+      - name: Run ansible-lint
+        run: ansible-lint -c .ansible-lint ansible
+
+      - name: Run ansible syntax check
+        run: |
+          set -euo pipefail
+          cat > /tmp/ansible-syntax.ini <<'EOF'
+          [oci_nodes]
+          localhost ansible_connection=local
+
+          [gcp_witness]
+          localhost ansible_connection=local
+          EOF
+          ansible-playbook -i /tmp/ansible-syntax.ini --syntax-check ansible/playbooks/provision.yml

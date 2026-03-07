@@ -1,0 +1,110 @@
+name: Validate Terraform
+
+on:
+  pull_request:
+    paths:
+      - "terraform/**"
+      - ".github/ci/**"
+      - ".github/actions/**"
+      - ".github/workflows/**"
+      - ".github/scripts/**"
+  push:
+    paths:
+      - "terraform/**"
+      - ".github/ci/**"
+      - ".github/actions/**"
+      - ".github/workflows/**"
+      - ".github/scripts/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: read
+  statuses: read
+  pull-requests: read
+
+concurrency:
+  group: validate-terraform-${{ github.ref_name || github.event.repository.default_branch || 'main' }}
+  cancel-in-progress: true
+
+jobs:
+  terraform-fmt:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Prepare Terraform stage
+        uses: ./.github/actions/prepare-terraform-stage
+        with:
+          install_jq: "false"
+
+      - name: Terraform fmt check
+        run: terraform fmt -check -recursive terraform
+
+  terraform-validate:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        root:
+          - terraform/infra
+          - terraform/oci
+          - terraform/gcp
+          - terraform/portainer-root
+          - terraform/portainer
+
+    steps:
+      - name: Prepare Terraform stage
+        uses: ./.github/actions/prepare-terraform-stage
+        with:
+          install_jq: "false"
+
+      - name: Terraform init (readonly lockfile)
+        run: terraform -chdir=${{ matrix.root }} init -backend=false -lockfile=readonly -input=false
+
+      - name: Terraform validate
+        run: terraform -chdir=${{ matrix.root }} validate
+
+  tfc-speculative-plan:
+    needs: terraform-validate
+    runs-on: ubuntu-latest
+    env:
+      TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+      TFC_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
+      TF_API_TOKEN: ${{ secrets.TFC_TOKEN }}
+      TF_CLOUD_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
+
+    steps:
+      - name: Prepare Terraform stage
+        uses: ./.github/actions/prepare-terraform-stage
+
+      - name: Resolve workspace and validate required inputs
+        id: preflight
+        env:
+          WORKSPACE_KEY: infra
+          TFC_WORKSPACE_INFRA: ${{ vars.TFC_WORKSPACE_INFRA }}
+          TFC_WORKSPACE_PORTAINER: ${{ vars.TFC_WORKSPACE_PORTAINER }}
+        run: .github/scripts/stages/tfc_speculative_preflight.sh
+
+      - name: Upload configuration
+        id: upload
+        uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.0.0
+        with:
+          workspace: ${{ steps.preflight.outputs.workspace_name }}
+          directory: terraform/infra
+          speculative: true
+
+      - name: Create speculative run
+        id: create-run
+        uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.0
+        with:
+          workspace: ${{ steps.preflight.outputs.workspace_name }}
+          configuration_version: ${{ steps.upload.outputs.configuration_version_id }}
+          plan_only: true
+
+      - name: Wait for Terraform Cloud run to complete
+        env:
+          RUN_ID: ${{ steps.create-run.outputs.run_id }}
+          WORKSPACE_NAME: ${{ steps.preflight.outputs.workspace_name }}
+          WAIT_TIMEOUT_SECONDS: ${{ vars.TFC_PLAN_WAIT_TIMEOUT_SECONDS || '7200' }}
+          POLL_INTERVAL_SECONDS: ${{ vars.TFC_PLAN_POLL_INTERVAL_SECONDS || '10' }}
+        run: .github/scripts/tfc/wait_for_tfc_run.sh "${RUN_ID}" "${WORKSPACE_NAME}"
