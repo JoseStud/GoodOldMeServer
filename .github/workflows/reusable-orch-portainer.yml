@@ -47,7 +47,7 @@ jobs:
 
   portainer-api-preflight:
     needs: [post-bootstrap-secret-check]
-    if: ${{ fromJSON(inputs.plan_json).meta.stages.stage_portainer_api_preflight && needs.post-bootstrap-secret-check.result == 'success' }}
+    if: ${{ fromJSON(inputs.plan_json).meta.stages.stage_portainer_api_preflight && (needs.post-bootstrap-secret-check.result == 'success' || needs.post-bootstrap-secret-check.result == 'skipped') }}
     runs-on: ${{ inputs.runner_label }}
 
     steps:
@@ -73,7 +73,7 @@ jobs:
 
   config-sync:
     needs: [post-bootstrap-secret-check]
-    if: ${{ always() && fromJSON(inputs.plan_json).meta.stages.stage_config_sync && needs.post-bootstrap-secret-check.result == 'success' }}
+    if: ${{ always() && fromJSON(inputs.plan_json).meta.stages.stage_config_sync && (needs.post-bootstrap-secret-check.result == 'success' || needs.post-bootstrap-secret-check.result == 'skipped') }}
     runs-on: ${{ inputs.runner_label }}
 
     steps:
@@ -106,7 +106,7 @@ jobs:
 
   portainer-apply:
     needs: [post-bootstrap-secret-check, portainer-api-preflight, config-sync]
-    if: ${{ always() && fromJSON(inputs.plan_json).meta.stages.stage_portainer_apply && needs.post-bootstrap-secret-check.result == 'success' && needs.portainer-api-preflight.result == 'success' && (needs.config-sync.result == 'success' || needs.config-sync.result == 'skipped') }}
+    if: ${{ always() && fromJSON(inputs.plan_json).meta.stages.stage_portainer_apply && (needs.post-bootstrap-secret-check.result == 'success' || needs.post-bootstrap-secret-check.result == 'skipped') && needs.portainer-api-preflight.result == 'success' && (needs.config-sync.result == 'success' || needs.config-sync.result == 'skipped') }}
     runs-on: ${{ inputs.runner_label }}
     env:
       TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TOKEN }}
