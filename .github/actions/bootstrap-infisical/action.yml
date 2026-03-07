@@ -62,8 +62,8 @@ runs:
       shell: bash
       env:
         INPUT_TOOL_VERSIONS_LOCK_PATH: ${{ inputs.tool_versions_lock_path }}
-        INPUT_INSTALL_INFISICAL: "false"
-        INPUT_INFISICAL_LOGIN: "false"
+        INPUT_INSTALL_INFISICAL: ${{ inputs.install_infisical }}
+        INPUT_INFISICAL_LOGIN: ${{ inputs.infisical_login }}
         INPUT_INFISICAL_MACHINE_ID: ${{ inputs.infisical_machine_identity_id }}
         INPUT_INFISICAL_DOMAIN: ${{ inputs.infisical_domain }}
         INPUT_INSTALL_JQ: ${{ inputs.install_jq }}
@@ -72,11 +72,6 @@ runs:
         INPUT_INFISICAL_SHA256: ${{ inputs.infisical_sha256 }}
       run: "${{ github.action_path }}/../bootstrap-tools/bootstrap-tools.sh"
 
-    - name: Install Infisical
-      if: inputs.install_infisical == 'true'
-      uses: Infisical/setup-infisical-cli@v1
-      with:
-        version: ${{ inputs.infisical_version != '' && inputs.infisical_version || 'latest' }}
 
     - name: Set Infisical Version Output
       id: infisical_version

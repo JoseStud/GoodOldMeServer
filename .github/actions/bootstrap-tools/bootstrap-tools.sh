@@ -186,3 +186,28 @@ fi
 if [[ "${INSTALL_GOMPLATE}" == "true" ]]; then
   install_gomplate
 fi
+
+install_infisical() {
+  local version sha
+  version="$(resolve_value "${INPUT_INFISICAL_VERSION:-}" "${INFISICAL_VERSION:-}")"
+  sha="$(resolve_value "${INPUT_INFISICAL_SHA256:-}" "${INFISICAL_SHA256:-}")"
+
+  # Add Infisical apt repo and signing key, then install package
+  curl -fsSL https://dl.cloudsmith.io/public/infisical/infisical-core/gpg.2BA6932366A755776.gpg | sudo tee /etc/apt/trusted.gpg.d/infisical-core.gpg >/dev/null
+  echo "deb https://dl.cloudsmith.io/public/infisical/infisical-core/deb/debian any-version main" | sudo tee /etc/apt/sources.list.d/infisical-core.list >/dev/null
+
+  ensure_apt_updated
+  sudo apt-get update -qq
+
+  if [[ -n "${version}" ]]; then
+    sudo apt-get install -y "infisical-core=${version}" || sudo apt-get install -y infisical-core
+  else
+    sudo apt-get install -y infisical-core
+  fi
+
+  write_output "infisical_version_installed" "$(infisical --version 2>/dev/null || echo '')"
+}
+
+if [[ "${INSTALL_INFISICAL:-false}" == "true" ]]; then
+  install_infisical
+fi
