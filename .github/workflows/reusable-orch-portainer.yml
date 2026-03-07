@@ -18,8 +18,6 @@ permissions:
   contents: read
 
 env:
-  INFISICAL_MACHINE_IDENTITY_ID: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
-  INFISICAL_PROJECT_ID: ${{ vars.INFISICAL_PROJECT_ID }}
   INFISICAL_SSH_CA_ID: ${{ vars.INFISICAL_SSH_CA_ID }}
   SHADOW_MODE: ${{ vars.SHADOW_MODE || 'false' }}
   TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
@@ -55,7 +53,7 @@ jobs:
         with:
           install_infisical: "true"
           infisical_login: "true"
-          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
+          infisical_machine_identity_id: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
 
       - name: Validate bootstrap-managed Portainer secrets
         run: .github/scripts/stages/post_bootstrap_secret_check.sh
@@ -74,7 +72,7 @@ jobs:
         with:
           install_infisical: "true"
           infisical_login: "true"
-          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
+          infisical_machine_identity_id: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
           install_jq: "true"
 
       - name: Preflight egress + Portainer API reachability
@@ -103,7 +101,7 @@ jobs:
         with:
           install_infisical: "true"
           infisical_login: "true"
-          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
+          infisical_machine_identity_id: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
 
       - name: Download CI inventory artifact
         uses: actions/download-artifact@v4
@@ -161,7 +159,7 @@ jobs:
         with:
           install_infisical: "true"
           infisical_login: "true"
-          infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
+          infisical_machine_identity_id: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
           install_yq: "true"
           install_gomplate: "true"
 
