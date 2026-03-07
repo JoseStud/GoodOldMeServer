@@ -56,6 +56,12 @@ jobs:
       - name: Run webhook gate tests
         run: bash .github/scripts/tests/test_trigger_webhooks_with_gates.sh
 
+      - name: Run network preflight tests
+        run: bash .github/scripts/tests/test_preflight_network_access.sh
+
+      - name: Run Portainer apply tests
+        run: bash .github/scripts/tests/test_portainer_apply.sh
+
       - name: Run workflow contract tests
         run: bash .github/scripts/tests/test_workflow_contracts.sh
 

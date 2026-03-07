@@ -168,7 +168,7 @@ jobs:
 
   stacks-sha-trust:
     needs: [project-plan]
-    if: ${{ needs.project-plan.outputs.stacks_sha != '' && (needs.project-plan.outputs.stage_ansible_bootstrap == 'true' || needs.project-plan.outputs.stage_host_sync == 'true' || needs.project-plan.outputs.stage_config_sync == 'true' || needs.project-plan.outputs.stage_health_gated_redeploy == 'true') }}
+    if: ${{ needs.project-plan.outputs.stacks_sha != '' && (needs.project-plan.outputs.stage_ansible_bootstrap == 'true' || needs.project-plan.outputs.stage_host_sync == 'true' || needs.project-plan.outputs.stage_portainer_apply == 'true' || needs.project-plan.outputs.stage_config_sync == 'true' || needs.project-plan.outputs.stage_health_gated_redeploy == 'true') }}
     runs-on: ubuntu-latest
 
     steps:
@@ -437,11 +437,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Bootstrap jq + netcat + infisical + login
+      - name: Bootstrap jq + infisical + login
         uses: ./.github/actions/bootstrap-tools
         with:
           install_jq: "true"
-          install_netcat: "true"
           install_infisical: "true"
           infisical_login: "true"
           infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
@@ -456,13 +455,14 @@ jobs:
         run: .github/scripts/stages/portainer_api_preflight.sh
 
   portainer-apply:
-    needs: [project-plan, secret-validation, cloud-runner-guard, network-policy-sync, post-bootstrap-secret-check, portainer-api-preflight, config-sync]
-    if: ${{ always() && needs.project-plan.outputs.stage_portainer_apply == 'true' && (needs.config-sync.result == 'success' || needs.config-sync.result == 'skipped') && (needs.portainer-api-preflight.result == 'success' || needs.portainer-api-preflight.result == 'skipped') && (needs.post-bootstrap-secret-check.result == 'success' || needs.post-bootstrap-secret-check.result == 'skipped') }}
+    needs: [project-plan, stacks-sha-trust, secret-validation, cloud-runner-guard, network-policy-sync, post-bootstrap-secret-check, portainer-api-preflight, config-sync]
+    if: ${{ always() && needs.project-plan.outputs.stage_portainer_apply == 'true' && (needs.stacks-sha-trust.result == 'success' || needs.stacks-sha-trust.result == 'skipped') && (needs.config-sync.result == 'success' || needs.config-sync.result == 'skipped') && (needs.portainer-api-preflight.result == 'success' || needs.portainer-api-preflight.result == 'skipped') && (needs.post-bootstrap-secret-check.result == 'success' || needs.post-bootstrap-secret-check.result == 'skipped') }}
     runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
     env:
       TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TOKEN }}
       INFISICAL_TOKEN: ${{ secrets.INFISICAL_TOKEN }}
       TF_VAR_infisical_project_id: ${{ vars.INFISICAL_PROJECT_ID }}
+      STACKS_SHA: ${{ needs.project-plan.outputs.stacks_sha }}
 
     steps:
       - name: Checkout

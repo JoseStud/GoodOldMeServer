@@ -27,6 +27,17 @@ variable "repository_reference" {
   default     = "refs/heads/main"
 }
 
+variable "stacks_sha" {
+  description = "Optional immutable stacks repository commit SHA that overrides repository_reference and stacks_manifest_url"
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.stacks_sha == null || can(regex("^[0-9a-f]{40}$", var.stacks_sha))
+    error_message = "stacks_sha must be null or a 40-character lowercase hexadecimal commit SHA."
+  }
+}
+
 variable "infisical_project_id" {
   description = "Infisical project/workspace ID for writing webhook URLs"
   type        = string
@@ -70,14 +81,32 @@ variable "stacks_manifest_token" {
 # ──────────────────────────────────────────────
 
 data "http" "stacks_manifest" {
-  url = var.stacks_manifest_url
+  url = local.effective_stacks_manifest_url
 
-  request_headers = var.stacks_manifest_token != null && trim(var.stacks_manifest_token) != "" ? {
+  request_headers = var.stacks_manifest_token != null && trimspace(var.stacks_manifest_token) != "" ? {
     Authorization = "Bearer ${var.stacks_manifest_token}"
   } : {}
 }
 
 locals {
+  has_stacks_sha = var.stacks_sha != null
+  github_repo_path = startswith(var.repository_url, "https://github.com/") ? trimprefix(var.repository_url, "https://github.com/") : (
+    startswith(var.repository_url, "git@github.com:") ? trimprefix(var.repository_url, "git@github.com:") : ""
+  )
+  github_repo_path_trimmed = trimsuffix(local.github_repo_path, ".git")
+  github_repo_parts        = local.github_repo_path_trimmed != "" ? split("/", local.github_repo_path_trimmed) : []
+  github_repo_valid = length(local.github_repo_parts) == 2 && alltrue([
+    for part in local.github_repo_parts :
+    trimspace(part) != ""
+  ])
+  github_repo_owner = local.github_repo_valid ? local.github_repo_parts[0] : null
+  github_repo_name  = local.github_repo_valid ? local.github_repo_parts[1] : null
+  effective_repository_reference = local.has_stacks_sha ? (
+    local.github_repo_valid ? var.stacks_sha : var.repository_reference
+  ) : var.repository_reference
+  effective_stacks_manifest_url = local.has_stacks_sha ? (
+    local.github_repo_valid ? "https://raw.githubusercontent.com/${local.github_repo_owner}/${local.github_repo_name}/${var.stacks_sha}/stacks.yaml" : var.stacks_manifest_url
+  ) : var.stacks_manifest_url
   stacks_manifest = yamldecode(data.http.stacks_manifest.response_body)
   stack_entries   = try(local.stacks_manifest.stacks, {})
 
@@ -91,6 +120,13 @@ locals {
   has_git_auth = var.git_username != null && var.git_password != null
 }
 
+check "stacks_sha_requires_github_repository_url" {
+  assert {
+    condition     = !local.has_stacks_sha || local.github_repo_valid
+    error_message = "stacks_sha requires repository_url to use https://github.com/<owner>/<repo>.git or git@github.com:<owner>/<repo>.git format."
+  }
+}
+
 check "stacks_manifest_version" {
   assert {
     condition     = try(local.stacks_manifest.version, 0) == 1
@@ -102,7 +138,7 @@ check "stacks_manifest_compose_paths" {
   assert {
     condition = alltrue([
       for name, cfg in local.stacks :
-      trim(cfg) != ""
+      trimspace(cfg) != ""
     ])
     error_message = "All portainer_managed stacks in stacks.yaml must define a non-empty compose_path."
   }
@@ -121,7 +157,7 @@ resource "portainer_stack" "swarm" {
   endpoint_id     = var.endpoint_id
 
   repository_url            = var.repository_url
-  repository_reference_name = var.repository_reference
+  repository_reference_name = local.effective_repository_reference
   file_path_in_repository   = each.value
 
   # GitOps: enable webhook + pull latest images on redeploy

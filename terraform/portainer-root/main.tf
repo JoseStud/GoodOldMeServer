@@ -58,6 +58,17 @@ variable "repository_reference" {
   default     = "refs/heads/main"
 }
 
+variable "stacks_sha" {
+  description = "Optional immutable stacks repository commit SHA that overrides repository_reference and stacks_manifest_url"
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.stacks_sha == null || can(regex("^[0-9a-f]{40}$", var.stacks_sha))
+    error_message = "stacks_sha must be null or a 40-character lowercase hexadecimal commit SHA."
+  }
+}
+
 variable "git_username" {
   description = "Git username for private repository authentication (optional)"
   type        = string
@@ -90,6 +101,7 @@ module "portainer" {
   endpoint_id           = var.portainer_endpoint_id
   repository_url        = var.repository_url
   repository_reference  = var.repository_reference
+  stacks_sha            = var.stacks_sha
   infisical_project_id  = var.infisical_project_id
   git_username          = var.git_username
   git_password          = var.git_password

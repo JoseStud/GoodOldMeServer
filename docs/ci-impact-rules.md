@@ -33,6 +33,6 @@ Only the `meta_*` filters remain, and they apply only to infra-repo `push` plann
 ## Dispatch and Manual Notes
 
 - `repository_dispatch` accepts only `stacks-redeploy-intent-v5` with `schema_version`, `stacks_sha`, `source_sha`, `source_repo`, `source_run_id`, and `reason=full-reconcile`.
-- Every valid stacks dispatch runs the same stacks path: trusted `stacks_sha` -> `phase7_runtime_sync` -> `sync-configs` -> Portainer apply -> full Portainer-managed redeploy.
+- Every valid stacks dispatch runs the same stacks path: trusted `stacks_sha` -> `phase7_runtime_sync` -> `sync-configs` -> SHA-pinned Portainer apply -> full Portainer-managed redeploy from that applied Git ref.
 - Manual `workflow_dispatch` and `workflow_call` do not support stack-targeted execution. They keep only `run_infra_apply`, `run_ansible_bootstrap`, `run_portainer_apply`, `dry_run`, `reason`, `stacks_sha`, and the break-glass override.
 - `has_work=true` when any execution toggle is true.

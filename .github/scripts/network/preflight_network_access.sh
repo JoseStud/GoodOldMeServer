@@ -12,47 +12,54 @@ RUN_PORTAINER="${RUN_PORTAINER:-false}"
 INVENTORY_FILE="${INVENTORY_FILE:-inventory-ci.yml}"
 PORTAINER_API_URL="${PORTAINER_API_URL:-}"
 
-if ! command -v jq >/dev/null 2>&1; then
-  echo "jq is required but was not found in PATH."
-  exit 1
-fi
+detect_public_ip() {
+  local family="$1"
+  local url="$2"
+  local label="$3"
+  local ip=""
+  local curl_family_flag=""
 
-if ! command -v nc >/dev/null 2>&1; then
-  echo "nc (netcat) is required but was not found in PATH."
-  exit 1
-fi
+  case "${family}" in
+    4)
+      curl_family_flag="--ipv4"
+      ;;
+    6)
+      curl_family_flag="--ipv6"
+      ;;
+    *)
+      echo "Unsupported IP family requested for runner public IP detection: ${family}" >&2
+      exit 1
+      ;;
+  esac
 
-runner_ipv4="$(curl -4 -fsS --retry 3 --retry-delay 1 --max-time 10 https://api.ipify.org)"
-runner_ipv6="$(curl -6 -fsS --retry 3 --retry-delay 1 --max-time 10 https://api64.ipify.org)"
+  if ! ip="$(curl "${curl_family_flag}" -fsS --retry 3 --retry-delay 1 --max-time 10 "${url}")"; then
+    echo "Failed to resolve runner ${label} public IP for required network preflight."
+    exit 1
+  fi
 
-python3 - "${NETWORK_ACCESS_POLICY_JSON}" "${runner_ipv4}" "${runner_ipv6}" <<'PY'
-import ipaddress
-import json
-import sys
-
-policy = json.loads(sys.argv[1])
-runner_v4 = ipaddress.ip_address(sys.argv[2])
-runner_v6 = ipaddress.ip_address(sys.argv[3])
-
-def in_ranges(ip, ranges):
-    return any(ip in ipaddress.ip_network(raw, strict=False) for raw in ranges)
-
-if not in_ranges(runner_v4, policy["oci_ssh"]["source_ranges"]):
-    raise SystemExit("Runner IPv4 egress is not in network_access_policy.oci_ssh.source_ranges.")
-if not in_ranges(runner_v6, policy["gcp_ssh"]["source_ranges"]):
-    raise SystemExit("Runner IPv6 egress is not in network_access_policy.gcp_ssh.source_ranges.")
-if not (in_ranges(runner_v4, policy["portainer_api"]["source_ranges"]) and in_ranges(runner_v6, policy["portainer_api"]["source_ranges"])):
-    raise SystemExit("Runner egress is not fully covered by network_access_policy.portainer_api.source_ranges.")
-PY
-
-echo "Runner egress policy check passed: IPv4=${runner_ipv4}, IPv6=${runner_ipv6}"
+  echo "${ip}"
+}
 
 should_check_ssh="false"
 if [[ "${RUN_ANSIBLE}" == "true" || "${RUN_HOST_SYNC}" == "true" || "${RUN_CONFIG}" == "true" ]]; then
   should_check_ssh="true"
 fi
 
+should_check_portainer="false"
+if [[ "${RUN_HEALTH}" == "true" || "${RUN_PORTAINER}" == "true" ]]; then
+  should_check_portainer="true"
+fi
+
+required_oci_ssh="false"
+required_gcp_ssh="false"
+declare -a hosts=()
+
 if [[ "${should_check_ssh}" == "true" ]]; then
+  if ! command -v nc >/dev/null 2>&1; then
+    echo "nc (netcat) is required but was not found in PATH."
+    exit 1
+  fi
+
   if [[ ! -f "${INVENTORY_FILE}" ]]; then
     echo "Inventory file not found for SSH preflight: ${INVENTORY_FILE}"
     exit 1
@@ -66,17 +73,75 @@ if [[ "${should_check_ssh}" == "true" ]]; then
 
   for host in "${hosts[@]}"; do
     if [[ "${host}" == *:* ]]; then
+      required_gcp_ssh="true"
+    else
+      required_oci_ssh="true"
+    fi
+  done
+fi
+
+runner_ipv4=""
+runner_ipv6=""
+if [[ "${required_oci_ssh}" == "true" || "${should_check_portainer}" == "true" ]]; then
+  runner_ipv4="$(detect_public_ip 4 "https://api.ipify.org" "IPv4")"
+fi
+if [[ "${required_gcp_ssh}" == "true" || "${should_check_portainer}" == "true" ]]; then
+  runner_ipv6="$(detect_public_ip 6 "https://api64.ipify.org" "IPv6")"
+fi
+
+python3 - "${NETWORK_ACCESS_POLICY_JSON}" "${runner_ipv4}" "${runner_ipv6}" "${required_oci_ssh}" "${required_gcp_ssh}" "${should_check_portainer}" <<'PY'
+import ipaddress
+import json
+import sys
+
+policy = json.loads(sys.argv[1])
+runner_v4 = ipaddress.ip_address(sys.argv[2]) if sys.argv[2] else None
+runner_v6 = ipaddress.ip_address(sys.argv[3]) if sys.argv[3] else None
+need_oci_ssh = sys.argv[4] == "true"
+need_gcp_ssh = sys.argv[5] == "true"
+need_portainer = sys.argv[6] == "true"
+
+def in_ranges(ip, ranges):
+    return any(ip in ipaddress.ip_network(raw, strict=False) for raw in ranges)
+
+if need_oci_ssh:
+    if not policy["oci_ssh"]["enabled"]:
+        raise SystemExit("network_access_policy.oci_ssh.enabled is false but the current run requires IPv4 SSH access.")
+    if runner_v4 is None:
+        raise SystemExit("Runner IPv4 egress could not be resolved for required OCI SSH preflight.")
+    if not in_ranges(runner_v4, policy["oci_ssh"]["source_ranges"]):
+        raise SystemExit("Runner IPv4 egress is not in network_access_policy.oci_ssh.source_ranges.")
+
+if need_gcp_ssh:
+    if not policy["gcp_ssh"]["enabled"]:
+        raise SystemExit("network_access_policy.gcp_ssh.enabled is false but the current run requires IPv6 SSH access.")
+    if runner_v6 is None:
+        raise SystemExit("Runner IPv6 egress could not be resolved for required GCP SSH preflight.")
+    if not in_ranges(runner_v6, policy["gcp_ssh"]["source_ranges"]):
+        raise SystemExit("Runner IPv6 egress is not in network_access_policy.gcp_ssh.source_ranges.")
+
+if need_portainer:
+    if runner_v4 is None or runner_v6 is None:
+        raise SystemExit("Runner dual-stack egress could not be resolved for required Portainer API preflight.")
+    if not in_ranges(runner_v4, policy["portainer_api"]["source_ranges"]):
+        raise SystemExit("Runner IPv4 egress is not in network_access_policy.portainer_api.source_ranges.")
+    if not in_ranges(runner_v6, policy["portainer_api"]["source_ranges"]):
+        raise SystemExit("Runner IPv6 egress is not in network_access_policy.portainer_api.source_ranges.")
+PY
+
+if [[ -n "${runner_ipv4}" || -n "${runner_ipv6}" ]]; then
+  echo "Runner egress policy check passed: IPv4=${runner_ipv4:-n/a}, IPv6=${runner_ipv6:-n/a}"
+fi
+
+if [[ "${should_check_ssh}" == "true" ]]; then
+  for host in "${hosts[@]}"; do
+    if [[ "${host}" == *:* ]]; then
       nc -6 -z -w5 "${host}" 22
     else
       nc -4 -z -w5 "${host}" 22
     fi
   done
   echo "SSH reachability preflight passed for all inventory hosts."
-fi
-
-should_check_portainer="false"
-if [[ "${RUN_HEALTH}" == "true" || "${RUN_PORTAINER}" == "true" ]]; then
-  should_check_portainer="true"
 fi
 
 if [[ "${should_check_portainer}" == "true" ]]; then

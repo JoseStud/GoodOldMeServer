@@ -86,8 +86,18 @@ assert_no_match "orchestrator_redeploy" 'STACKS_CSV' "${ORCHESTRATOR}"
 portainer_needs_config="$(yq '.jobs."portainer-apply".needs' "${ORCHESTRATOR}" | jq -e 'index("config-sync") != null' >/dev/null && echo true || echo false)"
 assert_eq "orchestrator_ordering" "portainer_needs_config_sync" "true" "${portainer_needs_config}"
 
+portainer_needs_stacks_trust="$(yq '.jobs."portainer-apply".needs' "${ORCHESTRATOR}" | jq -e 'index("stacks-sha-trust") != null' >/dev/null && echo true || echo false)"
+assert_eq "orchestrator_ordering" "portainer_needs_stacks_sha_trust" "true" "${portainer_needs_stacks_trust}"
+
 config_needs_portainer="$(yq '.jobs."config-sync".needs' "${ORCHESTRATOR}" | jq -e 'index("portainer-apply") != null' >/dev/null && echo true || echo false)"
 assert_eq "orchestrator_ordering" "config_needs_portainer_apply" "false" "${config_needs_portainer}"
+
+stacks_sha_trust_if="$(yq -r '.jobs."stacks-sha-trust".if' "${ORCHESTRATOR}")"
+if grep -Fq "stage_portainer_apply == 'true'" <<<"${stacks_sha_trust_if}"; then
+  pass "orchestrator_stacks_sha_trust: includes stage_portainer_apply"
+else
+  fail "orchestrator_stacks_sha_trust: missing stage_portainer_apply in if condition"
+fi
 
 reusable_inputs="$(yq '.on.workflow_call.inputs | keys | sort' "${REUSABLE}" | jq -c '.')"
 assert_eq "reusable_contract" "inputs" '["dispatch_payload_json","dispatch_reason","dispatch_schema_version","dispatch_source_repo","dispatch_source_run_id","dispatch_source_sha","dispatch_stacks_sha","push_before","push_sha","reason","run_ansible_bootstrap","run_infra_apply","run_portainer_apply","source_event_name","stacks_sha"]' "${reusable_inputs}"
@@ -100,6 +110,12 @@ assert_no_match "validation_removed_references" 'changed_tf_roots|tfc_workspace_
 
 terraform_roots="$(yq '.jobs."terraform-validate".strategy.matrix.root' "${VALIDATION}" | jq -c '.')"
 assert_eq "validation_fixed_suite" "terraform_roots" '["terraform/infra","terraform/oci","terraform/gcp","terraform/portainer-root","terraform/portainer"]' "${terraform_roots}"
+
+network_preflight_test_run="$(yq -r '.jobs."planner-contract-tests".steps[] | select(.name == "Run network preflight tests") | .run // empty' "${VALIDATION}")"
+assert_eq "validation_fixed_suite" "network_preflight_test_run" "bash .github/scripts/tests/test_preflight_network_access.sh" "${network_preflight_test_run}"
+
+portainer_apply_test_run="$(yq -r '.jobs."planner-contract-tests".steps[] | select(.name == "Run Portainer apply tests") | .run // empty' "${VALIDATION}")"
+assert_eq "validation_fixed_suite" "portainer_apply_test_run" "bash .github/scripts/tests/test_portainer_apply.sh" "${portainer_apply_test_run}"
 
 tfc_directory="$(yq -r '.jobs."tfc-speculative-plan".steps[] | select(.name == "Upload configuration") | .with.directory' "${VALIDATION}")"
 assert_eq "validation_fixed_suite" "tfc_directory" "terraform/infra" "${tfc_directory}"

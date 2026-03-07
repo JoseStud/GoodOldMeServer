@@ -268,7 +268,7 @@ repository_url = "https://github.com/JoseStud/stacks.git"
 
 ## Terraform → Portainer Integration
 
-The `portainer` module reads stack definitions from `stacks/stacks.yaml` (fetched via `stacks_manifest_url`). Compose file paths remain **relative to the stacks repo root** (not `stacks/...` prefixed paths in this infra repo).
+The `portainer` module reads stack definitions from `stacks/stacks.yaml` (fetched via `stacks_manifest_url`). When `stacks_sha` is set, the module derives an immutable raw GitHub URL for `stacks.yaml` and pins Portainer to that exact commit SHA. Compose file paths remain **relative to the stacks repo root** (not `stacks/...` prefixed paths in this infra repo).
 
 > **Boundary:** Ansible deploys the management stack (Portainer + Homarr) and writes `/management` credentials first. The `goodoldme-portainer` workspace depends on those credentials.
 
@@ -304,7 +304,7 @@ Flow:
 1. Push to `main` in stacks repo
 2. `stacks-ci.yml` completes successfully with repo-level validation
 3. The dispatch workflow emits exactly one `stacks-redeploy-intent-v5` event with the minimal `v5` payload
-4. Infra `infra-orchestrator.yml` runs the fixed full-reconcile path: secret validation -> `phase7_runtime_sync` -> `sync-configs` -> Portainer apply -> health-gated webhook redeploy.
+4. Infra `infra-orchestrator.yml` runs the fixed full-reconcile path: secret validation -> `phase7_runtime_sync` -> `sync-configs` -> SHA-pinned Portainer apply -> health-gated webhook redeploy.
 
 ### `stacks-redeploy-intent-v5` Dispatch Contract
 
