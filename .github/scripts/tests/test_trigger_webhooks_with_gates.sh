@@ -122,6 +122,44 @@ chmod +x "${BIN_DIR}/curl"
 
 export PATH="${BIN_DIR}:${PATH}"
 
+full_manifest="${TMP_DIR}/full-reconcile.yaml"
+cat > "${full_manifest}" <<'EOF'
+version: 1
+stacks:
+  management:
+    compose_path: management/docker-compose.yml
+    portainer_managed: false
+    depends_on: []
+  gateway:
+    compose_path: gateway/docker-compose.yml
+    portainer_managed: true
+    depends_on: []
+  auth:
+    compose_path: auth/docker-compose.yml
+    portainer_managed: true
+    depends_on: [gateway]
+  network:
+    compose_path: network/docker-compose.yml
+    portainer_managed: true
+    depends_on: [gateway, auth]
+  observability:
+    compose_path: observability/docker-compose.yml
+    portainer_managed: true
+    depends_on: [gateway, auth]
+  ai-interface:
+    compose_path: media/ai-interface/docker-compose.yml
+    portainer_managed: true
+    depends_on: [gateway, auth]
+  uptime:
+    compose_path: uptime/docker-compose.yml
+    portainer_managed: true
+    depends_on: [gateway, auth]
+  cloud:
+    compose_path: cloud/docker-compose.yml
+    portainer_managed: true
+    depends_on: [gateway, auth]
+EOF
+
 full_log="${TMP_DIR}/full_reconcile.log"
 touch "${full_log}"
 full_out="$(run_case "full_reconcile" env \
@@ -135,7 +173,7 @@ full_out="$(run_case "full_reconcile" env \
   WEBHOOK_URL_AI_INTERFACE=https://hooks/ai-interface \
   WEBHOOK_URL_UPTIME=https://hooks/uptime \
   WEBHOOK_URL_CLOUD=https://hooks/cloud \
-  bash "${SCRIPT}" "${ROOT_DIR}/stacks/stacks.yaml")"
+  bash "${SCRIPT}" "${full_manifest}")"
 
 assert_contains "full_reconcile" "Full reconcile: redeploying all Portainer-managed stacks." "${full_out}"
 

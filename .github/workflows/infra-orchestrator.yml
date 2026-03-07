@@ -6,6 +6,8 @@ on:
     paths:
       - "terraform/**"
       - "ansible/**"
+      - "stacks"
+      - ".gitmodules"
       - ".ansible-lint"
   repository_dispatch:
     types: [stacks-redeploy-intent-v5]

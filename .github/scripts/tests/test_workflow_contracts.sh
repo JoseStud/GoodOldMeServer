@@ -202,6 +202,8 @@ dispatch_types="$(yq '.on.repository_dispatch.types' "${ORCHESTRATOR}" | jq -c '
 assert_eq "orchestrator_dispatch" "types" '["stacks-redeploy-intent-v5"]' "${dispatch_types}"
 assert_eq "orchestrator_dispatch" "workflow_dispatch" "null" "$(yq '.on.workflow_dispatch // null' "${ORCHESTRATOR}" | jq -c '.')"
 assert_eq "orchestrator_dispatch" "workflow_call" "null" "$(yq '.on.workflow_call // null' "${ORCHESTRATOR}" | jq -c '.')"
+assert_trigger_path_contains "orchestrator_dispatch" "${ORCHESTRATOR}" "push" "stacks"
+assert_trigger_path_contains "orchestrator_dispatch" "${ORCHESTRATOR}" "push" ".gitmodules"
 
 reusable_inputs="$(yq '.on.workflow_call.inputs | keys | sort' "${REUSABLE}" | jq -c '.')"
 assert_eq "resolve_plan_contract" "inputs" '["dispatch_payload_json","dispatch_reason","dispatch_schema_version","dispatch_source_repo","dispatch_source_run_id","dispatch_source_sha","dispatch_stacks_sha","push_before","push_sha","source_event_name"]' "${reusable_inputs}"
@@ -251,6 +253,11 @@ explicit_inventory_download_count="$(
 inventory_download_count="$((prepare_ansible_usage_count - prepare_ansible_download_disabled_count + explicit_inventory_download_count))"
 assert_eq "inventory_contract" "download_count" "4" "${inventory_download_count}"
 
+network_policy_needs="$(yq '.jobs."network-policy-sync".needs' "${PRELIGHT}" | jq -c '.')"
+assert_array_contains "preflight_gating" "network_policy_sync.needs" "stacks-sha-trust" "${network_policy_needs}"
+network_policy_if="$(yq -r '.jobs."network-policy-sync".if' "${PRELIGHT}")"
+assert_contains_text "preflight_gating" "network_policy_sync.if" "needs.stacks-sha-trust.result == 'success'" "${network_policy_if}"
+
 portainer_needs="$(yq '.jobs."portainer-apply".needs' "${PORTAINER}" | jq -c '.')"
 assert_array_contains "portainer_gating" "portainer_apply.needs" "config-sync" "${portainer_needs}"
 health_needs="$(yq '.jobs."health-gated-redeploy".needs' "${PORTAINER}" | jq -c '.')"
@@ -271,16 +278,26 @@ assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/sc
 assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_portainer_apply.sh"
 assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_trigger_webhooks_with_gates.sh"
 assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_workflow_contracts.sh"
-assert_trigger_path_contains "planner_validation" "${PLANNER_VALIDATION}" "push" "stacks/**"
-assert_trigger_path_contains "planner_validation" "${PLANNER_VALIDATION}" "pull_request" "stacks/**"
+assert_trigger_path_contains "planner_validation" "${PLANNER_VALIDATION}" "push" "stacks"
+assert_trigger_path_contains "planner_validation" "${PLANNER_VALIDATION}" "push" ".gitmodules"
+assert_trigger_path_contains "planner_validation" "${PLANNER_VALIDATION}" "pull_request" "stacks"
+assert_trigger_path_contains "planner_validation" "${PLANNER_VALIDATION}" "pull_request" ".gitmodules"
 
 terraform_jobs="$(yq '.jobs | keys' "${TERRAFORM_VALIDATION}" | jq -c 'sort')"
 assert_eq "terraform_validation" "jobs" '["terraform-fmt","terraform-validate","tfc-speculative-plan"]' "${terraform_jobs}"
 tfc_directory="$(yq -r '.jobs."tfc-speculative-plan".steps[] | select(.uses == "hashicorp/tfc-workflows-github/actions/upload-configuration@v1.0.0") | .with.directory' "${TERRAFORM_VALIDATION}")"
 assert_eq "terraform_validation" "tfc_directory" "terraform/infra" "${tfc_directory}"
+assert_trigger_path_contains "terraform_validation" "${TERRAFORM_VALIDATION}" "push" "stacks"
+assert_trigger_path_contains "terraform_validation" "${TERRAFORM_VALIDATION}" "push" ".gitmodules"
+assert_trigger_path_contains "terraform_validation" "${TERRAFORM_VALIDATION}" "pull_request" "stacks"
+assert_trigger_path_contains "terraform_validation" "${TERRAFORM_VALIDATION}" "pull_request" ".gitmodules"
 
 ansible_jobs="$(yq '.jobs | keys' "${ANSIBLE_VALIDATION}" | jq -c 'sort')"
 assert_eq "ansible_validation" "jobs" '["ansible-validate"]' "${ansible_jobs}"
+assert_trigger_path_contains "ansible_validation" "${ANSIBLE_VALIDATION}" "push" "stacks"
+assert_trigger_path_contains "ansible_validation" "${ANSIBLE_VALIDATION}" "push" ".gitmodules"
+assert_trigger_path_contains "ansible_validation" "${ANSIBLE_VALIDATION}" "pull_request" "stacks"
+assert_trigger_path_contains "ansible_validation" "${ANSIBLE_VALIDATION}" "pull_request" ".gitmodules"
 
 planner_dispatch_present="$(yq '.on | has("workflow_dispatch")' "${PLANNER_VALIDATION}" | jq -c '.')"
 terraform_dispatch_present="$(yq '.on | has("workflow_dispatch")' "${TERRAFORM_VALIDATION}" | jq -c '.')"
@@ -295,6 +312,10 @@ lint_push_docs="$(yq '.on.push.paths' "${LINT}" | jq -e 'index("docs/**") != nul
 lint_push_readme="$(yq '.on.push.paths' "${LINT}" | jq -e 'index("README.md") != null' >/dev/null && echo true || echo false)"
 assert_eq "lint_paths" "push_docs" "true" "${lint_push_docs}"
 assert_eq "lint_paths" "push_readme" "true" "${lint_push_readme}"
+assert_trigger_path_contains "lint_paths" "${LINT}" "push" "stacks"
+assert_trigger_path_contains "lint_paths" "${LINT}" "push" ".gitmodules"
+assert_trigger_path_contains "lint_paths" "${LINT}" "pull_request" "stacks"
+assert_trigger_path_contains "lint_paths" "${LINT}" "pull_request" ".gitmodules"
 
 echo "PASS=${PASS_COUNT} FAIL=${FAIL_COUNT}"
 

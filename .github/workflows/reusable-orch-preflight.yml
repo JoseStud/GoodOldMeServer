@@ -82,8 +82,8 @@ jobs:
         run: .github/scripts/stages/secret_validation.sh
 
   network-policy-sync:
-    needs: [cloud-runner-guard, secret-validation]
-    if: ${{ fromJSON(inputs.plan_json).meta.stages.stage_network_policy_sync }}
+    needs: [cloud-runner-guard, stacks-sha-trust, secret-validation]
+    if: ${{ always() && fromJSON(inputs.plan_json).meta.stages.stage_network_policy_sync && needs.cloud-runner-guard.result == 'success' && needs.secret-validation.result == 'success' && (needs.stacks-sha-trust.result == 'success' || needs.stacks-sha-trust.result == 'skipped') }}
     runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
     outputs:
       network_access_policy_json: ${{ steps.sync.outputs.network_access_policy_json }}

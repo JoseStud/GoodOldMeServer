@@ -91,6 +91,5 @@ jobs:
           PAYLOAD_SOURCE_RUN_ID: ${{ inputs.dispatch_source_run_id }}
           PAYLOAD_SOURCE_SHA: ${{ inputs.dispatch_source_sha }}
 
-          RESOLVE_STACKS_SHA_FROM_HEAD: "false"
           VALIDATE_DISPATCH_CONTRACT: "false"
         run: .github/scripts/plan/resolve_ci_plan.sh

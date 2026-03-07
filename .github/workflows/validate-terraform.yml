@@ -8,6 +8,8 @@ on:
       - ".github/actions/**"
       - ".github/workflows/**"
       - ".github/scripts/**"
+      - "stacks"
+      - ".gitmodules"
   push:
     paths:
       - "terraform/**"
@@ -15,6 +17,8 @@ on:
       - ".github/actions/**"
       - ".github/workflows/**"
       - ".github/scripts/**"
+      - "stacks"
+      - ".gitmodules"
   workflow_dispatch:
 
 permissions:

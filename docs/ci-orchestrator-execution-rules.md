@@ -15,6 +15,7 @@ Validation is split by concern instead of being bundled into a single workflow:
 - `validate-ansible.yml` runs ansible lint + syntax checks
 
 None of the active validation workflows do path-derived project selection inside the workflow body. Each workflow is triggered only by the path set relevant to its concern.
+Submodule pointer updates are treated as first-class infra changes: the active validation workflows and orchestrator trigger on `stacks` and `.gitmodules`.
 
 ## Orchestrator Push Behavior
 
@@ -24,6 +25,8 @@ The trigger remains coarse in `.github/workflows/infra-orchestrator.yml`:
 
 - `terraform/**`
 - `ansible/**`
+- `stacks`
+- `.gitmodules`
 - `.ansible-lint`
 
 Once triggered, the planner always emits the same push toggles:
@@ -34,12 +37,13 @@ Once triggered, the planner always emits the same push toggles:
 - `run_host_sync=false`
 - `run_config_sync=false`
 - `run_health_redeploy=false`
+- `stacks_sha=$(git rev-parse HEAD:stacks)`
 - `reason=infra-repo-push`
 
 The top-level orchestrator remains thin and stable:
 
 - `resolve-context` emits canonical `plan_json`
-- `preflight` runs cloud-runner-guard, optional stacks SHA trust, secret validation, and network policy sync
+- `preflight` runs cloud-runner-guard, stacks SHA trust, secret validation, and network policy sync
 - `infra` runs infra apply, inventory handover, and SSH network preflight
 - `ansible` runs bootstrap and/or host runtime sync
 - `portainer` runs post-bootstrap checks, Portainer API preflight, optional config sync, Portainer apply, and optional health-gated redeploy
@@ -47,6 +51,8 @@ The top-level orchestrator remains thin and stable:
 ## Dispatch Notes
 
 - `repository_dispatch` accepts only `stacks-redeploy-intent-v5` with `schema_version`, `stacks_sha`, `source_sha`, `source_repo`, `source_run_id`, and `reason=full-reconcile`.
+- `repository_dispatch` payload `stacks_sha` remains authoritative for the stacks reconcile path; `push` resolves `stacks_sha` from `HEAD:stacks`.
 - Every valid stacks dispatch runs the same stacks path: trusted `stacks_sha` -> `phase7_runtime_sync` -> `sync-configs` -> SHA-pinned Portainer apply -> full Portainer-managed redeploy from that applied Git ref.
+- Network policy sync must wait for `stacks-sha-trust` before mutating Terraform Cloud or Infisical allowlists.
 - `infra-orchestrator.yml` accepts only `push` and `repository_dispatch`. It no longer exposes manual `workflow_dispatch` or reusable `workflow_call` entry points.
 - `has_work=true` when any execution toggle is true.

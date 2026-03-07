@@ -9,6 +9,8 @@ on:
       - ".github/actions/**"
       - ".github/workflows/**"
       - ".github/dependabot.yml"
+      - ".gitmodules"
+      - "stacks"
       - "docs/**"
       - "README.md"
   pull_request:
@@ -17,6 +19,8 @@ on:
       - ".github/actions/**"
       - ".github/workflows/**"
       - ".github/dependabot.yml"
+      - ".gitmodules"
+      - "stacks"
       - "docs/**"
       - "README.md"
   workflow_dispatch:

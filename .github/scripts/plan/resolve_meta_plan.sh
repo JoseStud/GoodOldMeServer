@@ -19,7 +19,14 @@ resolve_meta_mode() {
 
   if [[ "${EVENT_NAME}" == "push" ]]; then
     # Push planning no longer does per-path impact detection. Any eligible
-    # infra-repo push runs the full infra-side reconcile path.
+    # infra-repo push runs the full infra-side reconcile path pinned to the
+    # current stacks gitlink recorded in this repo.
+    stacks_sha="$(git rev-parse HEAD:stacks 2>/dev/null || true)"
+    if [[ -z "${stacks_sha}" ]]; then
+      echo "Failed to resolve stacks gitlink SHA from HEAD:stacks for push event."
+      exit 1
+    fi
+
     run_infra_apply="true"
 
     if [[ "${run_infra_apply}" == "true" ]]; then
@@ -63,11 +70,6 @@ resolve_meta_mode() {
     else
       reason="no-op"
     fi
-  fi
-
-  resolve_stacks_sha_from_head="$(to_bool "${RESOLVE_STACKS_SHA_FROM_HEAD:-false}")"
-  if [[ "${resolve_stacks_sha_from_head}" == "true" && -z "${stacks_sha}" ]]; then
-    stacks_sha="$(git rev-parse HEAD:stacks 2>/dev/null || true)"
   fi
 
   if [[ -n "${stacks_sha}" && ! "${stacks_sha}" =~ ^[0-9a-f]{40}$ ]]; then

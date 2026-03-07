@@ -17,6 +17,7 @@ trap 'rm -rf "${TMP_DIR}"' EXIT
 PASS_COUNT=0
 FAIL_COUNT=0
 HEAD_SHA="$(git -C "${ROOT_DIR}" rev-parse HEAD)"
+STACKS_SHA="$(git -C "${ROOT_DIR}" rev-parse HEAD:stacks)"
 
 read_output() {
   local file="$1"
@@ -127,8 +128,8 @@ write_env_file() {
 
 dispatch_payload_json="$(
   jq -cn \
-    --arg stacks_sha "${HEAD_SHA}" \
-    --arg source_sha "${HEAD_SHA}" \
+    --arg stacks_sha "${STACKS_SHA}" \
+    --arg source_sha "${STACKS_SHA}" \
     --arg source_repo "example/stacks" \
     --argjson source_run_id 12345 \
     '{
@@ -151,6 +152,7 @@ assert_eq "meta_push_full_reconcile" "run_infra_apply" "true" "$(read_plan_json_
 assert_eq "meta_push_full_reconcile" "run_ansible_bootstrap" "true" "$(read_plan_json_field "${case1_out}" '.meta.run_ansible_bootstrap')"
 assert_eq "meta_push_full_reconcile" "run_portainer_apply" "true" "$(read_plan_json_field "${case1_out}" '.meta.run_portainer_apply')"
 assert_eq "meta_push_full_reconcile" "run_health_redeploy" "false" "$(read_plan_json_field "${case1_out}" '.meta.run_health_redeploy')"
+assert_eq "meta_push_full_reconcile" "stacks_sha" "${STACKS_SHA}" "$(read_plan_json_field "${case1_out}" '.meta.stacks_sha')"
 assert_eq "meta_push_full_reconcile" "reason" "infra-repo-push" "$(read_plan_json_field "${case1_out}" '.meta.reason')"
 assert_eq "meta_push_full_reconcile" "plan_schema_version" "ci-plan-v1" "$(read_plan_json_field "${case1_out}" '.plan_schema_version')"
 
@@ -159,8 +161,8 @@ case2_env="${TMP_DIR}/case2.env"
 write_env_file "${case2_env}" \
   "PAYLOAD_JSON=${dispatch_payload_json}" \
   "PAYLOAD_SCHEMA_VERSION=v5" \
-  "PAYLOAD_STACKS_SHA=${HEAD_SHA}" \
-  "PAYLOAD_SOURCE_SHA=${HEAD_SHA}" \
+  "PAYLOAD_STACKS_SHA=${STACKS_SHA}" \
+  "PAYLOAD_SOURCE_SHA=${STACKS_SHA}" \
   "PAYLOAD_REASON=full-reconcile" \
   "PAYLOAD_SOURCE_REPO=example/stacks" \
   "PAYLOAD_SOURCE_RUN_ID=12345"
@@ -170,7 +172,7 @@ assert_eq "meta_repo_dispatch_full_reconcile" "run_host_sync" "true" "$(read_pla
 assert_eq "meta_repo_dispatch_full_reconcile" "run_config_sync" "true" "$(read_plan_json_field "${case2_out}" '.meta.run_config_sync')"
 assert_eq "meta_repo_dispatch_full_reconcile" "run_health_redeploy" "true" "$(read_plan_json_field "${case2_out}" '.meta.run_health_redeploy')"
 assert_eq "meta_repo_dispatch_full_reconcile" "reason" "full-reconcile" "$(read_plan_json_field "${case2_out}" '.meta.reason')"
-assert_eq "meta_repo_dispatch_full_reconcile" "stacks_sha" "${HEAD_SHA}" "$(read_plan_json_field "${case2_out}" '.meta.stacks_sha')"
+assert_eq "meta_repo_dispatch_full_reconcile" "stacks_sha" "${STACKS_SHA}" "$(read_plan_json_field "${case2_out}" '.meta.stacks_sha')"
 
 # Case 3: workflow_dispatch is no longer supported for meta mode
 case3_env="${TMP_DIR}/case3.env"
@@ -189,8 +191,8 @@ write_env_file "${case5_env}" \
   "EVENT_NAME=repository_dispatch" \
   "PAYLOAD_JSON=${legacy_payload_json}" \
   "PAYLOAD_SCHEMA_VERSION=v4" \
-  "PAYLOAD_STACKS_SHA=${HEAD_SHA}" \
-  "PAYLOAD_SOURCE_SHA=${HEAD_SHA}" \
+  "PAYLOAD_STACKS_SHA=${STACKS_SHA}" \
+  "PAYLOAD_SOURCE_SHA=${STACKS_SHA}" \
   "PAYLOAD_REASON=full-reconcile" \
   "PAYLOAD_SOURCE_REPO=example/stacks" \
   "PAYLOAD_SOURCE_RUN_ID=12345"
@@ -203,8 +205,8 @@ write_env_file "${case6_env}" \
   "EVENT_NAME=repository_dispatch" \
   "PAYLOAD_JSON=${wrong_reason_payload_json}" \
   "PAYLOAD_SCHEMA_VERSION=v5" \
-  "PAYLOAD_STACKS_SHA=${HEAD_SHA}" \
-  "PAYLOAD_SOURCE_SHA=${HEAD_SHA}" \
+  "PAYLOAD_STACKS_SHA=${STACKS_SHA}" \
+  "PAYLOAD_SOURCE_SHA=${STACKS_SHA}" \
   "PAYLOAD_REASON=manual-refresh" \
   "PAYLOAD_SOURCE_REPO=example/stacks" \
   "PAYLOAD_SOURCE_RUN_ID=12345"
@@ -217,8 +219,8 @@ write_env_file "${case7_env}" \
   "EVENT_NAME=repository_dispatch" \
   "PAYLOAD_JSON=${removed_field_payload_json}" \
   "PAYLOAD_SCHEMA_VERSION=v5" \
-  "PAYLOAD_STACKS_SHA=${HEAD_SHA}" \
-  "PAYLOAD_SOURCE_SHA=${HEAD_SHA}" \
+  "PAYLOAD_STACKS_SHA=${STACKS_SHA}" \
+  "PAYLOAD_SOURCE_SHA=${STACKS_SHA}" \
   "PAYLOAD_REASON=full-reconcile" \
   "PAYLOAD_SOURCE_REPO=example/stacks" \
   "PAYLOAD_SOURCE_RUN_ID=12345"

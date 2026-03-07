@@ -7,14 +7,16 @@ on:
       - ".github/actions/**"
       - ".github/workflows/**"
       - ".github/scripts/**"
-      - "stacks/**"
+      - "stacks"
+      - ".gitmodules"
   push:
     paths:
       - ".github/ci/**"
       - ".github/actions/**"
       - ".github/workflows/**"
       - ".github/scripts/**"
-      - "stacks/**"
+      - "stacks"
+      - ".gitmodules"
   workflow_dispatch:
 
 permissions:

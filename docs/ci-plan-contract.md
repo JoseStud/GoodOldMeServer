@@ -43,7 +43,7 @@ All plans share:
 
 ## Event Semantics
 
-- `push`: any eligible infra-repo push resolves to the same infra-side reconcile path: `run_infra_apply=true`, `run_ansible_bootstrap=true`, `run_portainer_apply=true`, with stacks-only stages remaining disabled.
+- `push`: any eligible infra-repo push resolves to the same infra-side reconcile path: `run_infra_apply=true`, `run_ansible_bootstrap=true`, `run_portainer_apply=true`, with `meta.stacks_sha` resolved from `HEAD:stacks` so the current infra-repo gitlink becomes the Portainer deployment pin.
 - `repository_dispatch`: accepts only `stacks-redeploy-intent-v5` with the minimal `v5` payload and always resolves to the full stacks reconcile path.
 - `resolve_ci_plan.sh` meta mode accepts only `push` and `repository_dispatch`. Any other event name is invalid.
 

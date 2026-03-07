@@ -265,7 +265,7 @@ Every stack is linked to the `JoseStud/stacks` Git repository in Portainer with 
 
 1. Push to `main` in the stacks repo triggers `stacks/.github/workflows/stacks-ci.yml` and `stacks/.github/workflows/stacks-dispatch-redeploy.yml`.
 2. After `stacks-ci.yml` succeeds on `main`, the dispatch workflow emits one `stacks-redeploy-intent-v5` event with the minimal full-reconcile payload.
-3. Infra `infra-orchestrator.yml` treats every valid stacks dispatch as a full reconcile: it validates secrets, runs `phase7_runtime_sync`, runs `sync-configs`, runs `terraform/portainer-root apply` with the trusted `stacks_sha` pinned into both the Portainer Git ref and the fetched `stacks.yaml`, then redeploys every Portainer-managed stack from that applied ref.
+3. Infra `infra-orchestrator.yml` treats every valid stacks dispatch as a full reconcile: it waits for trusted `stacks_sha` checks before preflight mutations, validates secrets, runs `phase7_runtime_sync`, runs `sync-configs`, runs `terraform/portainer-root apply` with the trusted `stacks_sha` pinned into both the Portainer Git ref and the fetched `stacks.yaml`, then redeploys every Portainer-managed stack from that applied ref.
 4. Health gates use manifest dependencies and manifest order: Gateway is checked first (`gateway-health.<BASE_DOMAIN>/healthz`), then Auth, then the remaining Portainer-managed stacks. The Ansible-managed `management` stack stays outside this webhook flow.
 
 **Manual (one-off):**
@@ -305,7 +305,7 @@ Stacks are now managed declaratively via the `portainer` Terraform module. To ad
 
 The webhook URL is written to Infisical `/deployments` as `WEBHOOK_URL_<STACK_NAME>` and appended to the combined `PORTAINER_WEBHOOK_URLS` secret.
 
-If `terraform/portainer-root apply` runs with `stacks_sha` set, that SHA remains the Portainer GitOps source until a later apply changes it. Subsequent webhook redeploys follow the currently applied Git ref; they do not automatically jump back to `main`.
+If `terraform/portainer-root apply` runs with `stacks_sha` set, that SHA remains the Portainer GitOps source until a later apply changes it. On infra-repo push runs, the orchestrator resolves `HEAD:stacks` and pins Portainer to that gitlink, so a submodule bump in this repo becomes the deployment control for Portainer-managed stacks. Subsequent webhook redeploys follow the currently applied Git ref; they do not automatically jump back to `main`.
 
 ### Updating Secrets
 
