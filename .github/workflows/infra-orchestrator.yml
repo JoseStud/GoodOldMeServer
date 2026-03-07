@@ -10,6 +10,13 @@ on:
       - ".gitmodules"
   repository_dispatch:
     types: [stacks-redeploy-intent-v5]
+  workflow_dispatch:
+    inputs:
+      ansible_only:
+        description: "Skip Terraform infra-apply (Ansible + Portainer only, equivalent to ansible-orchestrator path)"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   id-token: write
@@ -28,8 +35,9 @@ jobs:
     uses: ./.github/workflows/reusable-resolve-plan.yml
     with:
       source_event_name: ${{ github.event_name }}
-      push_before: ${{ github.event.before }}
+      push_before: ${{ github.event.before || '' }}
       push_sha: ${{ github.sha }}
+      ansible_only_mode: ${{ github.event_name == 'workflow_dispatch' && inputs.ansible_only || false }}
       dispatch_schema_version: ${{ github.event.client_payload.schema_version }}
       dispatch_payload_json: ${{ toJson(github.event.client_payload) }}
       dispatch_stacks_sha: ${{ github.event.client_payload.stacks_sha }}

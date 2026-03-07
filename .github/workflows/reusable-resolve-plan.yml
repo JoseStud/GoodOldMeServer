@@ -61,11 +61,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Bootstrap jq
-        uses: ./.github/actions/bootstrap-tools
-        with:
-          install_jq: "true"
-
       - name: Validate repository_dispatch payload contract
         if: ${{ inputs.source_event_name == 'repository_dispatch' }}
         env:

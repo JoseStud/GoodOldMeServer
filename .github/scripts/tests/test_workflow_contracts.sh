@@ -260,7 +260,7 @@ assert_line_order "orchestrator_ordering" resolve-context preflight infra ansibl
 
 dispatch_types="$(yq -o=json '.on.repository_dispatch.types' "${ORCHESTRATOR}" | jq -c '.')"
 assert_eq "orchestrator_dispatch" "types" '["stacks-redeploy-intent-v5"]' "${dispatch_types}"
-assert_eq "orchestrator_dispatch" "workflow_dispatch" "null" "$(yq -o=json '.on.workflow_dispatch // null' "${ORCHESTRATOR}" | jq -c '.')"
+assert_eq "orchestrator_dispatch" "workflow_dispatch" "true" "$(yq -o=json '.on | has("workflow_dispatch")' "${ORCHESTRATOR}" | jq -c '.')"
 assert_eq "orchestrator_dispatch" "workflow_call" "null" "$(yq -o=json '.on.workflow_call // null' "${ORCHESTRATOR}" | jq -c '.')"
 assert_trigger_path_contains "orchestrator_dispatch" "${ORCHESTRATOR}" "push" "stacks"
 assert_trigger_path_contains "orchestrator_dispatch" "${ORCHESTRATOR}" "push" ".gitmodules"

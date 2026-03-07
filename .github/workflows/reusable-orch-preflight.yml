@@ -30,14 +30,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Bootstrap jq
-        uses: ./.github/actions/bootstrap-tools
-        with:
-          install_jq: "true"
-
       - name: Validate plan_json is valid JSON
         run: |
           printf '%s' "${{ inputs.plan_json || '{}' }}" > /tmp/plan.json

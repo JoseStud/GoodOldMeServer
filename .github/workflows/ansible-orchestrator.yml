@@ -11,6 +11,7 @@ on:
     paths:
       - "ansible/**"
       - ".ansible-lint"
+  workflow_dispatch: {}
 
 permissions:
   id-token: write

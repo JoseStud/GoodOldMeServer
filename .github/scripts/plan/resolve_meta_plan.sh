@@ -17,7 +17,7 @@ resolve_meta_mode() {
   stacks_sha=""
   reason=""
 
-  if [[ "${EVENT_NAME}" == "push" ]]; then
+  if [[ "${EVENT_NAME}" == "push" || "${EVENT_NAME}" == "workflow_dispatch" ]]; then
     # Push planning no longer does per-path impact detection. Any eligible
     # infra-repo push runs the full infra-side reconcile path pinned to the
     # current stacks gitlink recorded in this repo.
@@ -47,7 +47,11 @@ resolve_meta_mode() {
       run_portainer_apply="true"
     fi
 
-    reason="infra-repo-push"
+    if [[ "${EVENT_NAME}" == "push" ]]; then
+      reason="infra-repo-push"
+    else
+      reason="manual-dispatch"
+    fi
   elif [[ "${EVENT_NAME}" == "repository_dispatch" ]]; then
     if [[ "$(to_bool "${VALIDATE_DISPATCH_CONTRACT:-true}")" == "true" ]]; then
       .github/scripts/plan/validate_dispatch_payload.sh "meta"
@@ -63,7 +67,7 @@ resolve_meta_mode() {
     run_config_sync="true"
     run_health_redeploy="true"
   else
-    echo "Unsupported EVENT_NAME for meta mode: ${EVENT_NAME}. Expected push or repository_dispatch."
+    echo "Unsupported EVENT_NAME for meta mode: ${EVENT_NAME}. Expected push, workflow_dispatch, or repository_dispatch."
     exit 1
   fi
 

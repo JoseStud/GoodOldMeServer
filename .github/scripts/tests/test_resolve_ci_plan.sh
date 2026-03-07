@@ -174,10 +174,16 @@ assert_eq "meta_repo_dispatch_full_reconcile" "run_health_redeploy" "true" "$(re
 assert_eq "meta_repo_dispatch_full_reconcile" "reason" "full-reconcile" "$(read_plan_json_field "${case2_out}" '.meta.reason')"
 assert_eq "meta_repo_dispatch_full_reconcile" "stacks_sha" "${STACKS_SHA}" "$(read_plan_json_field "${case2_out}" '.meta.stacks_sha')"
 
-# Case 3: workflow_dispatch is no longer supported for meta mode
+# Case 3: workflow_dispatch runs full infra-side reconcile (reason=manual-dispatch)
 case3_env="${TMP_DIR}/case3.env"
 write_env_file "${case3_env}"
-run_plan_case_expect_fail "meta_workflow_dispatch_removed" "meta" "workflow_dispatch" "${case3_env}"
+case3_out="$(run_plan_case "meta_workflow_dispatch_full_reconcile" "meta" "workflow_dispatch" "${case3_env}")"
+assert_eq "meta_workflow_dispatch_full_reconcile" "run_infra_apply" "true" "$(read_plan_json_field "${case3_out}" '.meta.run_infra_apply')"
+assert_eq "meta_workflow_dispatch_full_reconcile" "run_ansible_bootstrap" "true" "$(read_plan_json_field "${case3_out}" '.meta.run_ansible_bootstrap')"
+assert_eq "meta_workflow_dispatch_full_reconcile" "run_portainer_apply" "true" "$(read_plan_json_field "${case3_out}" '.meta.run_portainer_apply')"
+assert_eq "meta_workflow_dispatch_full_reconcile" "run_health_redeploy" "false" "$(read_plan_json_field "${case3_out}" '.meta.run_health_redeploy')"
+assert_eq "meta_workflow_dispatch_full_reconcile" "stacks_sha" "${STACKS_SHA}" "$(read_plan_json_field "${case3_out}" '.meta.stacks_sha')"
+assert_eq "meta_workflow_dispatch_full_reconcile" "reason" "manual-dispatch" "$(read_plan_json_field "${case3_out}" '.meta.reason')"
 
 # Case 4: iac mode is retired
 case4_env="${TMP_DIR}/case4.env"

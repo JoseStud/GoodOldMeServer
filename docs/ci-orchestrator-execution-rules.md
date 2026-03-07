@@ -71,5 +71,5 @@ The stacks SHA trust gate is an architectural boundary between the public stacks
 - `repository_dispatch` payload `stacks_sha` remains authoritative for the stacks reconcile path; `push` resolves `stacks_sha` from `HEAD:stacks`.
 - Every valid stacks dispatch runs the same stacks path: trusted `stacks_sha` -> `phase7_runtime_sync` -> `sync-configs` -> SHA-pinned Portainer apply -> full Portainer-managed redeploy from that applied Git ref.
 - Network policy sync must wait for `stacks-sha-trust` before mutating Terraform Cloud or Infisical allowlists.
-- `infra-orchestrator.yml` accepts only `push` and `repository_dispatch`. It no longer exposes manual `workflow_dispatch` or reusable `workflow_call` entry points.
+- `infra-orchestrator.yml` accepts `push`, `repository_dispatch`, and `workflow_dispatch`. Manual dispatch (`workflow_dispatch`) resolves `stacks_sha` from `HEAD:stacks` and runs the full infra-side reconcile path (`reason=manual-dispatch`). An optional boolean input `ansible_only` skips TFC infra-apply (equivalent to `ansible-orchestrator.yml` behavior). `ansible-orchestrator.yml` also accepts `workflow_dispatch` with no inputs (always runs in ansible-only mode). Neither orchestrator exposes a reusable `workflow_call` entry point.
 - `has_work=true` when any execution toggle is true.
