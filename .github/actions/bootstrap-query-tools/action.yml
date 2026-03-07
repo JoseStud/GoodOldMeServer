@@ -1,0 +1,59 @@
+name: Bootstrap Query Tools
+description: Install pinned query tools (jq, yq) via the shared bootstrap script.
+
+inputs:
+  tool_versions_lock_path:
+    description: Path to lock file with tool versions and checksums.
+    required: false
+    default: .github/ci/tool-versions.lock
+
+  install_jq:
+    description: Install jq.
+    required: false
+    default: "false"
+  install_yq:
+    description: Install yq.
+    required: false
+    default: "false"
+
+  jq_version:
+    description: jq version override.
+    required: false
+    default: ""
+  yq_version:
+    description: yq version override (without leading v).
+    required: false
+    default: ""
+
+  jq_sha256:
+    description: jq SHA256 override.
+    required: false
+    default: ""
+  yq_sha256:
+    description: yq SHA256 override.
+    required: false
+    default: ""
+
+outputs:
+  jq_version_installed:
+    description: Installed jq version.
+    value: ${{ steps.bootstrap.outputs.jq_version_installed }}
+  yq_version_installed:
+    description: Installed yq version.
+    value: ${{ steps.bootstrap.outputs.yq_version_installed }}
+
+runs:
+  using: composite
+  steps:
+    - name: Bootstrap query tools
+      id: bootstrap
+      shell: bash
+      env:
+        INPUT_TOOL_VERSIONS_LOCK_PATH: ${{ inputs.tool_versions_lock_path }}
+        INPUT_INSTALL_JQ: ${{ inputs.install_jq }}
+        INPUT_INSTALL_YQ: ${{ inputs.install_yq }}
+        INPUT_JQ_VERSION: ${{ inputs.jq_version }}
+        INPUT_YQ_VERSION: ${{ inputs.yq_version }}
+        INPUT_JQ_SHA256: ${{ inputs.jq_sha256 }}
+        INPUT_YQ_SHA256: ${{ inputs.yq_sha256 }}
+      run: "${{ github.action_path }}/../bootstrap-tools/bootstrap-tools.sh"

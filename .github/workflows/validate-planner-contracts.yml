@@ -44,6 +44,11 @@ jobs:
         with:
           install_jq: "true"
           install_yq: "true"
+        - name: Bootstrap jq runner
+          uses: ./.github/actions/bootstrap-query-tools
+          with:
+            install_jq: "true"
+            install_yq: "true"
 
       - name: Run resolver contract tests
         run: bash .github/scripts/tests/test_resolve_ci_plan.sh
@@ -96,6 +101,14 @@ jobs:
           install_yq: "true"
           install_netcat: "true"
           install_infisical: "true"
+        - name: Bootstrap all pinned tools
+          id: bootstrap
+          uses: ./.github/actions/bootstrap-query-tools
+          with:
+            install_jq: "true"
+            install_yq: "true"
+            install_netcat: "true"
+            install_infisical: "true"
 
       - name: Assert pinned versions
         run: |
@@ -117,6 +130,11 @@ jobs:
         with:
           install_jq: "true"
           install_yq: "true"
+        - name: Bootstrap jq runner
+          uses: ./.github/actions/bootstrap-query-tools
+          with:
+            install_jq: "true"
+            install_yq: "true"
 
       - name: Run workflow contract tests
         run: bash .github/scripts/tests/test_workflow_contracts.sh
@@ -132,6 +150,10 @@ jobs:
         uses: ./.github/actions/bootstrap-tools
         with:
           install_jq: "true"
+        - name: Bootstrap jq runner
+          uses: ./.github/actions/bootstrap-query-tools
+          with:
+            install_jq: "true"
 
       - name: Resolve current stacks gitlink SHA
         id: stacks-gitlink

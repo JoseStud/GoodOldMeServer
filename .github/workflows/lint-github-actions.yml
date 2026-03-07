@@ -72,7 +72,7 @@ jobs:
           python -m pip install "yamllint==${{ steps.lock.outputs.yamllint_version }}"
 
       - name: Bootstrap yq
-        uses: ./.github/actions/bootstrap-tools
+        uses: ./.github/actions/bootstrap-query-tools
         with:
           install_yq: "true"
 
