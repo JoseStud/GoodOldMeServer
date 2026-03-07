@@ -70,7 +70,7 @@ jobs:
         run: .github/scripts/tfc/render_inventory_from_tfc_outputs.sh "${TFC_WORKSPACE_INFRA}" "${OUTPUT_FILE}"
 
       - name: Upload CI inventory artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: inventory-ci
           path: inventory-ci.yml
