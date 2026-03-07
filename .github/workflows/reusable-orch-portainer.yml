@@ -20,7 +20,6 @@ permissions:
 env:
   INFISICAL_SSH_CA_ID: ${{ vars.INFISICAL_SSH_CA_ID }}
   SHADOW_MODE: ${{ vars.SHADOW_MODE || 'false' }}
-  TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
   TFC_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
   TFC_WORKSPACE_PORTAINER: ${{ vars.TFC_WORKSPACE_PORTAINER || 'goodoldme-portainer' }}
 
@@ -122,8 +121,6 @@ jobs:
     if: ${{ !cancelled() && fromJSON(inputs.plan_json || '{}').meta.stages.stage_portainer_apply && (needs.post-bootstrap-secret-check.result == 'success' || needs.post-bootstrap-secret-check.result == 'skipped') && needs.portainer-api-preflight.result == 'success' && (needs.config-sync.result == 'success' || needs.config-sync.result == 'skipped') }}
     runs-on: ${{ inputs.runner_label }}
     env:
-      TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TOKEN }}
-      INFISICAL_TOKEN: ${{ secrets.INFISICAL_TOKEN }}
       TF_VAR_infisical_project_id: ${{ vars.INFISICAL_PROJECT_ID }}
       STACKS_SHA: ${{ fromJSON(inputs.plan_json || '{}').meta.stacks_sha }}
 
@@ -140,6 +137,9 @@ jobs:
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform plan/apply (local operations mode)
+        env:
+          TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TOKEN }}
+          INFISICAL_TOKEN: ${{ secrets.INFISICAL_TOKEN }}
         run: .github/scripts/stages/portainer_apply.sh
 
   health-gated-redeploy:

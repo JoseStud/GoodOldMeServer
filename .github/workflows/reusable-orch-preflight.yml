@@ -22,7 +22,6 @@ env:
   INFISICAL_MACHINE_IDENTITY_ID: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
   INFISICAL_PROJECT_ID: ${{ vars.INFISICAL_PROJECT_ID }}
   SHADOW_MODE: ${{ vars.SHADOW_MODE || 'false' }}
-  TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
   TFC_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
   TFC_WORKSPACE_INFRA: ${{ vars.TFC_WORKSPACE_INFRA || 'goodoldme-infra' }}
 
@@ -130,4 +129,6 @@ jobs:
 
       - name: Build and sync network policy
         id: sync
+        env:
+          TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
         run: .github/scripts/stages/network_policy_sync.sh

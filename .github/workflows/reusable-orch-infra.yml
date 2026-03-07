@@ -18,7 +18,6 @@ permissions:
 
 env:
   SHADOW_MODE: ${{ vars.SHADOW_MODE || 'false' }}
-  TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
   TFC_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
   TFC_WORKSPACE_INFRA: ${{ vars.TFC_WORKSPACE_INFRA || 'goodoldme-infra' }}
 
@@ -57,6 +56,8 @@ jobs:
       - name: Upload infra configuration
         id: upload
         uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.0.0
+        env:
+          TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
         with:
           workspace: ${{ env.TFC_WORKSPACE_INFRA }}
           directory: terraform/infra
@@ -64,6 +65,8 @@ jobs:
       - name: Create Terraform Cloud Infra Run
         id: tfc-run
         uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.0
+        env:
+          TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
         with:
           workspace: ${{ env.TFC_WORKSPACE_INFRA }}
           configuration_version: ${{ steps.upload.outputs.configuration_version_id }}
@@ -75,6 +78,7 @@ jobs:
           TFC_WORKSPACE: ${{ env.TFC_WORKSPACE_INFRA }}
           WAIT_TIMEOUT_SECONDS: ${{ vars.TFC_INFRA_APPLY_WAIT_TIMEOUT_SECONDS || '7200' }}
           POLL_INTERVAL_SECONDS: ${{ vars.TFC_PLAN_POLL_INTERVAL_SECONDS || '10' }}
+          TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
         run: .github/scripts/stages/infra_apply.sh
 
   inventory-handover:
@@ -95,6 +99,7 @@ jobs:
         env:
           OUTPUT_FILE: inventory-ci.yml
           TFC_WORKSPACE_INFRA: ${{ env.TFC_WORKSPACE_INFRA }}
+          TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
         run: .github/scripts/tfc/render_inventory_from_tfc_outputs.sh "${TFC_WORKSPACE_INFRA}" "${OUTPUT_FILE}"
 
       - name: Upload CI inventory artifact
