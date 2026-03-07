@@ -8,6 +8,8 @@ Welcome to the centralized GoodOldMeServer documentation. This repository manage
 4. **Infrastructure Orchestrator** — GitHub Actions orchestrates secret validation, Terraform apply, inventory handover, Ansible bootstrap, Portainer apply, and health-gated webhook redeploys
 
 > **Note:** The `stacks/` directory is a [Git submodule](https://github.com/JoseStud/stacks) tracking the `main` branch. Submodule update PRs are managed by Dependabot (`gitsubmodule` ecosystem).
+>
+> **Trust boundary:** The infrastructure orchestrator consumes a `stacks_sha` only after `.github/scripts/stacks/verify_trusted_stacks_sha.sh` confirms that SHA is on the trusted `main` lineage and that every observed GitHub CI signal on the stacks repo commit is green. This boundary separates public stacks-repo CI evidence from the private runner stages that mutate Terraform Cloud, sync `/opt/stacks`, pin Portainer Git refs, and trigger redeploys.
 
 ## Start Here (Cutover + Ownership)
 
@@ -111,7 +113,7 @@ flowchart TD
 - [**CI Orchestrator Execution Rules**](ci-orchestrator-execution-rules.md) — Push and dispatch planning rules for the active infrastructure workflows. Last reviewed: `2026-03-07`.
 - [**CI Plan Contract**](ci-plan-contract.md) — Canonical `plan_json` schema and direct workflow-consumption rules. Last reviewed: `2026-03-07`.
 - [**GitHub Actions Workflows**](github-actions-workflows.md) — Public workflow entry points plus reusable stage workflow inputs, outputs, and artifacts. Last reviewed: `2026-03-07`.
-- [**Workflow Lifecycle**](workflow-lifecycle.md) — Active workflows, retired legacy workflows, and replacement entry points. Last reviewed: `2026-03-07`.
+- [**Workflow Lifecycle**](workflow-lifecycle.md) — Current workflow entry points and reusable stage workflows. Last reviewed: `2026-03-07`.
 - [**Infrastructure Orchestrator Cutover Checklist**](meta-pipeline-cutover-checklist.md) — Minimal first-run checklist (GitHub vars/secrets + Terraform workspace vars). Last reviewed: `2026-03-07`.
 - [**Deployment Runbook**](deployment-runbook.md) — Stack ordering, deploy commands, verification, rollback procedures. Last reviewed: `2026-03-07`.
 - [**Backup Strategy**](backup-strategy.md) — OCI Silver backup policy, GlusterFS redundancy, application-level backups, recovery. Last reviewed: `2026-03-07`.

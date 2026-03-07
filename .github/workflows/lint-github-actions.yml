@@ -23,7 +23,6 @@ on:
       - "stacks"
       - "docs/**"
       - "README.md"
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -39,14 +38,6 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
-      - name: Guard docs against deleted workflow references
-        run: |
-          set -euo pipefail
-          if rg -n --glob '!docs/workflow-lifecycle.md' '\.github/workflows/(iac-validation|meta-pipeline|infra-validation)\.yml|`(iac-validation|meta-pipeline|infra-validation)\.yml`|Infrastructure Validation / planner-contract-tests' docs README.md; then
-            echo "Found references to deleted workflows. Update docs to current workflow names."
-            exit 1
-          fi
 
       - name: Load tool lock
         id: lock

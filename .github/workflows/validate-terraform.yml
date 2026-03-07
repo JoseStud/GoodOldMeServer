@@ -19,7 +19,6 @@ on:
       - ".github/scripts/**"
       - "stacks"
       - ".gitmodules"
-  workflow_dispatch:
 
 permissions:
   contents: read

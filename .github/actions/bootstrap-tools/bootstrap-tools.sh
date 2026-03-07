@@ -35,6 +35,42 @@ write_output() {
   echo "${key}=${value}" >> "${GITHUB_OUTPUT}"
 }
 
+download_file() {
+  local label="$1"
+  local url="$2"
+  local dest="$3"
+
+  if ! curl -fsSL "${url}" -o "${dest}"; then
+    echo "Failed to download ${label} from ${url}"
+    exit 1
+  fi
+}
+
+verify_sha256() {
+  local label="$1"
+  local expected="$2"
+  local file="$3"
+  local actual
+
+  actual="$(sha256sum "${file}" | awk '{print $1}')"
+  if [[ "${actual}" != "${expected}" ]]; then
+    echo "${label} checksum mismatch"
+    echo "Expected: ${expected}"
+    echo "Actual:   ${actual}"
+    echo "Source:   ${file}"
+    exit 1
+  fi
+}
+
+apt_download() {
+  local package_spec="$1"
+
+  if ! apt-get download "${package_spec}"; then
+    echo "Failed to download apt package: ${package_spec}"
+    exit 1
+  fi
+}
+
 LOCK_PATH="${INPUT_TOOL_VERSIONS_LOCK_PATH:-.github/ci/tool-versions.lock}"
 if [[ ! -f "${LOCK_PATH}" ]]; then
   echo "Lock file not found: ${LOCK_PATH}"
@@ -68,8 +104,8 @@ install_jq() {
   url="https://github.com/jqlang/jq/releases/download/jq-${version}/jq-linux-amd64"
   tmp="$(mktemp)"
 
-  curl -fsSL "${url}" -o "${tmp}"
-  echo "${sha}  ${tmp}" | sha256sum -c -
+  download_file "jq ${version}" "${url}" "${tmp}"
+  verify_sha256 "jq ${version}" "${sha}" "${tmp}"
   sudo install -m 0755 "${tmp}" /usr/local/bin/jq
   rm -f "${tmp}"
 
@@ -86,8 +122,8 @@ install_yq() {
   url="https://github.com/mikefarah/yq/releases/download/v${version}/yq_linux_amd64"
   tmp="$(mktemp)"
 
-  curl -fsSL "${url}" -o "${tmp}"
-  echo "${sha}  ${tmp}" | sha256sum -c -
+  download_file "yq ${version}" "${url}" "${tmp}"
+  verify_sha256 "yq ${version}" "${sha}" "${tmp}"
   sudo install -m 0755 "${tmp}" /usr/local/bin/yq
   rm -f "${tmp}"
 
@@ -102,11 +138,11 @@ install_netcat() {
   require_value "netcat_deb_sha256" "${sha}"
 
   ensure_apt_updated
-  apt-get download "netcat-openbsd=${version}"
+  apt_download "netcat-openbsd=${version}"
   deb_file="$(ls -1 netcat-openbsd_*_amd64.deb | head -n1)"
   require_value "netcat-openbsd deb artifact" "${deb_file}"
 
-  echo "${sha}  ${deb_file}" | sha256sum -c -
+  verify_sha256 "netcat-openbsd ${version}" "${sha}" "${deb_file}"
   sudo apt-get install -y "./${deb_file}"
   rm -f "${deb_file}"
 
@@ -137,11 +173,11 @@ install_infisical() {
   apt_updated="false"
   ensure_apt_updated
 
-  apt-get download "infisical-core=${version}"
+  apt_download "infisical-core=${version}"
   deb_file="$(ls -1 infisical-core_*_amd64.deb | head -n1)"
   require_value "infisical-core deb artifact" "${deb_file}"
 
-  echo "${sha}  ${deb_file}" | sha256sum -c -
+  verify_sha256 "infisical-core ${version}" "${sha}" "${deb_file}"
   sudo apt-get install -y "./${deb_file}"
   rm -f "${deb_file}"
 

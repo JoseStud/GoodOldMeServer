@@ -7,10 +7,10 @@ This page maps each active workflow to its responsibility, trigger or caller, an
 | Workflow | Trigger | Responsibility | Inputs | Outputs / Artifacts |
 |----------|---------|----------------|--------|---------------------|
 | `.github/workflows/infra-orchestrator.yml` | `push` on infra paths plus `stacks` gitlink / `.gitmodules`, `repository_dispatch` `stacks-redeploy-intent-v5` | Thin top-level DAG: `resolve-context` -> `preflight` -> `infra` -> `ansible` -> `portainer` | GitHub event payload | Consumes and forwards `plan_json`; exposes no additional public outputs |
-| `.github/workflows/validate-planner-contracts.yml` | `push`, `pull_request`, `workflow_dispatch` | Planner shell tests, workflow contract tests, bootstrap-tools smoke, trusted stacks SHA verification | Repository contents on workflow/action/script changes plus `stacks` gitlink / `.gitmodules` updates | CI check results only |
-| `.github/workflows/validate-terraform.yml` | `push`, `pull_request`, `workflow_dispatch` | `terraform fmt`, multi-root `terraform validate`, fixed speculative Terraform Cloud run | Repository contents on Terraform/workflow/script changes plus `stacks` gitlink / `.gitmodules` updates | CI check results only |
-| `.github/workflows/validate-ansible.yml` | `push`, `pull_request`, `workflow_dispatch` | `ansible-lint` and syntax validation | Repository contents on Ansible/workflow/script changes plus `stacks` gitlink / `.gitmodules` updates | CI check results only |
-| `.github/workflows/lint-github-actions.yml` | `push`, `pull_request`, `workflow_dispatch` | actionlint, yamllint, YAML parse checks, stale-doc guard for retired workflow references | Workflow/action/doc files plus `stacks` gitlink / `.gitmodules` updates | CI check results only |
+| `.github/workflows/validate-planner-contracts.yml` | `push`, `pull_request` | Planner shell tests, workflow contract tests, bootstrap-tools smoke, trusted stacks SHA verification | Repository contents on workflow/action/script changes plus `stacks` gitlink / `.gitmodules` updates | CI check results only |
+| `.github/workflows/validate-terraform.yml` | `push`, `pull_request` | `terraform fmt`, multi-root `terraform validate`, fixed speculative Terraform Cloud run | Repository contents on Terraform/workflow/script changes plus `stacks` gitlink / `.gitmodules` updates | CI check results only |
+| `.github/workflows/validate-ansible.yml` | `push`, `pull_request` | `ansible-lint` and syntax validation | Repository contents on Ansible/workflow/script changes plus `stacks` gitlink / `.gitmodules` updates | CI check results only |
+| `.github/workflows/lint-github-actions.yml` | `push`, `pull_request` | actionlint, yamllint, YAML parse checks | Workflow/action/doc files plus `stacks` gitlink / `.gitmodules` updates | CI check results only |
 
 ## Internal Reusable Workflows
 
@@ -26,6 +26,7 @@ This page maps each active workflow to its responsibility, trigger or caller, an
 
 - `plan_json` is the only planner contract shared across workflow boundaries.
 - Active `push` and `repository_dispatch` paths both carry a non-empty `meta.stacks_sha`.
+- Trusted stacks SHA verification uses observed GitHub CI signals from the stacks repo commit: GitHub Checks and legacy commit statuses. Either signal channel may be absent, but every channel that exists must be green and at least one must exist.
 - `inventory-ci` remains the artifact name for the rendered CI inventory.
 - `inventory-ci.yml` remains the rendered file path within the artifact and on runners.
 - Reusable orchestrator workflows rely on `secrets: inherit`; caller workflow-level `env` is not propagated.

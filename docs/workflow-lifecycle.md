@@ -1,6 +1,6 @@
 # Workflow Lifecycle
 
-This document defines which GitHub Actions workflows are active and which legacy workflows are retired.
+This document defines the current GitHub Actions workflow set.
 
 ## Active Workflows
 
@@ -15,10 +15,4 @@ This document defines which GitHub Actions workflows are active and which legacy
 | `.github/workflows/reusable-orch-infra.yml` | Internal reusable stage for infra apply, inventory handover, and SSH network preflight. |
 | `.github/workflows/reusable-orch-ansible.yml` | Internal reusable stage for Ansible bootstrap and host runtime sync. |
 | `.github/workflows/reusable-orch-portainer.yml` | Internal reusable stage for Portainer prechecks, config sync, Portainer apply, and health-gated redeploy. |
-| `.github/workflows/lint-github-actions.yml` | Lints workflow YAML, composite actions, and docs references to retired workflow names. |
-
-## Retired Workflows
-
-| Workflow | Replacement |
-|----------|-------------|
-| `.github/workflows/infra-validation.yml` | Split into `validate-planner-contracts.yml`, `validate-terraform.yml`, and `validate-ansible.yml`. |
+| `.github/workflows/lint-github-actions.yml` | Lints workflow YAML, composite actions, and repository docs/config parseability. |

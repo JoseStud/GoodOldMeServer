@@ -48,6 +48,16 @@ The top-level orchestrator remains thin and stable:
 - `ansible` runs bootstrap and/or host runtime sync
 - `portainer` runs post-bootstrap checks, Portainer API preflight, optional config sync, Portainer apply, and optional health-gated redeploy
 
+## Trusted `stacks_sha` Boundary
+
+The stacks SHA trust gate is an architectural boundary between the public stacks repo CI surface and the private infra execution surface.
+
+- `validate-planner-contracts.yml` verifies the current `HEAD:stacks` gitlink, and `reusable-orch-preflight.yml` verifies any dispatch or push `meta.stacks_sha` before later stages are allowed to consume it.
+- Trust has two parts: the SHA must still be on the stacks repo `main` lineage, and every observed GitHub CI signal on that commit must be green.
+- The observed CI signals are the GitHub Checks API (`check-runs`) and the legacy commit-status API (`combined status`). Either channel may be absent; if a channel exists it must be ready, and at least one channel must exist.
+- `network-policy-sync` must wait for this trust gate before mutating Terraform Cloud or Infisical allowlists.
+- `phase7_runtime_sync`, `sync-configs`, `terraform/portainer-root` SHA pinning, and the health-gated Portainer webhook redeploy all inherit this boundary because they consume the verified `meta.stacks_sha`.
+
 ## Dispatch Notes
 
 - `repository_dispatch` accepts only `stacks-redeploy-intent-v5` with `schema_version`, `stacks_sha`, `source_sha`, `source_repo`, `source_run_id`, and `reason=full-reconcile`.

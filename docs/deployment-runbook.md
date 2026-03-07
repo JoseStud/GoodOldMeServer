@@ -268,6 +268,13 @@ Every stack is linked to the `JoseStud/stacks` Git repository in Portainer with 
 3. Infra `infra-orchestrator.yml` treats every valid stacks dispatch as a full reconcile: it waits for trusted `stacks_sha` checks before preflight mutations, validates secrets, runs `phase7_runtime_sync`, runs `sync-configs`, runs `terraform/portainer-root apply` with the trusted `stacks_sha` pinned into both the Portainer Git ref and the fetched `stacks.yaml`, then redeploys every Portainer-managed stack from that applied ref.
 4. Health gates use manifest dependencies and manifest order: Gateway is checked first (`gateway-health.<BASE_DOMAIN>/healthz`), then Auth, then the remaining Portainer-managed stacks. The Ansible-managed `management` stack stays outside this webhook flow.
 
+Trusted `stacks_sha` means:
+
+- the commit is still on the stacks repo `main` lineage, and
+- every observed GitHub CI signal on that commit is green.
+
+The orchestrator observes both GitHub Checks and legacy commit statuses. A stacks repo that publishes only check runs, only legacy statuses, or both can pass; the gate fails only when no CI signal exists yet, a signal is still pending, or any observed signal fails.
+
 **Manual (one-off):**
 
 ```bash

@@ -102,6 +102,13 @@ fi
 echo "Main ancestry result: pass (compare status: ${ancestry_status})"
 
 fetch_check_and_status() {
+  local check_runs_base_url check_runs_all check_runs_total page page_url page_total page_runs
+  local page_count current_count check_runs_bad check_runs_bad_count check_runs_hard_fail_count
+  local combined_status_url combined_state combined_status_context_count
+  local check_runs_signal_present check_runs_ready check_runs_hard_failure
+  local statuses_signal_present statuses_ready statuses_hard_failure
+  local signal_channels_present ready hard_failure
+
   check_runs_base_url="${GITHUB_API_URL%/}/repos/${STACKS_REPO_OWNER}/${STACKS_REPO_NAME}/commits/${STACKS_SHA}/check-runs"
   check_runs_all='[]'
   check_runs_total=0
@@ -152,35 +159,97 @@ fetch_check_and_status() {
   fi
 
   combined_state="$(jq -r '.state // "unknown"' <<<"${API_BODY}")"
+  combined_status_context_count="$(jq -r '(.statuses // []) | length' <<<"${API_BODY}")"
 
-  echo "Check-runs totals: total=${check_runs_total}, violating=${check_runs_bad_count}"
+  check_runs_signal_present="false"
+  if (( check_runs_total > 0 )); then
+    check_runs_signal_present="true"
+  fi
+
+  check_runs_ready="false"
+  if [[ "${check_runs_signal_present}" == "true" ]] && (( check_runs_bad_count == 0 )); then
+    check_runs_ready="true"
+  fi
+
+  check_runs_hard_failure="false"
+  if (( check_runs_hard_fail_count > 0 )); then
+    check_runs_hard_failure="true"
+  fi
+
+  statuses_signal_present="false"
+  if (( combined_status_context_count > 0 )); then
+    statuses_signal_present="true"
+  fi
+
+  statuses_ready="false"
+  statuses_hard_failure="false"
+  if [[ "${statuses_signal_present}" == "true" ]]; then
+    case "${combined_state}" in
+      success)
+        statuses_ready="true"
+        ;;
+      failure|error)
+        statuses_hard_failure="true"
+        ;;
+    esac
+  fi
+
+  signal_channels_present=0
+  if [[ "${check_runs_signal_present}" == "true" ]]; then
+    signal_channels_present=$((signal_channels_present + 1))
+  fi
+  if [[ "${statuses_signal_present}" == "true" ]]; then
+    signal_channels_present=$((signal_channels_present + 1))
+  fi
+
+  echo "Check-runs signal: present=${check_runs_signal_present}, total=${check_runs_total}, violating=${check_runs_bad_count}, ready=${check_runs_ready}"
   if (( check_runs_bad_count > 0 )); then
     echo "Failing or incomplete check-runs:"
     jq -r '.[] | "- \(.name) [status=\(.status), conclusion=\(.conclusion)]"' <<<"${check_runs_bad}"
   fi
-  echo "Combined status state: ${combined_state}"
+  echo "Legacy commit status signal: present=${statuses_signal_present}, contexts=${combined_status_context_count}, state=${combined_state}, ready=${statuses_ready}"
+  if (( signal_channels_present == 0 )); then
+    echo "No CI trust signals found yet. At least one green GitHub Checks or legacy commit status signal is required."
+  fi
 
   hard_failure="false"
-  if (( check_runs_hard_fail_count > 0 )); then
-    hard_failure="true"
-  fi
-  if [[ "${combined_state}" == "failure" || "${combined_state}" == "error" ]]; then
+  if [[ "${check_runs_hard_failure}" == "true" || "${statuses_hard_failure}" == "true" ]]; then
     hard_failure="true"
   fi
 
   ready="false"
-  if (( check_runs_total > 0 )) && (( check_runs_bad_count == 0 )) && [[ "${combined_state}" == "success" ]]; then
+  if (( signal_channels_present > 0 )) && [[ "${hard_failure}" == "false" ]]; then
     ready="true"
+    if [[ "${check_runs_signal_present}" == "true" && "${check_runs_ready}" != "true" ]]; then
+      ready="false"
+    fi
+    if [[ "${statuses_signal_present}" == "true" && "${statuses_ready}" != "true" ]]; then
+      ready="false"
+    fi
   fi
 
   echo "ready=${ready}"
   echo "hard_failure=${hard_failure}"
 }
 
+result_field() {
+  local field_name="$1"
+  local result_blob="$2"
+
+  awk -F= -v key="${field_name}" '$1 == key {print $2}' <<<"${result_blob}" | tail -n1
+}
+
+print_result_logs() {
+  local result_blob="$1"
+
+  awk '!/^(ready|hard_failure)=/' <<<"${result_blob}"
+}
+
 if [[ "${WAIT_FOR_SUCCESS}" != "true" ]]; then
   result="$(fetch_check_and_status)" || exit 1
-  ready="$(awk -F= '$1=="ready" {print $2}' <<<"${result}" | tail -n1)"
-  hard_failure="$(awk -F= '$1=="hard_failure" {print $2}' <<<"${result}" | tail -n1)"
+  print_result_logs "${result}"
+  ready="$(result_field "ready" "${result}")"
+  hard_failure="$(result_field "hard_failure" "${result}")"
 
   if [[ "${ready}" == "true" && "${hard_failure}" == "false" ]]; then
     echo "Stacks SHA '${STACKS_SHA}' is trusted."
@@ -195,9 +264,10 @@ deadline=$((SECONDS + WAIT_TIMEOUT_SECONDS))
 while (( SECONDS < deadline )); do
   echo "Polling stacks trust checks for ${STACKS_SHA}..."
   result="$(fetch_check_and_status)" || exit 1
+  print_result_logs "${result}"
 
-  ready="$(awk -F= '$1=="ready" {print $2}' <<<"${result}" | tail -n1)"
-  hard_failure="$(awk -F= '$1=="hard_failure" {print $2}' <<<"${result}" | tail -n1)"
+  ready="$(result_field "ready" "${result}")"
+  hard_failure="$(result_field "hard_failure" "${result}")"
 
   if [[ "${ready}" == "true" ]]; then
     echo "Stacks SHA '${STACKS_SHA}' is trusted."

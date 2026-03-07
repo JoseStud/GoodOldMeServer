@@ -214,6 +214,7 @@ Most workflow stage scripts authenticate to Infisical via **OIDC**. The Terrafor
 | Variable | How to Get | Used By |
 |----------|-----------|---------|
 | `INFISICAL_TOKEN` (infra repo) | Infisical service token with project read/write scope for automation paths | Required by any local/runner-side `terraform/portainer-root` apply, including `.github/workflows/reusable-orch-portainer.yml` |
+| `STACKS_REPO_READ_TOKEN` (infra repo) | Fine-grained GitHub token on the stacks repo with `contents:read`, `checks:read`, and `statuses:read` | Trusted stacks SHA verification in `.github/scripts/stacks/verify_trusted_stacks_sha.sh` before preflight/network-policy/runtime-sync/Portainer stages consume `meta.stacks_sha` |
 | `INFRA_REPO_DISPATCH_TOKEN` (stacks repo) | Fine-grained GitHub token with `contents:write` + repository dispatch access on this infra repo | `stacks/.github/workflows/stacks-dispatch-redeploy.yml` dispatches `stacks-redeploy-intent-v5` to this repo |
 | `INFISICAL_AGENT_CLIENT_ID` (infra repo) | Universal Auth client id for the host-side Infisical Agent | Ansible `phase7_runtime_sync` and local Portainer webhook helper |
 | `INFISICAL_AGENT_CLIENT_SECRET` (infra repo) | Universal Auth client secret for the host-side Infisical Agent | Ansible `phase7_runtime_sync` and local Portainer webhook helper |
