@@ -21,17 +21,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Bootstrap yq
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_yq: "true"
+
       - name: Check for newer Ansible Galaxy collection versions
         run: |
           set -euo pipefail
 
           REQUIREMENTS_FILE="ansible/requirements.yml"
           GALAXY_API="https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/index"
-
-          if ! command -v yq >/dev/null 2>&1; then
-            sudo wget -q "https://github.com/mikefarah/yq/releases/download/v4.52.1/yq_linux_amd64" -O /usr/local/bin/yq
-            sudo chmod +x /usr/local/bin/yq
-          fi
 
           outdated=0
 
