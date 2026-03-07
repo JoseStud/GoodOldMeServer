@@ -44,7 +44,7 @@ These wrappers under `.github/scripts/stages/` are invoked directly by the reusa
 - CI scripts are intended to run inside GitHub Actions jobs with explicit env contracts.
 - Reusable planner workflow: `.github/workflows/reusable-resolve-plan.yml` centralizes push/dispatch normalization and `.github/scripts/plan/resolve_ci_plan.sh` execution for the orchestrator workflow. Meta-mode plan construction is delegated internally to `.github/scripts/plan/resolve_meta_plan.sh`.
 - Reusable stage workflows: `.github/workflows/reusable-orch-*.yml` consume `plan_json` directly with `fromJSON(...)` and do not rely on a scalar projection layer.
-- Composite bootstrap action: `.github/actions/bootstrap-tools/action.yml` installs pinned `jq`/`yq`/`nc`/`infisical` versions from `.github/ci/tool-versions.lock` with SHA256 verification and optional Infisical OIDC login.
+- Composite bootstrap action: `.github/actions/bootstrap-tools/action.yml` installs pinned `jq`/`yq`/`nc`/`gomplate` versions from `.github/ci/tool-versions.lock` with SHA256 verification and runs `setup-infisical-cli@v1` with optional OIDC login.
 
 ### Stacks Sub-Repo Tool Pinning
 

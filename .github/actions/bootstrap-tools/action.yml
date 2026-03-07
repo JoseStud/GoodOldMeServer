@@ -95,7 +95,7 @@ outputs:
     value: ${{ steps.bootstrap.outputs.nc_version_installed }}
   infisical_version_installed:
     description: Installed infisical version.
-    value: ${{ steps.bootstrap.outputs.infisical_version_installed }}
+    value: ${{ steps.infisical_version.outputs.infisical_version_installed }}
   gomplate_version_installed:
     description: Installed gomplate version.
     value: ${{ steps.bootstrap.outputs.gomplate_version_installed }}
@@ -111,9 +111,9 @@ runs:
         INPUT_INSTALL_JQ: ${{ inputs.install_jq }}
         INPUT_INSTALL_YQ: ${{ inputs.install_yq }}
         INPUT_INSTALL_NETCAT: ${{ inputs.install_netcat }}
-        INPUT_INSTALL_INFISICAL: ${{ inputs.install_infisical }}
+        INPUT_INSTALL_INFISICAL: "false"
         INPUT_INSTALL_GOMPLATE: ${{ inputs.install_gomplate }}
-        INPUT_INFISICAL_LOGIN: ${{ inputs.infisical_login }}
+        INPUT_INFISICAL_LOGIN: "false"
         INPUT_JQ_VERSION: ${{ inputs.jq_version }}
         INPUT_YQ_VERSION: ${{ inputs.yq_version }}
         INPUT_NETCAT_DEB_VERSION: ${{ inputs.netcat_deb_version }}
@@ -127,3 +127,26 @@ runs:
         INPUT_INFISICAL_MACHINE_IDENTITY_ID: ${{ inputs.infisical_machine_identity_id }}
         INPUT_INFISICAL_DOMAIN: ${{ inputs.infisical_domain }}
       run: "${{ github.action_path }}/bootstrap-tools.sh"
+
+    - name: Install Infisical
+      if: inputs.install_infisical == 'true'
+      uses: Infisical/setup-infisical-cli@v1
+      with:
+        version: ${{ inputs.infisical_version != '' && inputs.infisical_version || 'latest' }}
+
+    - name: Set Infisical Version Output
+      id: infisical_version
+      if: inputs.install_infisical == 'true' || inputs.infisical_login == 'true'
+      shell: bash
+      run: |
+        if command -v infisical >/dev/null 2>&1; then
+          VERSION="$(infisical --version)"
+          echo "infisical_version_installed=${VERSION}" >> "${GITHUB_OUTPUT}"
+        else
+          echo "infisical_version_installed=" >> "${GITHUB_OUTPUT}"
+        fi
+
+    - name: Run Infisical Login
+      if: inputs.infisical_login == 'true'
+      shell: bash
+      run: infisical login --method=oidc --oidc-client-id="${{ inputs.infisical_machine_identity_id }}" --domain="${{ inputs.infisical_domain }}"

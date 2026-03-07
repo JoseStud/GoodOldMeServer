@@ -83,9 +83,7 @@ source "${LOCK_PATH}"
 INSTALL_JQ="$(bool "${INPUT_INSTALL_JQ:-false}")"
 INSTALL_YQ="$(bool "${INPUT_INSTALL_YQ:-false}")"
 INSTALL_NETCAT="$(bool "${INPUT_INSTALL_NETCAT:-false}")"
-INSTALL_INFISICAL="$(bool "${INPUT_INSTALL_INFISICAL:-false}")"
 INSTALL_GOMPLATE="$(bool "${INPUT_INSTALL_GOMPLATE:-false}")"
-INFISICAL_LOGIN="$(bool "${INPUT_INFISICAL_LOGIN:-false}")"
 
 apt_updated="false"
 ensure_apt_updated() {
@@ -150,50 +148,6 @@ install_netcat() {
   write_output "nc_version_installed" "$(dpkg-query -W -f='${Version}' netcat-openbsd)"
 }
 
-setup_infisical_repo() {
-  if [[ -f /etc/apt/sources.list.d/infisical-core.list ]]; then
-    return
-  fi
-
-  sudo mkdir -p /usr/share/keyrings
-  curl -1sLf "https://dl.cloudsmith.io/public/infisical/infisical-core/gpg.2BA6932366A755776.gpg" \
-    | sudo gpg --dearmor -o /usr/share/keyrings/infisical-core-archive-keyring.gpg
-
-  printf "deb [signed-by=/usr/share/keyrings/infisical-core-archive-keyring.gpg] https://dl.cloudsmith.io/public/infisical/infisical-core/deb/debian any-version main\n" \
-    | sudo tee /etc/apt/sources.list.d/infisical-core.list >/dev/null
-}
-
-install_infisical() {
-  local version sha deb_file
-  version="$(resolve_value "${INPUT_INFISICAL_VERSION:-}" "${INFISICAL_VERSION:-}")"
-  sha="$(resolve_value "${INPUT_INFISICAL_SHA256:-}" "${INFISICAL_SHA256:-}")"
-  require_value "infisical_version" "${version}"
-  require_value "infisical_sha256" "${sha}"
-
-  setup_infisical_repo
-  apt_updated="false"
-  ensure_apt_updated
-
-  apt_download "infisical-core=${version}"
-  deb_file="$(ls -1 infisical-core_*_amd64.deb | head -n1)"
-  require_value "infisical-core deb artifact" "${deb_file}"
-
-  verify_sha256 "infisical-core ${version}" "${sha}" "${deb_file}"
-  sudo apt-get install -y "./${deb_file}"
-  rm -f "${deb_file}"
-
-  write_output "infisical_version_installed" "$(dpkg-query -W -f='${Version}' infisical-core)"
-}
-
-run_infisical_login() {
-  local machine_id domain
-  machine_id="${INPUT_INFISICAL_MACHINE_IDENTITY_ID:-}"
-  domain="${INPUT_INFISICAL_DOMAIN:-https://app.infisical.com}"
-  require_value "infisical_machine_identity_id" "${machine_id}"
-
-  infisical login --method=oidc --oidc-client-id="${machine_id}" --domain="${domain}"
-}
-
 install_gomplate() {
   local version sha url tmp
   version="$(resolve_value "${INPUT_GOMPLATE_VERSION:-}" "${GOMPLATE_VERSION:-}")"
@@ -215,7 +169,6 @@ install_gomplate() {
 write_output "jq_version_installed" ""
 write_output "yq_version_installed" ""
 write_output "nc_version_installed" ""
-write_output "infisical_version_installed" ""
 write_output "gomplate_version_installed" ""
 
 if [[ "${INSTALL_JQ}" == "true" ]]; then
@@ -230,18 +183,6 @@ if [[ "${INSTALL_NETCAT}" == "true" ]]; then
   install_netcat
 fi
 
-if [[ "${INSTALL_INFISICAL}" == "true" ]]; then
-  install_infisical
-fi
-
 if [[ "${INSTALL_GOMPLATE}" == "true" ]]; then
   install_gomplate
-fi
-
-if [[ "${INFISICAL_LOGIN}" == "true" ]]; then
-  if [[ "${INSTALL_INFISICAL}" != "true" ]] && ! command -v infisical >/dev/null 2>&1; then
-    echo "infisical_login=true requires install_infisical=true or an existing infisical CLI in PATH."
-    exit 1
-  fi
-  run_infisical_login
 fi
