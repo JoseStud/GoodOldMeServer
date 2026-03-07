@@ -7,22 +7,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../lib/workflow_common.sh"
 
-derive_meta_push_flags_from_changed_files() {
-  local changed_files="$1"
-
-  if grep -Eq '^terraform/(infra|oci|gcp)/' <<<"${changed_files}"; then
-    run_infra_apply="true"
-  fi
-
-  if grep -Eq '(^ansible/|^\.ansible-lint$)' <<<"${changed_files}"; then
-    run_ansible_bootstrap="true"
-  fi
-
-  if grep -Eq '^(terraform/portainer/|terraform/portainer-root/)' <<<"${changed_files}"; then
-    run_portainer_apply="true"
-  fi
-}
-
 resolve_meta_mode() {
   run_infra_apply="false"
   run_ansible_bootstrap="false"
@@ -34,22 +18,9 @@ resolve_meta_mode() {
   reason=""
 
   if [[ "${EVENT_NAME}" == "push" ]]; then
-    before="${PUSH_BEFORE:-}"
-    after="${PUSH_SHA:-${GITHUB_SHA:-HEAD}}"
-
-    if [[ "${before}" =~ ^0+$ || -z "${before}" ]]; then
-      changed_files="$(git show --name-only --pretty='' "${after}" || true)"
-    else
-      changed_files="$(git diff --name-only "${before}" "${after}" || true)"
-    fi
-
-    if [[ "$(to_bool "${META_FILTER_APPLIED:-false}")" == "true" ]]; then
-      run_infra_apply="$(to_bool "${META_INFRA_CHANGED:-false}")"
-      run_ansible_bootstrap="$(to_bool "${META_ANSIBLE_CHANGED:-false}")"
-      run_portainer_apply="$(to_bool "${META_PORTAINER_CHANGED:-false}")"
-    else
-      derive_meta_push_flags_from_changed_files "${changed_files}"
-    fi
+    # Push planning no longer does per-path impact detection. Any eligible
+    # infra-repo push runs the full infra-side reconcile path.
+    run_infra_apply="true"
 
     if [[ "${run_infra_apply}" == "true" ]]; then
       run_ansible_bootstrap="true"

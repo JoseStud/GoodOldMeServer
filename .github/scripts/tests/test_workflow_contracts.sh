@@ -6,7 +6,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 ORCHESTRATOR="${ROOT_DIR}/.github/workflows/infra-orchestrator.yml"
 VALIDATION="${ROOT_DIR}/.github/workflows/infra-validation.yml"
 LINT="${ROOT_DIR}/.github/workflows/lint-github-actions.yml"
-REUSABLE="${ROOT_DIR}/.github/workflows/reusable-detect-impact-resolve-plan.yml"
+REUSABLE="${ROOT_DIR}/.github/workflows/reusable-resolve-plan.yml"
+PATH_FILTERS="${ROOT_DIR}/.github/ci/path-filters.yml"
 
 if ! command -v yq >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
   echo "SKIP: yq and jq are required to run workflow contract tests."
@@ -65,6 +66,32 @@ assert_no_match() {
   fi
 }
 
+assert_contains_text() {
+  local case_name="$1"
+  local key="$2"
+  local needle="$3"
+  local haystack="$4"
+
+  if grep -Fq -- "${needle}" <<<"${haystack}"; then
+    pass "${case_name}: ${key} contains '${needle}'"
+  else
+    fail "${case_name}: ${key} missing '${needle}'"
+  fi
+}
+
+assert_not_contains_text() {
+  local case_name="$1"
+  local key="$2"
+  local needle="$3"
+  local haystack="$4"
+
+  if grep -Fq -- "${needle}" <<<"${haystack}"; then
+    fail "${case_name}: ${key} unexpectedly contains '${needle}'"
+  else
+    pass "${case_name}: ${key} excludes '${needle}'"
+  fi
+}
+
 dispatch_types="$(yq '.on.repository_dispatch.types' "${ORCHESTRATOR}" | jq -c '.')"
 assert_eq "orchestrator_dispatch" "types" '["stacks-redeploy-intent-v5"]' "${dispatch_types}"
 
@@ -95,12 +122,93 @@ reusable_inputs="$(yq '.on.workflow_call.inputs | keys | sort' "${REUSABLE}" | j
 assert_eq "reusable_contract" "inputs" '["dispatch_payload_json","dispatch_reason","dispatch_schema_version","dispatch_source_repo","dispatch_source_run_id","dispatch_source_sha","dispatch_stacks_sha","push_before","push_sha","source_event_name"]' "${reusable_inputs}"
 assert_absent "reusable_contract" '.on.workflow_call.inputs.plan_mode' "${REUSABLE}"
 assert_absent "reusable_contract" '.on.workflow_call.inputs.changed_stacks_json' "${REUSABLE}"
+assert_no_match "reusable_contract" 'dorny/paths-filter|META_FILTER_APPLIED|META_INFRA_CHANGED|META_ANSIBLE_CHANGED|META_PORTAINER_CHANGED|path-filters\.yml|Detect changed paths' "${REUSABLE}"
+
+if [[ -e "${PATH_FILTERS}" ]]; then
+  fail "reusable_contract: expected ${PATH_FILTERS} to be absent"
+else
+  pass "reusable_contract: ${PATH_FILTERS} absent"
+fi
 
 validation_dispatch_present="$(yq '.on | has("workflow_dispatch")' "${VALIDATION}" | jq -c '.')"
 assert_eq "validation_dispatch" "present" "true" "${validation_dispatch_present}"
 
 lint_dispatch_present="$(yq '.on | has("workflow_dispatch")' "${LINT}" | jq -c '.')"
 assert_eq "lint_dispatch" "present" "true" "${lint_dispatch_present}"
+
+lint_push_docs="$(yq '.on.push.paths' "${LINT}" | jq -e 'index("docs/**") != null' >/dev/null && echo true || echo false)"
+assert_eq "lint_paths" "push_docs" "true" "${lint_push_docs}"
+
+lint_push_readme="$(yq '.on.push.paths' "${LINT}" | jq -e 'index("README.md") != null' >/dev/null && echo true || echo false)"
+assert_eq "lint_paths" "push_readme" "true" "${lint_push_readme}"
+
+lint_pr_docs="$(yq '.on.pull_request.paths' "${LINT}" | jq -e 'index("docs/**") != null' >/dev/null && echo true || echo false)"
+assert_eq "lint_paths" "pull_request_docs" "true" "${lint_pr_docs}"
+
+lint_pr_readme="$(yq '.on.pull_request.paths' "${LINT}" | jq -e 'index("README.md") != null' >/dev/null && echo true || echo false)"
+assert_eq "lint_paths" "pull_request_readme" "true" "${lint_pr_readme}"
+
+inventory_handover_if="$(yq -r '.jobs."inventory-handover".if' "${ORCHESTRATOR}")"
+assert_contains_text "orchestrator_guards" "inventory_handover_if" "needs.secret-validation.result == 'success'" "${inventory_handover_if}"
+
+network_preflight_if="$(yq -r '.jobs."network-preflight-ssh".if' "${ORCHESTRATOR}")"
+assert_contains_text "orchestrator_guards" "network_preflight_if" "needs.cloud-runner-guard.result == 'success'" "${network_preflight_if}"
+assert_contains_text "orchestrator_guards" "network_preflight_if" "needs.secret-validation.result == 'success'" "${network_preflight_if}"
+assert_contains_text "orchestrator_guards" "network_preflight_if" "needs.network-policy-sync.result == 'success'" "${network_preflight_if}"
+assert_contains_text "orchestrator_guards" "network_preflight_if" "needs.inventory-handover.result == 'success'" "${network_preflight_if}"
+assert_not_contains_text "orchestrator_guards" "network_preflight_if" "always()" "${network_preflight_if}"
+
+host_sync_if="$(yq -r '.jobs."host-sync".if' "${ORCHESTRATOR}")"
+assert_contains_text "orchestrator_guards" "host_sync_if" "needs.stacks-sha-trust.result == 'success'" "${host_sync_if}"
+assert_contains_text "orchestrator_guards" "host_sync_if" "needs.secret-validation.result == 'success'" "${host_sync_if}"
+assert_contains_text "orchestrator_guards" "host_sync_if" "needs.cloud-runner-guard.result == 'success'" "${host_sync_if}"
+assert_contains_text "orchestrator_guards" "host_sync_if" "needs.network-preflight-ssh.result == 'success'" "${host_sync_if}"
+assert_contains_text "orchestrator_guards" "host_sync_if" "needs.inventory-handover.result == 'success'" "${host_sync_if}"
+assert_not_contains_text "orchestrator_guards" "host_sync_if" "always()" "${host_sync_if}"
+
+post_bootstrap_if="$(yq -r '.jobs."post-bootstrap-secret-check".if' "${ORCHESTRATOR}")"
+assert_contains_text "orchestrator_guards" "post_bootstrap_if" "needs.secret-validation.result == 'success'" "${post_bootstrap_if}"
+assert_contains_text "orchestrator_guards" "post_bootstrap_if" "needs.project-plan.outputs.stage_ansible_bootstrap != 'true'" "${post_bootstrap_if}"
+
+portainer_preflight_if="$(yq -r '.jobs."portainer-api-preflight".if' "${ORCHESTRATOR}")"
+assert_contains_text "orchestrator_guards" "portainer_preflight_if" "needs.cloud-runner-guard.result == 'success'" "${portainer_preflight_if}"
+assert_contains_text "orchestrator_guards" "portainer_preflight_if" "needs.secret-validation.result == 'success'" "${portainer_preflight_if}"
+assert_contains_text "orchestrator_guards" "portainer_preflight_if" "needs.network-policy-sync.result == 'success'" "${portainer_preflight_if}"
+assert_contains_text "orchestrator_guards" "portainer_preflight_if" "needs.post-bootstrap-secret-check.result == 'success'" "${portainer_preflight_if}"
+assert_contains_text "orchestrator_guards" "portainer_preflight_if" "needs.project-plan.outputs.stage_host_sync != 'true'" "${portainer_preflight_if}"
+assert_not_contains_text "orchestrator_guards" "portainer_preflight_if" "needs.post-bootstrap-secret-check.result == 'skipped'" "${portainer_preflight_if}"
+
+portainer_apply_if="$(yq -r '.jobs."portainer-apply".if' "${ORCHESTRATOR}")"
+assert_contains_text "orchestrator_guards" "portainer_apply_if" "needs.secret-validation.result == 'success'" "${portainer_apply_if}"
+assert_contains_text "orchestrator_guards" "portainer_apply_if" "needs.cloud-runner-guard.result == 'success'" "${portainer_apply_if}"
+assert_contains_text "orchestrator_guards" "portainer_apply_if" "needs.network-policy-sync.result == 'success'" "${portainer_apply_if}"
+assert_contains_text "orchestrator_guards" "portainer_apply_if" "needs.post-bootstrap-secret-check.result == 'success'" "${portainer_apply_if}"
+assert_contains_text "orchestrator_guards" "portainer_apply_if" "needs.portainer-api-preflight.result == 'success'" "${portainer_apply_if}"
+assert_contains_text "orchestrator_guards" "portainer_apply_if" "needs.project-plan.outputs.stacks_sha == ''" "${portainer_apply_if}"
+assert_contains_text "orchestrator_guards" "portainer_apply_if" "needs.project-plan.outputs.stage_config_sync != 'true'" "${portainer_apply_if}"
+assert_not_contains_text "orchestrator_guards" "portainer_apply_if" "needs.portainer-api-preflight.result == 'skipped'" "${portainer_apply_if}"
+
+config_sync_if="$(yq -r '.jobs."config-sync".if' "${ORCHESTRATOR}")"
+assert_contains_text "orchestrator_guards" "config_sync_if" "needs.stacks-sha-trust.result == 'success'" "${config_sync_if}"
+assert_contains_text "orchestrator_guards" "config_sync_if" "needs.secret-validation.result == 'success'" "${config_sync_if}"
+assert_contains_text "orchestrator_guards" "config_sync_if" "needs.cloud-runner-guard.result == 'success'" "${config_sync_if}"
+assert_contains_text "orchestrator_guards" "config_sync_if" "needs.network-preflight-ssh.result == 'success'" "${config_sync_if}"
+assert_contains_text "orchestrator_guards" "config_sync_if" "needs.inventory-handover.result == 'success'" "${config_sync_if}"
+assert_contains_text "orchestrator_guards" "config_sync_if" "needs.host-sync.result == 'success'" "${config_sync_if}"
+assert_not_contains_text "orchestrator_guards" "config_sync_if" "always()" "${config_sync_if}"
+
+health_redeploy_if="$(yq -r '.jobs."health-gated-redeploy".if' "${ORCHESTRATOR}")"
+assert_contains_text "orchestrator_guards" "health_redeploy_if" "needs.stacks-sha-trust.result == 'success'" "${health_redeploy_if}"
+assert_contains_text "orchestrator_guards" "health_redeploy_if" "needs.secret-validation.result == 'success'" "${health_redeploy_if}"
+assert_contains_text "orchestrator_guards" "health_redeploy_if" "needs.cloud-runner-guard.result == 'success'" "${health_redeploy_if}"
+assert_contains_text "orchestrator_guards" "health_redeploy_if" "needs.host-sync.result == 'success'" "${health_redeploy_if}"
+assert_contains_text "orchestrator_guards" "health_redeploy_if" "needs.portainer-api-preflight.result == 'success'" "${health_redeploy_if}"
+assert_contains_text "orchestrator_guards" "health_redeploy_if" "needs.portainer-apply.result == 'success'" "${health_redeploy_if}"
+assert_contains_text "orchestrator_guards" "health_redeploy_if" "needs.config-sync.result == 'success'" "${health_redeploy_if}"
+assert_not_contains_text "orchestrator_guards" "health_redeploy_if" "always()" "${health_redeploy_if}"
+assert_not_contains_text "orchestrator_guards" "health_redeploy_if" "needs.portainer-api-preflight.result == 'skipped'" "${health_redeploy_if}"
+assert_not_contains_text "orchestrator_guards" "health_redeploy_if" "needs.portainer-apply.result == 'skipped'" "${health_redeploy_if}"
+assert_not_contains_text "orchestrator_guards" "health_redeploy_if" "needs.config-sync.result == 'skipped'" "${health_redeploy_if}"
 
 assert_absent "validation_jobs_removed" '.jobs."detect-impact"' "${VALIDATION}"
 assert_absent "validation_jobs_removed" '.jobs."project-impact"' "${VALIDATION}"

@@ -9,12 +9,16 @@ on:
       - ".github/actions/**"
       - ".github/workflows/**"
       - ".github/dependabot.yml"
+      - "docs/**"
+      - "README.md"
   pull_request:
     paths:
       - ".github/ci/**"
       - ".github/actions/**"
       - ".github/workflows/**"
       - ".github/dependabot.yml"
+      - "docs/**"
+      - "README.md"
   workflow_dispatch:
 
 permissions:

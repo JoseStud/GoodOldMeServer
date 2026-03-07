@@ -1,4 +1,4 @@
-name: Reusable Detect Impact Resolve Plan
+name: Reusable Resolve Plan
 
 on:
   workflow_call:
@@ -60,24 +60,6 @@ jobs:
         with:
           install_jq: "true"
 
-      - name: Load path filters config
-        id: filter-config
-        run: |
-          {
-            echo "filters<<EOF"
-            cat .github/ci/path-filters.yml
-            echo "EOF"
-          } >> "${GITHUB_OUTPUT}"
-
-      - name: Detect changed paths
-        id: path-filter
-        if: ${{ inputs.source_event_name == 'push' && inputs.push_before != '0000000000000000000000000000000000000000' }}
-        uses: dorny/paths-filter@v3
-        with:
-          filters: ${{ steps.filter-config.outputs.filters }}
-          base: ${{ inputs.push_before }}
-          ref: ${{ inputs.push_sha }}
-
       - name: Validate repository_dispatch payload contract
         if: ${{ inputs.source_event_name == 'repository_dispatch' }}
         env:
@@ -108,11 +90,6 @@ jobs:
           PAYLOAD_SOURCE_REPO: ${{ inputs.dispatch_source_repo }}
           PAYLOAD_SOURCE_RUN_ID: ${{ inputs.dispatch_source_run_id }}
           PAYLOAD_SOURCE_SHA: ${{ inputs.dispatch_source_sha }}
-
-          META_FILTER_APPLIED: ${{ steps.path-filter.outcome == 'success' && 'true' || 'false' }}
-          META_INFRA_CHANGED: ${{ steps.path-filter.outputs.meta_infra }}
-          META_ANSIBLE_CHANGED: ${{ steps.path-filter.outputs.meta_ansible }}
-          META_PORTAINER_CHANGED: ${{ steps.path-filter.outputs.meta_portainer }}
 
           RESOLVE_STACKS_SHA_FROM_HEAD: "false"
           VALIDATE_DISPATCH_CONTRACT: "false"

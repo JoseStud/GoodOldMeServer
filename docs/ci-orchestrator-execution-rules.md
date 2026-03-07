@@ -1,16 +1,14 @@
-# CI Impact Rules
+# CI Orchestrator Execution Rules
 
 This document is the single source of truth for:
 
 - fixed-suite validation in `.github/workflows/infra-validation.yml`
-- infra-repo push detection in `.github/workflows/infra-orchestrator.yml`
-- path-filter use inside `.github/workflows/reusable-detect-impact-resolve-plan.yml`
-
-Rules are defined in `.github/ci/path-filters.yml` and consumed via `dorny/paths-filter@v3`.
+- infra-repo push execution in `.github/workflows/infra-orchestrator.yml`
+- canonical planning in `.github/workflows/reusable-resolve-plan.yml`
 
 ## Validation Behavior
 
-`infra-validation.yml` no longer uses impact-derived project selection. On every relevant trigger it always runs:
+`infra-validation.yml` does not do path-derived project selection. On every relevant trigger it always runs:
 
 - planner contract tests
 - bootstrap-tools smoke
@@ -20,15 +18,25 @@ Rules are defined in `.github/ci/path-filters.yml` and consumed via `dorny/paths
 - ansible lint + syntax
 - trusted stacks SHA verification for the current `HEAD:stacks` gitlink
 
-## Orchestrator Push Filters
+## Orchestrator Push Behavior
 
-Only the `meta_*` filters remain, and they apply only to infra-repo `push` planning.
+Impact detection has been removed from the active planner. Any eligible infra-repo `push` now resolves to the same infra-side reconcile path.
 
-| Filter key | Paths | Resolver output | Derived execution |
-|------------|-------|-----------------|-------------------|
-| `meta_infra` | `terraform/infra/**`, `terraform/oci/**`, `terraform/gcp/**` | Initial signal `run_infra_apply=true` | Implies `run_ansible_bootstrap=true` and `run_portainer_apply=true` |
-| `meta_ansible` | `ansible/**`, `.ansible-lint` | Initial signal `run_ansible_bootstrap=true` | Implies `run_portainer_apply=true` |
-| `meta_portainer` | `terraform/portainer/**`, `terraform/portainer-root/**` | Initial signal `run_portainer_apply=true` | Enables local Portainer Terraform apply path and related preflights |
+The trigger remains coarse in `.github/workflows/infra-orchestrator.yml`:
+
+- `terraform/**`
+- `ansible/**`
+- `.ansible-lint`
+
+Once triggered, the planner always emits the same push toggles:
+
+- `run_infra_apply=true`
+- `run_ansible_bootstrap=true`
+- `run_portainer_apply=true`
+- `run_host_sync=false`
+- `run_config_sync=false`
+- `run_health_redeploy=false`
+- `reason=infra-repo-push`
 
 ## Dispatch Notes
 

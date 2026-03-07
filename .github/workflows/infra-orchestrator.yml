@@ -30,7 +30,7 @@ concurrency:
 
 jobs:
   resolve-context:
-    uses: ./.github/workflows/reusable-detect-impact-resolve-plan.yml
+    uses: ./.github/workflows/reusable-resolve-plan.yml
     with:
       source_event_name: ${{ github.event_name }}
       push_before: ${{ github.event.before }}
@@ -219,7 +219,7 @@ jobs:
 
   inventory-handover:
     needs: [project-plan, secret-validation, infra-apply]
-    if: ${{ always() && needs.project-plan.outputs.stage_inventory_handover == 'true' && (needs.infra-apply.result == 'success' || needs.infra-apply.result == 'skipped') }}
+    if: ${{ always() && needs.project-plan.outputs.stage_inventory_handover == 'true' && needs.secret-validation.result == 'success' && (needs.infra-apply.result == 'success' || needs.infra-apply.result == 'skipped') }}
     runs-on: ubuntu-latest
 
     steps:
@@ -246,7 +246,7 @@ jobs:
 
   network-preflight-ssh:
     needs: [project-plan, cloud-runner-guard, secret-validation, network-policy-sync, inventory-handover]
-    if: ${{ always() && needs.project-plan.outputs.stage_network_preflight_ssh == 'true' && needs.inventory-handover.result == 'success' }}
+    if: ${{ needs.project-plan.outputs.stage_network_preflight_ssh == 'true' && needs.cloud-runner-guard.result == 'success' && needs.secret-validation.result == 'success' && needs.network-policy-sync.result == 'success' && needs.inventory-handover.result == 'success' }}
     runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
 
     steps:
@@ -311,7 +311,7 @@ jobs:
 
   host-sync:
     needs: [project-plan, stacks-sha-trust, secret-validation, cloud-runner-guard, network-preflight-ssh, inventory-handover]
-    if: ${{ always() && needs.project-plan.outputs.stage_host_sync == 'true' && (needs.stacks-sha-trust.result == 'success' || needs.stacks-sha-trust.result == 'skipped') }}
+    if: ${{ needs.project-plan.outputs.stage_host_sync == 'true' && needs.stacks-sha-trust.result == 'success' && needs.secret-validation.result == 'success' && needs.cloud-runner-guard.result == 'success' && needs.network-preflight-ssh.result == 'success' && needs.inventory-handover.result == 'success' }}
     runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
 
     steps:
@@ -344,8 +344,8 @@ jobs:
         run: .github/scripts/stages/ansible_run.sh
 
   post-bootstrap-secret-check:
-    needs: [project-plan, ansible-bootstrap]
-    if: ${{ always() && needs.project-plan.outputs.stage_post_bootstrap_secret_check == 'true' && (needs.ansible-bootstrap.result == 'success' || needs.ansible-bootstrap.result == 'skipped') }}
+    needs: [project-plan, secret-validation, ansible-bootstrap]
+    if: ${{ always() && needs.project-plan.outputs.stage_post_bootstrap_secret_check == 'true' && needs.secret-validation.result == 'success' && (needs.ansible-bootstrap.result == 'success' || (needs.ansible-bootstrap.result == 'skipped' && needs.project-plan.outputs.stage_ansible_bootstrap != 'true')) }}
     runs-on: ubuntu-latest
 
     steps:
@@ -364,7 +364,7 @@ jobs:
 
   portainer-api-preflight:
     needs: [project-plan, cloud-runner-guard, secret-validation, network-policy-sync, host-sync, post-bootstrap-secret-check]
-    if: ${{ always() && needs.project-plan.outputs.stage_portainer_api_preflight == 'true' && (needs.host-sync.result == 'success' || needs.host-sync.result == 'skipped') && (needs.post-bootstrap-secret-check.result == 'success' || needs.post-bootstrap-secret-check.result == 'skipped') }}
+    if: ${{ always() && needs.project-plan.outputs.stage_portainer_api_preflight == 'true' && needs.cloud-runner-guard.result == 'success' && needs.secret-validation.result == 'success' && needs.network-policy-sync.result == 'success' && needs.post-bootstrap-secret-check.result == 'success' && (needs.host-sync.result == 'success' || (needs.host-sync.result == 'skipped' && needs.project-plan.outputs.stage_host_sync != 'true')) }}
     runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
 
     steps:
@@ -390,7 +390,7 @@ jobs:
 
   portainer-apply:
     needs: [project-plan, stacks-sha-trust, secret-validation, cloud-runner-guard, network-policy-sync, post-bootstrap-secret-check, portainer-api-preflight, config-sync]
-    if: ${{ always() && needs.project-plan.outputs.stage_portainer_apply == 'true' && (needs.stacks-sha-trust.result == 'success' || needs.stacks-sha-trust.result == 'skipped') && (needs.config-sync.result == 'success' || needs.config-sync.result == 'skipped') && (needs.portainer-api-preflight.result == 'success' || needs.portainer-api-preflight.result == 'skipped') && (needs.post-bootstrap-secret-check.result == 'success' || needs.post-bootstrap-secret-check.result == 'skipped') }}
+    if: ${{ always() && needs.project-plan.outputs.stage_portainer_apply == 'true' && needs.secret-validation.result == 'success' && needs.cloud-runner-guard.result == 'success' && needs.network-policy-sync.result == 'success' && needs.post-bootstrap-secret-check.result == 'success' && needs.portainer-api-preflight.result == 'success' && (needs.stacks-sha-trust.result == 'success' || (needs.stacks-sha-trust.result == 'skipped' && needs.project-plan.outputs.stacks_sha == '')) && (needs.config-sync.result == 'success' || (needs.config-sync.result == 'skipped' && needs.project-plan.outputs.stage_config_sync != 'true')) }}
     runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
     env:
       TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TOKEN }}
@@ -415,7 +415,7 @@ jobs:
 
   config-sync:
     needs: [project-plan, stacks-sha-trust, secret-validation, cloud-runner-guard, network-preflight-ssh, inventory-handover, host-sync]
-    if: ${{ always() && needs.project-plan.outputs.stage_config_sync == 'true' && (needs.stacks-sha-trust.result == 'success' || needs.stacks-sha-trust.result == 'skipped') && (needs.host-sync.result == 'success' || needs.host-sync.result == 'skipped') }}
+    if: ${{ needs.project-plan.outputs.stage_config_sync == 'true' && needs.stacks-sha-trust.result == 'success' && needs.secret-validation.result == 'success' && needs.cloud-runner-guard.result == 'success' && needs.network-preflight-ssh.result == 'success' && needs.inventory-handover.result == 'success' && needs.host-sync.result == 'success' }}
     runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
 
     steps:
@@ -447,7 +447,7 @@ jobs:
 
   health-gated-redeploy:
     needs: [project-plan, stacks-sha-trust, secret-validation, cloud-runner-guard, host-sync, portainer-api-preflight, portainer-apply, config-sync]
-    if: ${{ always() && needs.project-plan.outputs.stage_health_gated_redeploy == 'true' && (needs.stacks-sha-trust.result == 'success' || needs.stacks-sha-trust.result == 'skipped') && (needs.host-sync.result == 'success' || needs.host-sync.result == 'skipped') && (needs.portainer-apply.result == 'success' || needs.portainer-apply.result == 'skipped') && (needs.config-sync.result == 'success' || needs.config-sync.result == 'skipped') }}
+    if: ${{ needs.project-plan.outputs.stage_health_gated_redeploy == 'true' && needs.stacks-sha-trust.result == 'success' && needs.secret-validation.result == 'success' && needs.cloud-runner-guard.result == 'success' && needs.host-sync.result == 'success' && needs.portainer-api-preflight.result == 'success' && needs.portainer-apply.result == 'success' && needs.config-sync.result == 'success' }}
     runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
 
     steps:

@@ -30,7 +30,7 @@ If you are bootstrapping or validating CI/CD for the first time, read these firs
 
 1. [Configuration Management (Ansible)](ansible.md#tags-matrix)
 2. [Network Architecture](network-architecture.md#port-and-protocol-matrix)
-3. [CI Impact Rules](ci-impact-rules.md)
+3. [CI Orchestrator Execution Rules](ci-orchestrator-execution-rules.md)
 4. [Scripts & Utilities](scripts.md)
 5. [Terraform OCI](terraform/oci.md)
 
@@ -106,7 +106,7 @@ flowchart TD
 
 - [**Network Architecture**](network-architecture.md) — Tailscale mesh, 3-manager Swarm topology, GlusterFS replication, overlay networks, DNS & ingress flow. Last reviewed: `2026-03-05`.
 - [**Infisical Secrets Workflow**](infisical-workflow.md) — Agent config, `.env.tmpl` templating, secret injection pipeline. Last reviewed: `2026-03-05`.
-- [**CI Impact Rules**](ci-impact-rules.md) — Centralized path filters and workflow impact-output mapping. Last reviewed: `2026-03-06`.
+- [**CI Orchestrator Execution Rules**](ci-orchestrator-execution-rules.md) — Push and dispatch planning rules for the active infrastructure workflows. Last reviewed: `2026-03-07`.
 - [**CI Plan Contract**](ci-plan-contract.md) — Canonical `plan_json` schema and projection rules for current workflow consumers. Last reviewed: `2026-03-06`.
 - [**Workflow Lifecycle**](workflow-lifecycle.md) — Active workflows, retired legacy workflows, and replacement entry points. Last reviewed: `2026-03-06`.
 - [**Infrastructure Orchestrator Cutover Checklist**](meta-pipeline-cutover-checklist.md) — Minimal first-run checklist (GitHub vars/secrets + Terraform workspace vars). Last reviewed: `2026-03-06`.
