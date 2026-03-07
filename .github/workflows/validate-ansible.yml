@@ -12,6 +12,7 @@ on:
       - "stacks"
       - ".gitmodules"
   push:
+    branches-ignore: [main]
     paths:
       - "ansible/**"
       - ".ansible-lint"
@@ -44,6 +45,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.x"
+
+      - name: Cache Ansible Galaxy collections
+        uses: actions/cache@v4
+        with:
+          path: ~/.ansible/collections
+          key: ansible-galaxy-${{ hashFiles('ansible/requirements.yml') }}
 
       - name: Install Ansible tooling
         run: |

@@ -43,7 +43,7 @@ jobs:
           echo "runner_label=${CLOUD_STATIC_RUNNER_LABEL}" >> "${GITHUB_OUTPUT}"
 
   stacks-sha-trust:
-    if: ${{ fromJSON(inputs.plan_json).meta.stacks_sha != '' && (fromJSON(inputs.plan_json).meta.stages.stage_ansible_bootstrap == true || fromJSON(inputs.plan_json).meta.stages.stage_host_sync == true || fromJSON(inputs.plan_json).meta.stages.stage_portainer_apply == true || fromJSON(inputs.plan_json).meta.stages.stage_config_sync == true || fromJSON(inputs.plan_json).meta.stages.stage_health_gated_redeploy == true) }}
+    if: ${{ fromJSON(inputs.plan_json).meta.stacks_sha != '' }}
     runs-on: ubuntu-latest
 
     steps:

@@ -87,7 +87,6 @@ jobs:
 
           PUSH_BEFORE: ${{ inputs.push_before }}
           PUSH_SHA: ${{ inputs.push_sha }}
-          PUSH_BEFORE_SHA: ${{ inputs.push_before }}
           GITHUB_SHA_CURRENT: ${{ inputs.push_sha }}
 
           PAYLOAD_SCHEMA_VERSION: ${{ inputs.dispatch_schema_version }}

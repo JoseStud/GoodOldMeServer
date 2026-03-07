@@ -54,6 +54,8 @@ jobs:
           INFISICAL_AGENT_CLIENT_SECRET: ${{ secrets.INFISICAL_AGENT_CLIENT_SECRET }}
         run: .github/scripts/stages/ansible_run.sh
 
+  # stage_host_sync and stage_ansible_bootstrap are mutually exclusive
+  # (enforced by resolve_meta_plan.sh:105-109), so no dependency needed.
   host-sync:
     if: ${{ fromJSON(inputs.plan_json).meta.stages.stage_host_sync }}
     runs-on: ${{ inputs.runner_label }}

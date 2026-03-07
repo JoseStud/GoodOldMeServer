@@ -30,7 +30,6 @@ jobs:
       push_before: ${{ github.event.before }}
       push_sha: ${{ github.sha }}
       ansible_only_mode: true
-    secrets: inherit
 
   preflight:
     needs: [resolve-context]

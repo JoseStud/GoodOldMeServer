@@ -21,10 +21,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Bootstrap yq
+      - name: Bootstrap tools
         uses: ./.github/actions/bootstrap-tools
         with:
           install_yq: "true"
+          install_jq: "true"
 
       - name: Check for newer Ansible Galaxy collection versions
         run: |
