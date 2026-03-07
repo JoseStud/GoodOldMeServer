@@ -7,6 +7,7 @@ on:
       - ".github/actions/**"
       - ".github/workflows/**"
       - ".github/scripts/**"
+      - "scripts/**"
       - "stacks"
       - ".gitmodules"
   push:
@@ -15,6 +16,7 @@ on:
       - ".github/actions/**"
       - ".github/workflows/**"
       - ".github/scripts/**"
+      - "scripts/**"
       - "stacks"
       - ".gitmodules"
   workflow_dispatch:
@@ -34,9 +36,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Prepare jq runner
-        uses: ./.github/actions/prepare-jq-runner
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bootstrap jq runner
+        uses: ./.github/actions/bootstrap-tools
         with:
+          install_jq: "true"
           install_yq: "true"
 
       - name: Run resolver contract tests
@@ -100,9 +106,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Prepare jq runner
-        uses: ./.github/actions/prepare-jq-runner
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bootstrap jq runner
+        uses: ./.github/actions/bootstrap-tools
         with:
+          install_jq: "true"
           install_yq: "true"
 
       - name: Run workflow contract tests
@@ -112,8 +122,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Prepare jq runner
-        uses: ./.github/actions/prepare-jq-runner
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bootstrap jq runner
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_jq: "true"
 
       - name: Resolve current stacks gitlink SHA
         id: stacks-gitlink

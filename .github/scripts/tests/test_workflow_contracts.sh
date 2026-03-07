@@ -13,7 +13,11 @@ TERRAFORM_VALIDATION="${ROOT_DIR}/.github/workflows/validate-terraform.yml"
 ANSIBLE_VALIDATION="${ROOT_DIR}/.github/workflows/validate-ansible.yml"
 LINT="${ROOT_DIR}/.github/workflows/lint-github-actions.yml"
 REUSABLE="${ROOT_DIR}/.github/workflows/reusable-resolve-plan.yml"
+BOOTSTRAP_TOOLS="${ROOT_DIR}/.github/actions/bootstrap-tools/action.yml"
 PREPARE_ANSIBLE_STAGE="${ROOT_DIR}/.github/actions/prepare-ansible-stage/action.yml"
+PREPARE_INFISICAL_RUNNER="${ROOT_DIR}/.github/actions/prepare-infisical-runner/action.yml"
+PREPARE_JQ_RUNNER="${ROOT_DIR}/.github/actions/prepare-jq-runner/action.yml"
+PREPARE_TERRAFORM_STAGE="${ROOT_DIR}/.github/actions/prepare-terraform-stage/action.yml"
 RETIRED_VALIDATION="${ROOT_DIR}/.github/workflows/infra-validation.yml"
 PATH_FILTERS="${ROOT_DIR}/.github/ci/path-filters.yml"
 
@@ -167,6 +171,71 @@ assert_trigger_path_contains() {
   assert_array_contains "${case_name}" "${event}.paths" "${expected}" "${paths}"
 }
 
+assert_no_regex_match() {
+  local case_name="$1"
+  local pattern="$2"
+  shift 2
+
+  if rg -n -- "${pattern}" "$@" >/dev/null; then
+    fail "${case_name}: found pattern '${pattern}'"
+  else
+    pass "${case_name}: pattern '${pattern}' absent"
+  fi
+}
+
+job_ids_with_step_uses() {
+  local file="$1"
+  local step_uses="$2"
+
+  yq '.jobs' "${file}" | jq -c --arg step_uses "${step_uses}" '
+    to_entries
+    | map(select((.value.steps // []) | map(.uses // "") | index($step_uses)))
+    | map(.key)
+    | sort
+  '
+}
+
+assert_checkout_before_local_actions() {
+  local case_name="$1"
+  shift
+
+  local file
+  local failed="false"
+
+  for file in "$@"; do
+    local violations
+    violations="$(
+      yq '.jobs' "${file}" | jq -r '
+        to_entries[]
+        | select(.value.steps != null)
+        | .key as $job_id
+        | reduce (.value.steps[]?) as $step (
+            {checkout_seen: false, violation: false};
+            if .violation then .
+            elif (($step.uses // "") == "actions/checkout@v4") then .checkout_seen = true
+            elif (($step.uses // "") | startswith("./.github/actions/")) and (.checkout_seen | not) then .violation = true
+            else .
+            end
+          )
+        | select(.violation)
+        | $job_id
+      '
+    )"
+
+    if [[ -n "${violations}" ]]; then
+      while IFS= read -r job_id; do
+        [[ -z "${job_id}" ]] && continue
+        fail "${case_name}: ${file} job ${job_id} uses a local action before checkout"
+      done <<< "${violations}"
+      failed="true"
+    fi
+  done
+
+  if [[ "${failed}" == "false" ]]; then
+    pass "${case_name}: local action steps all follow checkout"
+  fi
+}
+
 for workflow in \
   "${ORCHESTRATOR}" \
   "${PRELIGHT}" \
@@ -178,12 +247,28 @@ for workflow in \
   "${ANSIBLE_VALIDATION}" \
   "${LINT}" \
   "${REUSABLE}" \
-  "${PREPARE_ANSIBLE_STAGE}"; do
+  "${BOOTSTRAP_TOOLS}"; do
   assert_file_exists "active_workflows" "${workflow}"
 done
 
 assert_file_absent "retired_workflows" "${RETIRED_VALIDATION}"
 assert_file_absent "retired_workflows" "${PATH_FILTERS}"
+assert_file_absent "retired_wrapper_actions" "${PREPARE_ANSIBLE_STAGE}"
+assert_file_absent "retired_wrapper_actions" "${PREPARE_INFISICAL_RUNNER}"
+assert_file_absent "retired_wrapper_actions" "${PREPARE_JQ_RUNNER}"
+assert_file_absent "retired_wrapper_actions" "${PREPARE_TERRAFORM_STAGE}"
+assert_no_regex_match "retired_wrapper_actions" 'uses: \./\.github/actions/prepare-(ansible-stage|infisical-runner|jq-runner|terraform-stage)' "${ROOT_DIR}/.github/workflows"
+
+assert_checkout_before_local_actions \
+  "local_action_bootstrap_order" \
+  "${PRELIGHT}" \
+  "${INFRA}" \
+  "${ANSIBLE}" \
+  "${PORTAINER}" \
+  "${PLANNER_VALIDATION}" \
+  "${TERRAFORM_VALIDATION}" \
+  "${LINT}" \
+  "${REUSABLE}"
 
 orchestrator_jobs="$(yq '.jobs | keys' "${ORCHESTRATOR}" | jq -c 'sort')"
 assert_eq "orchestrator_shape" "jobs" '["ansible","infra","portainer","preflight","resolve-context"]' "${orchestrator_jobs}"
@@ -235,23 +320,12 @@ assert_eq "inventory_contract" "upload_path" "inventory-ci.yml" "${inventory_upl
 inventory_render_output="$(yq -r '.jobs."inventory-handover".steps[] | select(.run != null) | .env.OUTPUT_FILE // empty' "${INFRA}" | head -n1)"
 assert_eq "inventory_contract" "render_output" "inventory-ci.yml" "${inventory_render_output}"
 
-prepare_ansible_inventory_name="$(yq -r '.inputs.inventory_artifact_name.default' "${PREPARE_ANSIBLE_STAGE}")"
-assert_eq "inventory_contract" "prepare_ansible_default_artifact" "inventory-ci" "${prepare_ansible_inventory_name}"
-
-prepare_ansible_usage_count="$(
-  rg -c 'uses: \./\.github/actions/prepare-ansible-stage' "${ANSIBLE}" "${PORTAINER}" \
-    | awk -F: '{sum += $2} END {print sum + 0}'
-)"
-prepare_ansible_download_disabled_count="$(
-  rg -c 'download_inventory: "false"' "${PORTAINER}" \
-    | awk -F: '{sum += $2} END {print sum + 0}'
-)"
-explicit_inventory_download_count="$(
-  rg -c 'uses: actions/download-artifact@v4' "${INFRA}" \
-    | awk -F: '{sum += $2} END {print sum + 0}'
-)"
-inventory_download_count="$((prepare_ansible_usage_count - prepare_ansible_download_disabled_count + explicit_inventory_download_count))"
-assert_eq "inventory_contract" "download_count" "4" "${inventory_download_count}"
+infra_download_jobs="$(job_ids_with_step_uses "${INFRA}" "actions/download-artifact@v4")"
+ansible_download_jobs="$(job_ids_with_step_uses "${ANSIBLE}" "actions/download-artifact@v4")"
+portainer_download_jobs="$(job_ids_with_step_uses "${PORTAINER}" "actions/download-artifact@v4")"
+assert_eq "inventory_contract" "infra_download_jobs" '["network-preflight-ssh"]' "${infra_download_jobs}"
+assert_eq "inventory_contract" "ansible_download_jobs" '["ansible-bootstrap","host-sync"]' "${ansible_download_jobs}"
+assert_eq "inventory_contract" "portainer_download_jobs" '["config-sync"]' "${portainer_download_jobs}"
 
 network_policy_needs="$(yq '.jobs."network-policy-sync".needs' "${PRELIGHT}" | jq -c '.')"
 assert_array_contains "preflight_gating" "network_policy_sync.needs" "stacks-sha-trust" "${network_policy_needs}"
@@ -274,12 +348,17 @@ assert_contains_text "stacks_sha_trust" "if" "stage_health_gated_redeploy == tru
 planner_jobs="$(yq '.jobs | keys' "${PLANNER_VALIDATION}" | jq -c 'sort')"
 assert_eq "planner_validation" "jobs" '["bootstrap-tools-smoke","planner-contract-tests","stacks-sha-trust","workflow-contracts"]' "${planner_jobs}"
 assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_resolve_ci_plan.sh"
-assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_preflight_network_access.sh"
-assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_portainer_apply.sh"
 assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_trigger_webhooks_with_gates.sh"
+assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_preflight_network_access.sh"
+assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_secret_validation.sh"
+assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_post_bootstrap_secret_check.sh"
+assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_portainer_apply.sh"
+assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_import_infisical_secrets.sh"
 assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_workflow_contracts.sh"
+assert_trigger_path_contains "planner_validation" "${PLANNER_VALIDATION}" "push" "scripts/**"
 assert_trigger_path_contains "planner_validation" "${PLANNER_VALIDATION}" "push" "stacks"
 assert_trigger_path_contains "planner_validation" "${PLANNER_VALIDATION}" "push" ".gitmodules"
+assert_trigger_path_contains "planner_validation" "${PLANNER_VALIDATION}" "pull_request" "scripts/**"
 assert_trigger_path_contains "planner_validation" "${PLANNER_VALIDATION}" "pull_request" "stacks"
 assert_trigger_path_contains "planner_validation" "${PLANNER_VALIDATION}" "pull_request" ".gitmodules"
 

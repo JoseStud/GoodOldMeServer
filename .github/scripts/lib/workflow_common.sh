@@ -110,7 +110,10 @@ is_placeholder_value() {
       ;;
   esac
 
-  [[ "${normalized}" == *"placeholder"* ]]
+  [[ "${normalized}" == *"placeholder"* \
+    || "${normalized}" == *"example.com"* \
+    || "${normalized}" == *"example.org"* \
+    || "${normalized}" == *"example.net"* ]]
 }
 
 is_placeholder_url_value() {
@@ -194,35 +197,30 @@ fetch_infisical_secret() {
       bash -lc 'printf %s "${!SECRET_NAME:-}"'
 }
 
-require_infisical_secrets() {
+validate_infisical_secret() {
   local path="$1"
-  shift
+  local secret_name="$2"
+  local kind="${3:-value}"
+  local secret_value
 
-  local required_csv
-  if [[ $# -eq 0 ]]; then
-    return 0
+  secret_value="$(fetch_infisical_secret "${path}" "${secret_name}")"
+  if [[ -z "${secret_value}" ]]; then
+    echo "Missing required secret(s) in ${path}: ${secret_name}" >&2
+    return 1
   fi
 
-  required_csv="$(IFS=,; printf '%s' "$*")"
-
-  REQUIRED_VARS="${required_csv}" \
-  INFISICAL_PATH="${path}" \
-    infisical run --projectId="${INFISICAL_PROJECT_ID}" --env=prod --path="${path}" -- \
-      bash -lc '
-        missing=()
-        IFS="," read -r -a required_vars <<< "${REQUIRED_VARS}"
-        for name in "${required_vars[@]}"; do
-          if [[ -z "${!name:-}" ]]; then
-            missing+=("${name}")
-          fi
-        done
-
-        if ((${#missing[@]} > 0)); then
-          IFS=,
-          printf "Missing required secret(s) in %s: %s\n" "${INFISICAL_PATH}" "${missing[*]}" >&2
-          exit 1
-        fi
-      '
+  case "${kind}" in
+    value)
+      assert_nonplaceholder_value "${secret_name}" "${secret_value}"
+      ;;
+    https_url)
+      assert_https_url_value "${secret_name}" "${secret_value}"
+      ;;
+    *)
+      echo "Unsupported secret validation kind: ${kind}" >&2
+      return 1
+      ;;
+  esac
 }
 
 checkout_stacks_sha() {

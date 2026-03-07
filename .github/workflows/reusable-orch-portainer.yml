@@ -33,9 +33,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Prepare Infisical runner
-        uses: ./.github/actions/prepare-infisical-runner
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bootstrap Infisical runner
+        uses: ./.github/actions/bootstrap-tools
         with:
+          install_infisical: "true"
+          infisical_login: "true"
           infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
 
       - name: Validate bootstrap-managed Portainer secrets
@@ -47,9 +52,14 @@ jobs:
     runs-on: ${{ inputs.runner_label }}
 
     steps:
-      - name: Prepare Infisical runner
-        uses: ./.github/actions/prepare-infisical-runner
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bootstrap Infisical runner
+        uses: ./.github/actions/bootstrap-tools
         with:
+          install_infisical: "true"
+          infisical_login: "true"
           infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
           install_jq: "true"
 
@@ -67,10 +77,24 @@ jobs:
     runs-on: ${{ inputs.runner_label }}
 
     steps:
-      - name: Prepare Ansible stage
-        uses: ./.github/actions/prepare-ansible-stage
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Bootstrap Ansible stage
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_infisical: "true"
+          infisical_login: "true"
           infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
+
+      - name: Download CI inventory artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: inventory-ci
+          path: .
 
       - name: Sync stack configs only
         env:
@@ -90,8 +114,16 @@ jobs:
       STACKS_SHA: ${{ fromJSON(inputs.plan_json).meta.stacks_sha }}
 
     steps:
-      - name: Prepare Terraform stage
-        uses: ./.github/actions/prepare-terraform-stage
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bootstrap jq
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_jq: "true"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
 
       - name: Terraform plan/apply (local operations mode)
         run: .github/scripts/stages/portainer_apply.sh
@@ -102,12 +134,19 @@ jobs:
     runs-on: ${{ inputs.runner_label }}
 
     steps:
-      - name: Prepare Ansible stage
-        uses: ./.github/actions/prepare-ansible-stage
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Bootstrap Ansible stage
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_infisical: "true"
+          infisical_login: "true"
           infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
           install_yq: "true"
-          download_inventory: "false"
 
       - name: Trigger health-gated webhooks
         env:

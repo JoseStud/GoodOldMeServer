@@ -28,8 +28,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Prepare Terraform stage
-        uses: ./.github/actions/prepare-terraform-stage
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bootstrap jq
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_jq: "true"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
 
       - name: Upload infra configuration
         id: upload
@@ -60,8 +68,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Prepare jq runner
-        uses: ./.github/actions/prepare-jq-runner
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bootstrap jq runner
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_jq: "true"
 
       - name: Render deterministic Ansible inventory
         env:
@@ -82,9 +95,13 @@ jobs:
     runs-on: ${{ inputs.runner_label }}
 
     steps:
-      - name: Prepare jq runner
-        uses: ./.github/actions/prepare-jq-runner
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bootstrap jq runner
+        uses: ./.github/actions/bootstrap-tools
         with:
+          install_jq: "true"
           install_netcat: "true"
 
       - name: Download CI inventory artifact

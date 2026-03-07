@@ -47,8 +47,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Prepare jq runner
-        uses: ./.github/actions/prepare-jq-runner
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bootstrap jq runner
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_jq: "true"
 
       - name: Verify trusted stacks SHA
         env:
@@ -64,9 +69,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Prepare Infisical runner
-        uses: ./.github/actions/prepare-infisical-runner
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bootstrap Infisical runner
+        uses: ./.github/actions/bootstrap-tools
         with:
+          install_infisical: "true"
+          infisical_login: "true"
           infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
 
       - name: Validate required secret paths
@@ -90,9 +100,14 @@ jobs:
       portainer_automation_allowed_cidrs: ${{ steps.sync.outputs.portainer_automation_allowed_cidrs }}
 
     steps:
-      - name: Prepare Infisical runner
-        uses: ./.github/actions/prepare-infisical-runner
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bootstrap Infisical runner
+        uses: ./.github/actions/bootstrap-tools
         with:
+          install_infisical: "true"
+          infisical_login: "true"
           infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
           install_jq: "true"
 

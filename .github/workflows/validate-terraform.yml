@@ -36,10 +36,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Prepare Terraform stage
-        uses: ./.github/actions/prepare-terraform-stage
-        with:
-          install_jq: "false"
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
 
       - name: Terraform fmt check
         run: terraform fmt -check -recursive terraform
@@ -57,10 +58,11 @@ jobs:
           - terraform/portainer
 
     steps:
-      - name: Prepare Terraform stage
-        uses: ./.github/actions/prepare-terraform-stage
-        with:
-          install_jq: "false"
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
 
       - name: Terraform init (readonly lockfile)
         run: terraform -chdir=${{ matrix.root }} init -backend=false -lockfile=readonly -input=false
@@ -78,8 +80,16 @@ jobs:
       TF_CLOUD_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
 
     steps:
-      - name: Prepare Terraform stage
-        uses: ./.github/actions/prepare-terraform-stage
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bootstrap jq
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_jq: "true"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
 
       - name: Resolve workspace and validate required inputs
         id: preflight

@@ -26,10 +26,24 @@ jobs:
     runs-on: ${{ inputs.runner_label }}
 
     steps:
-      - name: Prepare Ansible stage
-        uses: ./.github/actions/prepare-ansible-stage
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Bootstrap Ansible stage
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_infisical: "true"
+          infisical_login: "true"
           infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
+
+      - name: Download CI inventory artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: inventory-ci
+          path: .
 
       - name: Run Ansible bootstrap
         env:
@@ -44,10 +58,24 @@ jobs:
     runs-on: ${{ inputs.runner_label }}
 
     steps:
-      - name: Prepare Ansible stage
-        uses: ./.github/actions/prepare-ansible-stage
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Bootstrap Ansible stage
+        uses: ./.github/actions/bootstrap-tools
+        with:
+          install_infisical: "true"
+          infisical_login: "true"
           infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
+
+      - name: Download CI inventory artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: inventory-ci
+          path: .
 
       - name: Sync host runtime assets
         env:

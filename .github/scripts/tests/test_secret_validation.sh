@@ -141,22 +141,22 @@ write_secret_file() {
 
 seed_common_stack_secrets() {
   write_secret_file /infrastructure \
-    'BASE_DOMAIN=goodoldme.example' \
+    'BASE_DOMAIN=goodoldme.internal' \
     'TZ=Etc/UTC' \
     'CLOUDFLARE_API_TOKEN=cf-token' \
     'TAILSCALE_AUTH_KEY=ts-auth'
 
   write_secret_file /stacks/gateway \
-    'ACME_EMAIL=ops@example.org' \
+    'ACME_EMAIL=ops@goodoldme.internal' \
     'DOCKER_SOCKET_PROXY_URL=tcp://socket-proxy:2375'
 
   write_secret_file /stacks/identity \
     'AUTHELIA_JWT_SECRET=jwt-secret' \
     'AUTHELIA_SESSION_SECRET=session-secret' \
     'POSTGRES_PASSWORD=pg-secret' \
-    'AUTHELIA_NOTIFIER_SMTP_USERNAME=mailer@example.org' \
+    'AUTHELIA_NOTIFIER_SMTP_USERNAME=mailer@goodoldme.internal' \
     'AUTHELIA_NOTIFIER_SMTP_PASSWORD=smtp-secret' \
-    'AUTHELIA_NOTIFIER_SMTP_SENDER=Authelia <mailer@example.org>' \
+    'AUTHELIA_NOTIFIER_SMTP_SENDER=Authelia <mailer@goodoldme.internal>' \
     'AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET=oidc-hmac-secret' \
     'AUTHELIA_IDENTITY_PROVIDERS_OIDC_JWKS_0_KEY=-----BEGIN_PRIVATE_KEY-----stub-----END_PRIVATE_KEY-----'
 
@@ -168,7 +168,7 @@ seed_common_stack_secrets() {
   write_secret_file /stacks/observability \
     'GF_OIDC_CLIENT_ID=grafana' \
     'GF_OIDC_CLIENT_SECRET=oidc-client-secret' \
-    'ALERTMANAGER_WEBHOOK_URL=https://hooks.example.org/alerts'
+    'ALERTMANAGER_WEBHOOK_URL=https://hooks.goodoldme.internal/alerts'
 
   write_secret_file /stacks/ai-interface \
     'ARCH_PC_IP=100.64.0.10'
@@ -241,6 +241,57 @@ placeholder_api_url_out="$(run_case_expect_fail "placeholder_portainer_api_url_r
   INFISICAL_TOKEN=test-token \
   bash "${SCRIPT}")"
 assert_contains "placeholder_portainer_api_url_rejected" "PORTAINER_API_URL contains a placeholder URL" "${placeholder_api_url_out}"
+
+seed_common_stack_secrets
+write_secret_file /infrastructure \
+  'BASE_DOMAIN=example.com' \
+  'TZ=Etc/UTC' \
+  'CLOUDFLARE_API_TOKEN=cf-token' \
+  'TAILSCALE_AUTH_KEY=ts-auth'
+write_secret_file /stacks/management \
+  'HOMARR_SECRET_KEY=homarr-secret' \
+  'PORTAINER_ADMIN_PASSWORD=portainer-admin-password'
+
+placeholder_base_domain_out="$(run_case_expect_fail "placeholder_base_domain_rejected" env \
+  PATH="${BIN_DIR}:${PATH}" \
+  FAKE_INFISICAL_ROOT="${FAKE_INFISICAL_ROOT}" \
+  INFISICAL_MACHINE_IDENTITY_ID=test-machine-id \
+  INFISICAL_PROJECT_ID=test-project \
+  RUN_INFRA=false \
+  RUN_ANSIBLE=true \
+  RUN_PORTAINER=true \
+  RUN_HOST_SYNC=false \
+  RUN_HEALTH=false \
+  INFISICAL_TOKEN=test-token \
+  INFISICAL_AGENT_CLIENT_ID=agent-id \
+  INFISICAL_AGENT_CLIENT_SECRET=agent-secret \
+  bash "${SCRIPT}")"
+assert_contains "placeholder_base_domain_rejected" "BASE_DOMAIN contains a placeholder value" "${placeholder_base_domain_out}"
+
+seed_common_stack_secrets
+write_secret_file /stacks/observability \
+  'GF_OIDC_CLIENT_ID=grafana' \
+  'GF_OIDC_CLIENT_SECRET=oidc-client-secret' \
+  'ALERTMANAGER_WEBHOOK_URL=https://hooks.example.com/services/replace-me'
+write_secret_file /stacks/management \
+  'HOMARR_SECRET_KEY=homarr-secret' \
+  'PORTAINER_ADMIN_PASSWORD=portainer-admin-password'
+
+placeholder_alertmanager_url_out="$(run_case_expect_fail "placeholder_alertmanager_url_rejected" env \
+  PATH="${BIN_DIR}:${PATH}" \
+  FAKE_INFISICAL_ROOT="${FAKE_INFISICAL_ROOT}" \
+  INFISICAL_MACHINE_IDENTITY_ID=test-machine-id \
+  INFISICAL_PROJECT_ID=test-project \
+  RUN_INFRA=false \
+  RUN_ANSIBLE=true \
+  RUN_PORTAINER=true \
+  RUN_HOST_SYNC=false \
+  RUN_HEALTH=false \
+  INFISICAL_TOKEN=test-token \
+  INFISICAL_AGENT_CLIENT_ID=agent-id \
+  INFISICAL_AGENT_CLIENT_SECRET=agent-secret \
+  bash "${SCRIPT}")"
+assert_contains "placeholder_alertmanager_url_rejected" "ALERTMANAGER_WEBHOOK_URL contains a placeholder URL" "${placeholder_alertmanager_url_out}"
 
 echo "PASS=${PASS_COUNT} FAIL=${FAIL_COUNT}"
 
