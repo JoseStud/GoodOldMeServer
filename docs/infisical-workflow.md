@@ -208,6 +208,8 @@ Most workflow stage scripts authenticate to Infisical via **OIDC**. The Terrafor
 | `TFC_PLAN_POLL_INTERVAL_SECONDS` *(optional)* | Integer seconds (default `10`) | IaC validation speculative-plan polling interval |
 | `PORTAINER_ALLOWLIST_PROPAGATION_TIMEOUT_SECONDS` *(optional)* | Integer seconds (default `420`) | Portainer allowlist propagation wait timeout |
 | `PORTAINER_ALLOWLIST_PROPAGATION_POLL_INTERVAL_SECONDS` *(optional)* | Integer seconds (default `5`) | Portainer allowlist propagation polling interval |
+| `STACKS_SHA_TRUST_WAIT_TIMEOUT_SECONDS` *(optional)* | Integer seconds (default `900`) | Wait timeout for trusted stacks SHA CI check completion on dispatch |
+| `STACKS_SHA_TRUST_POLL_INTERVAL_SECONDS` *(optional)* | Integer seconds (default `15`) | Poll interval for trusted stacks SHA CI check completion on dispatch |
 
 #### Secrets (`secrets.*`)
 

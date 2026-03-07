@@ -21,15 +21,22 @@ Submodule pointer updates are treated as first-class infra changes: the active v
 
 Impact detection has been removed from the active planner. Any eligible infra-repo `push` now resolves to the same infra-side reconcile path.
 
-The trigger remains coarse in `.github/workflows/infra-orchestrator.yml`:
+Push-triggered orchestration is split across two workflows by path:
+
+**`.github/workflows/infra-orchestrator.yml`** — full reconcile (infra apply + ansible + portainer):
 
 - `terraform/**`
-- `ansible/**`
 - `stacks`
 - `.gitmodules`
+
+**`.github/workflows/ansible-orchestrator.yml`** — ansible-only reconcile (skips infra apply):
+
+- `ansible/**`
 - `.ansible-lint`
 
-Once triggered, the planner always emits the same push toggles:
+Both workflows share the `infra-orchestrator` concurrency group so a full infra run and an Ansible-only run cannot execute simultaneously.
+
+Once triggered, the infra-orchestrator planner always emits the same push toggles:
 
 - `run_infra_apply=true`
 - `run_ansible_bootstrap=true`
