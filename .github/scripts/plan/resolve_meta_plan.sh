@@ -27,11 +27,20 @@ resolve_meta_mode() {
       exit 1
     fi
 
-    run_infra_apply="true"
-
-    if [[ "${run_infra_apply}" == "true" ]]; then
+    # When ANSIBLE_ONLY_MODE is set, skip the expensive TFC apply and only run
+    # Ansible bootstrap + Portainer reconciliation.  The ansible-orchestrator
+    # workflow sets this for pushes that only touch ansible/** or .ansible-lint.
+    if [[ "$(to_bool "${ANSIBLE_ONLY_MODE:-false}")" == "true" ]]; then
+      run_infra_apply="false"
       run_ansible_bootstrap="true"
       run_portainer_apply="true"
+    else
+      run_infra_apply="true"
+
+      if [[ "${run_infra_apply}" == "true" ]]; then
+        run_ansible_bootstrap="true"
+        run_portainer_apply="true"
+      fi
     fi
 
     if [[ "${run_ansible_bootstrap}" == "true" ]]; then

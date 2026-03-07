@@ -208,6 +208,20 @@ With the `replica 3 arbiter 1` configuration, the GCP witness node acts as a tie
 
 ## DNS & Ingress Flow
 
+### CI Runner Egress Requirements
+
+The `network-preflight-ssh` job in `reusable-orch-infra.yml` runs on a **self-hosted cloud runner** (`${{ inputs.runner_label }}`). It requires the following outbound connectivity:
+
+| Destination | Protocol/Port | Purpose |
+|-------------|---------------|---------|
+| `api.ipify.org` | HTTPS (443) | Detect runner public IPv4 for network policy validation |
+| `api64.ipify.org` | HTTPS (443) | Detect runner public IPv6 for network policy validation |
+| All inventory hosts (OCI workers) | TCP 22 | SSH reachability preflight |
+| GCP witness host | TCP 22 (IPv6) | SSH reachability preflight |
+| `portainer-api.<BASE_DOMAIN>` | HTTPS (443) | Portainer API preflight (in portainer stage) |
+
+If the self-hosted runner has egress restrictions (firewall, security group, etc.), these destinations **must** be allow-listed. IP detection uses `curl --retry 3 --retry-delay 1 --max-time 10` and will fail the pipeline if the external APIs are unreachable.
+
 ### External Traffic
 
 ```mermaid

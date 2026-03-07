@@ -23,6 +23,10 @@ inputs:
     description: Install infisical-core CLI.
     required: false
     default: "false"
+  install_gomplate:
+    description: Install gomplate template engine.
+    required: false
+    default: "false"
   infisical_login:
     description: Run infisical OIDC login after installation.
     required: false
@@ -61,6 +65,14 @@ inputs:
     description: infisical-core package SHA256 override.
     required: false
     default: ""
+  gomplate_version:
+    description: gomplate version override (without leading v).
+    required: false
+    default: ""
+  gomplate_sha256:
+    description: gomplate SHA256 override.
+    required: false
+    default: ""
 
   infisical_machine_identity_id:
     description: Machine identity id for OIDC login.
@@ -84,6 +96,9 @@ outputs:
   infisical_version_installed:
     description: Installed infisical version.
     value: ${{ steps.bootstrap.outputs.infisical_version_installed }}
+  gomplate_version_installed:
+    description: Installed gomplate version.
+    value: ${{ steps.bootstrap.outputs.gomplate_version_installed }}
 
 runs:
   using: composite
@@ -97,6 +112,7 @@ runs:
         INPUT_INSTALL_YQ: ${{ inputs.install_yq }}
         INPUT_INSTALL_NETCAT: ${{ inputs.install_netcat }}
         INPUT_INSTALL_INFISICAL: ${{ inputs.install_infisical }}
+        INPUT_INSTALL_GOMPLATE: ${{ inputs.install_gomplate }}
         INPUT_INFISICAL_LOGIN: ${{ inputs.infisical_login }}
         INPUT_JQ_VERSION: ${{ inputs.jq_version }}
         INPUT_YQ_VERSION: ${{ inputs.yq_version }}
@@ -106,6 +122,8 @@ runs:
         INPUT_YQ_SHA256: ${{ inputs.yq_sha256 }}
         INPUT_NETCAT_DEB_SHA256: ${{ inputs.netcat_deb_sha256 }}
         INPUT_INFISICAL_SHA256: ${{ inputs.infisical_sha256 }}
+        INPUT_GOMPLATE_VERSION: ${{ inputs.gomplate_version }}
+        INPUT_GOMPLATE_SHA256: ${{ inputs.gomplate_sha256 }}
         INPUT_INFISICAL_MACHINE_IDENTITY_ID: ${{ inputs.infisical_machine_identity_id }}
         INPUT_INFISICAL_DOMAIN: ${{ inputs.infisical_domain }}
       run: "${{ github.action_path }}/bootstrap-tools.sh"

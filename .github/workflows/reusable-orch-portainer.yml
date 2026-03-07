@@ -101,6 +101,7 @@ jobs:
           STACKS_SHA: ${{ fromJSON(inputs.plan_json).meta.stacks_sha }}
           INVENTORY_FILE: inventory-ci.yml
           ANSIBLE_TAGS: sync-configs
+          ANSIBLE_TIMEOUT: ${{ vars.ANSIBLE_TIMEOUT || '30' }}
         run: .github/scripts/stages/ansible_run.sh
 
   portainer-apply:
@@ -147,6 +148,7 @@ jobs:
           infisical_login: "true"
           infisical_machine_identity_id: ${{ env.INFISICAL_MACHINE_IDENTITY_ID }}
           install_yq: "true"
+          install_gomplate: "true"
 
       - name: Trigger health-gated webhooks
         env:

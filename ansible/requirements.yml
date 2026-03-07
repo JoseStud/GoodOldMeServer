@@ -1,10 +1,10 @@
 ---
 collections:
   - name: community.general    # parted, filesystem modules
-    version: ">=8.0.0"
+    version: "12.4.0"
   - name: ansible.posix         # mount module
-    version: ">=1.5.0"
+    version: "2.1.0"
   - name: community.docker      # docker_network module
-    version: ">=3.0.0"
+    version: "5.0.6"
   - name: cloud.terraform       # terraform_provider inventory plugin
-    version: ">=1.0.0"
+    version: "4.0.0"

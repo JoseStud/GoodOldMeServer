@@ -84,6 +84,7 @@ INSTALL_JQ="$(bool "${INPUT_INSTALL_JQ:-false}")"
 INSTALL_YQ="$(bool "${INPUT_INSTALL_YQ:-false}")"
 INSTALL_NETCAT="$(bool "${INPUT_INSTALL_NETCAT:-false}")"
 INSTALL_INFISICAL="$(bool "${INPUT_INSTALL_INFISICAL:-false}")"
+INSTALL_GOMPLATE="$(bool "${INPUT_INSTALL_GOMPLATE:-false}")"
 INFISICAL_LOGIN="$(bool "${INPUT_INFISICAL_LOGIN:-false}")"
 
 apt_updated="false"
@@ -193,10 +194,29 @@ run_infisical_login() {
   infisical login --method=oidc --oidc-client-id="${machine_id}" --domain="${domain}"
 }
 
+install_gomplate() {
+  local version sha url tmp
+  version="$(resolve_value "${INPUT_GOMPLATE_VERSION:-}" "${GOMPLATE_VERSION:-}")"
+  sha="$(resolve_value "${INPUT_GOMPLATE_SHA256:-}" "${GOMPLATE_SHA256:-}")"
+  require_value "gomplate_version" "${version}"
+  require_value "gomplate_sha256" "${sha}"
+
+  url="https://github.com/hairyhenderson/gomplate/releases/download/v${version}/gomplate_linux-amd64"
+  tmp="$(mktemp)"
+
+  download_file "gomplate ${version}" "${url}" "${tmp}"
+  verify_sha256 "gomplate ${version}" "${sha}" "${tmp}"
+  sudo install -m 0755 "${tmp}" /usr/local/bin/gomplate
+  rm -f "${tmp}"
+
+  write_output "gomplate_version_installed" "$(gomplate --version | awk '{print $NF}' | sed 's/^v//')"
+}
+
 write_output "jq_version_installed" ""
 write_output "yq_version_installed" ""
 write_output "nc_version_installed" ""
 write_output "infisical_version_installed" ""
+write_output "gomplate_version_installed" ""
 
 if [[ "${INSTALL_JQ}" == "true" ]]; then
   install_jq
@@ -212,6 +232,10 @@ fi
 
 if [[ "${INSTALL_INFISICAL}" == "true" ]]; then
   install_infisical
+fi
+
+if [[ "${INSTALL_GOMPLATE}" == "true" ]]; then
+  install_gomplate
 fi
 
 if [[ "${INFISICAL_LOGIN}" == "true" ]]; then

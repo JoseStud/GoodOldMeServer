@@ -14,6 +14,12 @@ on:
         required: false
         type: string
 
+      ansible_only_mode:
+        description: When true, skip TFC infra-apply and only run Ansible + Portainer stages.
+        required: false
+        type: boolean
+        default: false
+
       dispatch_schema_version:
         required: false
         type: string
@@ -92,4 +98,5 @@ jobs:
           PAYLOAD_SOURCE_SHA: ${{ inputs.dispatch_source_sha }}
 
           VALIDATE_DISPATCH_CONTRACT: "false"
+          ANSIBLE_ONLY_MODE: ${{ inputs.ansible_only_mode }}
         run: .github/scripts/plan/resolve_ci_plan.sh

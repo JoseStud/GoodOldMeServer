@@ -65,7 +65,12 @@ if [[ "${should_check_ssh}" == "true" ]]; then
     exit 1
   fi
 
-  mapfile -t hosts < <(awk '/ansible_host:/ {gsub(/"/, "", $2); print $2}' "${INVENTORY_FILE}")
+  if ! command -v yq >/dev/null 2>&1; then
+    echo "yq is required for inventory parsing but was not found in PATH."
+    exit 1
+  fi
+
+  mapfile -t hosts < <(yq -r '.. | .ansible_host? // empty' "${INVENTORY_FILE}")
   if [[ ${#hosts[@]} -eq 0 ]]; then
     echo "No ansible_host entries found in ${INVENTORY_FILE}."
     exit 1

@@ -49,6 +49,7 @@ jobs:
         env:
           STACKS_SHA: ${{ fromJSON(inputs.plan_json).meta.stacks_sha }}
           INVENTORY_FILE: inventory-ci.yml
+          ANSIBLE_TIMEOUT: ${{ vars.ANSIBLE_TIMEOUT || '30' }}
           INFISICAL_AGENT_CLIENT_ID: ${{ secrets.INFISICAL_AGENT_CLIENT_ID }}
           INFISICAL_AGENT_CLIENT_SECRET: ${{ secrets.INFISICAL_AGENT_CLIENT_SECRET }}
         run: .github/scripts/stages/ansible_run.sh
@@ -82,6 +83,7 @@ jobs:
           STACKS_SHA: ${{ fromJSON(inputs.plan_json).meta.stacks_sha }}
           INVENTORY_FILE: inventory-ci.yml
           ANSIBLE_TAGS: phase7_runtime_sync
+          ANSIBLE_TIMEOUT: ${{ vars.ANSIBLE_TIMEOUT || '30' }}
           INFISICAL_AGENT_CLIENT_ID: ${{ secrets.INFISICAL_AGENT_CLIENT_ID }}
           INFISICAL_AGENT_CLIENT_SECRET: ${{ secrets.INFISICAL_AGENT_CLIENT_SECRET }}
         run: .github/scripts/stages/ansible_run.sh

@@ -45,6 +45,18 @@ These wrappers under `.github/scripts/stages/` are invoked directly by the reusa
 - Reusable planner workflow: `.github/workflows/reusable-resolve-plan.yml` centralizes push/dispatch normalization and `.github/scripts/plan/resolve_ci_plan.sh` execution for the orchestrator workflow. Meta-mode plan construction is delegated internally to `.github/scripts/plan/resolve_meta_plan.sh`.
 - Reusable stage workflows: `.github/workflows/reusable-orch-*.yml` consume `plan_json` directly with `fromJSON(...)` and do not rely on a scalar projection layer.
 - Composite bootstrap action: `.github/actions/bootstrap-tools/action.yml` installs pinned `jq`/`yq`/`nc`/`infisical` versions from `.github/ci/tool-versions.lock` with SHA256 verification and optional Infisical OIDC login.
+
+### Stacks Sub-Repo Tool Pinning
+
+The `stacks/` sub-repo (`stacks-ci.yml` and `stacks-dispatch-redeploy.yml`) cannot reference the parent repository's `.github/actions/bootstrap-tools` composite action. As a result, tool versions (jq, yq) are pinned **inline** in those workflows with hardcoded versions and SHA256 checksums. These **must be kept in sync manually** with the canonical source of truth in `.github/ci/tool-versions.lock`.
+
+| Tool | Parent canonical source | Stacks inline location |
+|------|------------------------|----------------------|
+| `yq` | `.github/ci/tool-versions.lock` (`YQ_VERSION`, `YQ_SHA256`) | `stacks/.github/workflows/stacks-ci.yml` (Install jq + yq step) |
+| `jq` | `.github/ci/tool-versions.lock` (`JQ_VERSION`) | `stacks/.github/workflows/stacks-dispatch-redeploy.yml` (Install jq step) |
+
+> **After any tool version bump** in `tool-versions.lock`, also update the corresponding inline version and SHA in the stacks workflows. The SHA values may differ between the parent and stacks repos if the downloaded artifact variants differ (e.g., different architectures or packaging formats).
+
 - Trusted stacks SHA verification treats GitHub Checks and legacy commit statuses as separate signal channels. A SHA is trusted only when at least one channel exists and every channel that exists is green; check-runs-only and statuses-only repos are both valid.
 - Archived scripts are retained for historical reference and should not be used in the normal deployment path.
 - For operational deployment flows, see [Deployment Runbook](deployment-runbook.md).

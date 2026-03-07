@@ -89,6 +89,11 @@ jobs:
           path: inventory-ci.yml
           if-no-files-found: error
 
+  # Runs on a self-hosted cloud runner (${{ inputs.runner_label }}).  Requires:
+  #   - Outbound HTTPS to api.ipify.org / api64.ipify.org (public IP detection)
+  #   - Outbound TCP/22 to all inventory hosts (SSH preflight)
+  # If the self-hosted runner has egress restrictions, these must be
+  # allow-listed.  See docs/network-architecture.md § CI Runner Egress.
   network-preflight-ssh:
     needs: [inventory-handover]
     if: ${{ fromJSON(inputs.plan_json).meta.stages.stage_network_preflight_ssh && needs.inventory-handover.result == 'success' }}
@@ -103,6 +108,7 @@ jobs:
         with:
           install_jq: "true"
           install_netcat: "true"
+          install_yq: "true"
 
       - name: Download CI inventory artifact
         uses: actions/download-artifact@v4

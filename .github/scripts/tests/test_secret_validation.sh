@@ -179,6 +179,13 @@ write_secret_file /stacks/management \
   'HOMARR_SECRET_KEY=homarr-secret' \
   'PORTAINER_ADMIN_PASSWORD=portainer-admin-password'
 
+# NOTE: The bootstrap role now fetches PORTAINER_AUTOMATION_ALLOWED_CIDRS from
+# Infisical at Phase 6 and falls back to 127.0.0.1/32 if the value is missing.
+# The secret validation script itself still permits the value to be absent
+# (Infisical is the source of truth, not the env), but the deploy environment
+# block always receives a value.  This test verifies the validation script
+# tolerates the missing secret — the actual deploy-safety is covered by the
+# Ansible CIDR fetch-or-fallback tasks.
 bootstrap_case_out="$(run_case "bootstrap_allows_synced_allowlist_missing" env \
   PATH="${BIN_DIR}:${PATH}" \
   FAKE_INFISICAL_ROOT="${FAKE_INFISICAL_ROOT}" \
@@ -194,7 +201,7 @@ bootstrap_case_out="$(run_case "bootstrap_allows_synced_allowlist_missing" env \
   INFISICAL_AGENT_CLIENT_SECRET=agent-secret \
   bash "${SCRIPT}")"
 if [[ -f "${bootstrap_case_out}" ]]; then
-  pass "bootstrap_allows_synced_allowlist_missing: script succeeded without requiring PORTAINER_AUTOMATION_ALLOWED_CIDRS"
+  pass "bootstrap_allows_synced_allowlist_missing: validation permits absent CIDR (deploy uses fetch-or-fallback)"
 else
   fail "bootstrap_allows_synced_allowlist_missing: missing output file"
 fi

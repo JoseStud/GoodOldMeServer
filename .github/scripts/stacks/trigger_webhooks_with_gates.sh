@@ -50,20 +50,17 @@ load_full_reconcile_targets() {
   fi
 }
 
+if ! command -v gomplate >/dev/null 2>&1; then
+  echo "gomplate is required but was not found in PATH."
+  exit 1
+fi
+
 echo "Full reconcile: redeploying all Portainer-managed stacks."
 load_full_reconcile_targets
 
 render_url() {
   local raw_url="$1"
-  local rendered="${raw_url}"
-  if [[ "${rendered}" == *'${BASE_DOMAIN}'* ]]; then
-    if [[ -z "${BASE_DOMAIN:-}" ]]; then
-      echo "BASE_DOMAIN is required to render healthcheck URL '${raw_url}'."
-      exit 1
-    fi
-    rendered="${rendered//'${BASE_DOMAIN}'/${BASE_DOMAIN}}"
-  fi
-  printf '%s' "${rendered}"
+  printf '%s' "${raw_url}" | gomplate
 }
 
 wait_for_stack_health() {
@@ -97,6 +94,7 @@ wait_for_stack_health() {
 trigger_stack_webhook() {
   local stack="$1"
   local env_name url status
+  local max_attempts=3
 
   env_name="WEBHOOK_URL_$(echo "${stack}" | tr '[:lower:]-' '[:upper:]_')"
   url="${!env_name:-}"
@@ -105,13 +103,25 @@ trigger_stack_webhook() {
     return 1
   fi
 
-  status="$(curl -sSo /dev/null -w "%{http_code}" -X POST "${url}")"
-  if [[ "${status}" != "200" && "${status}" != "204" ]]; then
-    echo "Webhook call failed for ${stack} (HTTP ${status})."
-    return 1
-  fi
+  for (( attempt=1; attempt<=max_attempts; attempt++ )); do
+    status="$(curl -sSo /dev/null -w "%{http_code}" -X POST "${url}" || echo "000")"
+    if [[ "${status}" =~ ^2 ]]; then
+      echo "Triggered webhook for ${stack} (HTTP ${status})."
+      return 0
+    fi
 
-  echo "Triggered webhook for ${stack} (HTTP ${status})."
+    # Retry on 5xx (server-side transient) or 000 (network error); fail
+    # immediately on 4xx or other client errors.
+    if [[ "${status}" =~ ^5 || "${status}" == "000" ]] && (( attempt < max_attempts )); then
+      local delay=$(( 2 ** attempt ))
+      echo "Webhook call for ${stack} returned HTTP ${status}; retrying in ${delay}s (attempt ${attempt}/${max_attempts})..."
+      sleep "${delay}"
+      continue
+    fi
+
+    echo "Webhook call failed for ${stack} (HTTP ${status}) after ${attempt} attempt(s)."
+    return 1
+  done
 }
 
 declare -A VISITING=()

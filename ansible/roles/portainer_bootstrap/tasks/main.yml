@@ -54,6 +54,48 @@
     mode: "0644"
   when: inventory_hostname == groups['oci_nodes'][0]
 
+# ──────────────────────────────────────────────
+# Fetch PORTAINER_AUTOMATION_ALLOWED_CIDRS from Infisical so the Traefik
+# ipAllowList middleware is correct from the very first stack deploy,
+# without waiting for the Phase 7 Infisical agent to render .env.
+# ──────────────────────────────────────────────
+
+- name: Fetch PORTAINER_AUTOMATION_ALLOWED_CIDRS from Infisical
+  ansible.builtin.command: >
+    infisical secrets get PORTAINER_AUTOMATION_ALLOWED_CIDRS
+    --env=prod
+    --path=/stacks/management
+    --projectId={{ infisical_project_id }}
+    --plain
+    --silent
+  delegate_to: localhost
+  run_once: true
+  become: false
+  register: cidr_lookup
+  changed_when: false
+  failed_when: false
+  when:
+    - inventory_hostname == groups['oci_nodes'][0]
+    - infisical_project_id | length > 0
+  no_log: true
+
+- name: Set PORTAINER_AUTOMATION_ALLOWED_CIDRS (fetched or fallback)
+  ansible.builtin.set_fact:
+    portainer_automation_cidrs: >-
+      {{ (cidr_lookup.stdout | default('') | trim) if (cidr_lookup is defined and cidr_lookup.rc | default(1) == 0 and cidr_lookup.stdout | default('') | trim | length > 0)
+         else portainer_automation_cidrs_fallback }}
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Warn when using CIDR fallback
+  ansible.builtin.debug:
+    msg: |
+      [WARNING] PORTAINER_AUTOMATION_ALLOWED_CIDRS could not be fetched from Infisical.
+      Using safe fallback: {{ portainer_automation_cidrs_fallback }}
+      The Traefik ipAllowList will block all remote API access until the Infisical agent reconciles the real value.
+  when:
+    - inventory_hostname == groups['oci_nodes'][0]
+    - cidr_lookup is not defined or cidr_lookup.rc | default(1) != 0 or cidr_lookup.stdout | default('') | trim | length == 0
+
 - name: Deploy management stack (Portainer + Homarr)
   ansible.builtin.command: >
     docker stack deploy
@@ -65,6 +107,7 @@
     HOMARR_SECRET_KEY: "{{ lookup('env', 'HOMARR_SECRET_KEY') | default('changeme', true) }}"
     TZ: "{{ lookup('env', 'TZ') | default('Etc/UTC', true) }}"
     PORTAINER_ADMIN_PASSWORD_HASH: "{{ portainer_admin_password_hash }}"
+    PORTAINER_AUTOMATION_ALLOWED_CIDRS: "{{ portainer_automation_cidrs | default(portainer_automation_cidrs_fallback) }}"
   register: stack_deploy_result
   changed_when: "'Creating service' in stack_deploy_result.stdout or 'Updating service' in stack_deploy_result.stdout"
   when: inventory_hostname == groups['oci_nodes'][0]
@@ -133,6 +176,39 @@
     terraform_managed_token_ids: "{{ existing_tokens.json | selectattr('description', 'equalto', portainer_api_token_description) | map(attribute='id') | list }}"
   when: inventory_hostname == groups['oci_nodes'][0]
 
+# If an API key was not passed in the environment (e.g. infisical run did not
+# inject it), attempt a direct Infisical fetch so the reuse path is reachable.
+- name: Fetch PORTAINER_API_KEY from Infisical when not in environment
+  ansible.builtin.command: >
+    infisical secrets get PORTAINER_API_KEY
+    --env=prod
+    --path=/management
+    --projectId={{ infisical_project_id }}
+    --plain
+    --silent
+  delegate_to: localhost
+  run_once: true
+  become: false
+  register: api_key_infisical_lookup
+  changed_when: false
+  failed_when: false
+  when:
+    - inventory_hostname == groups['oci_nodes'][0]
+    - portainer_api_key_candidate | length == 0
+    - infisical_project_id | length > 0
+  no_log: true
+
+- name: Use Infisical-fetched API key as candidate
+  ansible.builtin.set_fact:
+    portainer_api_key_candidate: "{{ api_key_infisical_lookup.stdout | trim }}"
+  when:
+    - inventory_hostname == groups['oci_nodes'][0]
+    - portainer_api_key_candidate | length == 0
+    - api_key_infisical_lookup is defined
+    - api_key_infisical_lookup.rc | default(1) == 0
+    - api_key_infisical_lookup.stdout | default('') | trim | length > 0
+  no_log: true
+
 - name: Validate existing PORTAINER_API_KEY from environment
   ansible.builtin.uri:
     url: "{{ portainer_api_url }}/system/status"
@@ -161,6 +237,17 @@
     - inventory_hostname == groups['oci_nodes'][0]
     - reuse_existing_api_key | default(false)
   no_log: true
+
+- name: Warn about API key rotation
+  ansible.builtin.debug:
+    msg: |
+      [WARNING] Rotating Portainer API key (rotate_api_key={{ rotate_api_key }}).
+      {{ (terraform_managed_token_ids | default([]) | length) | string }} existing terraform-managed token(s) will be deleted.
+      Any concurrent or manual automation using the previous key will be invalidated.
+  when:
+    - inventory_hostname == groups['oci_nodes'][0]
+    - rotate_api_key | default(false)
+    - (terraform_managed_token_ids | default([]) | length) > 0
 
 - name: Delete existing Terraform-managed API keys before rotation
   ansible.builtin.uri:

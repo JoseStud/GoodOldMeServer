@@ -24,6 +24,7 @@ if [[ -n "${ANSIBLE_TAGS}" ]]; then
   ansible_args+=(--tags "${ANSIBLE_TAGS}")
 fi
 
+ANSIBLE_TIMEOUT="${ANSIBLE_TIMEOUT:-30}" \
 ANSIBLE_SSH_ARGS='-o StrictHostKeyChecking=accept-new -o CertificateFile=~/.ssh/id_ed25519-cert.pub -i ~/.ssh/id_ed25519' \
   infisical run --projectId="${INFISICAL_PROJECT_ID}" --env=prod -- \
   ansible-playbook "${ansible_args[@]}"

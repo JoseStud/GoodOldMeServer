@@ -1,0 +1,65 @@
+name: Check Ansible Galaxy Updates
+
+# Dependabot doesn't support Ansible Galaxy collections natively.  This
+# scheduled workflow compares pinned versions in ansible/requirements.yml
+# against latest Galaxy releases and fails (creating a visible annotation) if
+# any collection has a newer version available.
+
+on:
+  schedule:
+    - cron: "0 9 * * 1" # Every Monday at 09:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-updates:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for newer Ansible Galaxy collection versions
+        run: |
+          set -euo pipefail
+
+          REQUIREMENTS_FILE="ansible/requirements.yml"
+          GALAXY_API="https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/index"
+
+          if ! command -v yq >/dev/null 2>&1; then
+            sudo wget -q "https://github.com/mikefarah/yq/releases/download/v4.52.1/yq_linux_amd64" -O /usr/local/bin/yq
+            sudo chmod +x /usr/local/bin/yq
+          fi
+
+          outdated=0
+
+          while IFS='|' read -r name pinned; do
+            namespace="${name%%.*}"
+            collection="${name#*.}"
+
+            latest="$(curl -fsS --retry 3 --max-time 10 \
+              "${GALAXY_API}/${namespace}/${collection}/" \
+              | jq -r '.highest_version.version // empty')" || true
+
+            if [[ -z "${latest}" ]]; then
+              echo "::warning::Could not fetch latest version for ${name}"
+              continue
+            fi
+
+            if [[ "${pinned}" != "${latest}" ]]; then
+              echo "::warning::${name}: pinned ${pinned}, latest ${latest}"
+              outdated=$((outdated + 1))
+            else
+              echo "${name}: up to date (${pinned})"
+            fi
+          done < <(yq -r '.collections[] | .name + "|" + .version' "${REQUIREMENTS_FILE}")
+
+          if (( outdated > 0 )); then
+            echo ""
+            echo "::error::${outdated} Ansible Galaxy collection(s) have newer versions available. Update ansible/requirements.yml."
+            exit 1
+          fi
+
+          echo "All Ansible Galaxy collections are up to date."
