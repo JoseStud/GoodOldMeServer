@@ -48,8 +48,17 @@ jobs:
       - name: Run network preflight tests
         run: bash .github/scripts/tests/test_preflight_network_access.sh
 
+      - name: Run secret validation tests
+        run: bash .github/scripts/tests/test_secret_validation.sh
+
+      - name: Run post-bootstrap secret check tests
+        run: bash .github/scripts/tests/test_post_bootstrap_secret_check.sh
+
       - name: Run Portainer apply tests
         run: bash .github/scripts/tests/test_portainer_apply.sh
+
+      - name: Run Infisical seed helper tests
+        run: bash .github/scripts/tests/test_import_infisical_secrets.sh
 
   bootstrap-tools-smoke:
     runs-on: ubuntu-latest

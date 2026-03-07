@@ -14,20 +14,11 @@ infisical secrets set ZONE_ID="your_cloudflare_zone_id_here" --env=$ENV --path="
 infisical secrets set TAILSCALE_AUTH_KEY="your_tailscale_auth_key_here" --env=$ENV --path="/infrastructure" || true
 
 echo "Creating secrets for folder: /management"
-infisical secrets set PORTAINER_URL="https://portainer.example.com" --env=$ENV --path="/management" || true
-infisical secrets set PORTAINER_API_URL="https://portainer-api.example.com" --env=$ENV --path="/management" || true
-infisical secrets set PORTAINER_API_KEY="your_portainer_api_key_here" --env=$ENV --path="/management" || true
 infisical secrets set PORTAINER_LICENSE_KEY="" --env=$ENV --path="/management" || true
+echo "Skipping automation-managed /management secrets: PORTAINER_URL, PORTAINER_API_URL, PORTAINER_API_KEY"
 
 echo "Creating secrets for folder: /deployments"
-infisical secrets set PORTAINER_WEBHOOK_URLS="" --env=$ENV --path="/deployments" || true
-infisical secrets set WEBHOOK_URL_GATEWAY="" --env=$ENV --path="/deployments" || true
-infisical secrets set WEBHOOK_URL_AUTH="" --env=$ENV --path="/deployments" || true
-infisical secrets set WEBHOOK_URL_NETWORK="" --env=$ENV --path="/deployments" || true
-infisical secrets set WEBHOOK_URL_OBSERVABILITY="" --env=$ENV --path="/deployments" || true
-infisical secrets set WEBHOOK_URL_AI_INTERFACE="" --env=$ENV --path="/deployments" || true
-infisical secrets set WEBHOOK_URL_UPTIME="" --env=$ENV --path="/deployments" || true
-infisical secrets set WEBHOOK_URL_CLOUD="" --env=$ENV --path="/deployments" || true
+echo "Skipping automation-managed /deployments webhook secrets"
 
 echo "Creating secrets for folder: /security"
 infisical secrets set SSH_CA_PUBLIC_KEY="your_ssh_ca_public_key" --env=$ENV --path="/security" || true
@@ -41,12 +32,16 @@ echo "Creating secrets for folder: /stacks/identity"
 infisical secrets set AUTHELIA_JWT_SECRET="your_authelia_jwt_secret" --env=$ENV --path="/stacks/identity" || true
 infisical secrets set AUTHELIA_SESSION_SECRET="your_authelia_session_secret" --env=$ENV --path="/stacks/identity" || true
 infisical secrets set POSTGRES_PASSWORD="your_postgres_password" --env=$ENV --path="/stacks/identity" || true
+infisical secrets set AUTHELIA_NOTIFIER_SMTP_USERNAME="your_smtp_username" --env=$ENV --path="/stacks/identity" || true
+infisical secrets set AUTHELIA_NOTIFIER_SMTP_PASSWORD="your_smtp_password" --env=$ENV --path="/stacks/identity" || true
+infisical secrets set AUTHELIA_NOTIFIER_SMTP_SENDER="Authelia <noreply@example.com>" --env=$ENV --path="/stacks/identity" || true
+infisical secrets set AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET="your_authelia_oidc_hmac_secret" --env=$ENV --path="/stacks/identity" || true
+infisical secrets set AUTHELIA_IDENTITY_PROVIDERS_OIDC_JWKS_0_KEY="your_authelia_oidc_jwks_private_key_pem" --env=$ENV --path="/stacks/identity" || true
 
 echo "Creating secrets for folder: /stacks/management"
 infisical secrets set HOMARR_SECRET_KEY="your_homarr_secret_key" --env=$ENV --path="/stacks/management" || true
 infisical secrets set PORTAINER_ADMIN_PASSWORD="your_portainer_admin_password" --env=$ENV --path="/stacks/management" || true
-infisical secrets set PORTAINER_ADMIN_PASSWORD_HASH="your_portainer_admin_password_hash" --env=$ENV --path="/stacks/management" || true
-infisical secrets set PORTAINER_AUTOMATION_ALLOWED_CIDRS="203.0.113.10/32" --env=$ENV --path="/stacks/management" || true
+echo "Skipping automation-managed /stacks/management secrets: PORTAINER_ADMIN_PASSWORD_HASH, PORTAINER_AUTOMATION_ALLOWED_CIDRS"
 
 echo "Creating secrets for folder: /stacks/network"
 infisical secrets set VW_DB_PASS="your_vw_db_pass" --env=$ENV --path="/stacks/network" || true
@@ -56,6 +51,7 @@ infisical secrets set PIHOLE_PASSWORD="your_pihole_password" --env=$ENV --path="
 echo "Creating secrets for folder: /stacks/observability"
 infisical secrets set GF_OIDC_CLIENT_ID="grafana" --env=$ENV --path="/stacks/observability" || true
 infisical secrets set GF_OIDC_CLIENT_SECRET="your_gf_oidc_client_secret" --env=$ENV --path="/stacks/observability" || true
+infisical secrets set ALERTMANAGER_WEBHOOK_URL="https://hooks.example.com/services/replace-me" --env=$ENV --path="/stacks/observability" || true
 
 echo "Creating secrets for folder: /stacks/ai-interface"
 infisical secrets set ARCH_PC_IP="your_arch_pc_ip" --env=$ENV --path="/stacks/ai-interface" || true

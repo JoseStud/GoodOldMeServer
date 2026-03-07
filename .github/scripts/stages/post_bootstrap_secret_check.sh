@@ -8,10 +8,10 @@ source .github/scripts/lib/workflow_common.sh
 
 setup_infisical
 
-infisical run --projectId="${INFISICAL_PROJECT_ID}" --env=prod --path=/management -- bash -lc '
-  [[ -n "${PORTAINER_API_URL:-}" ]]
-  [[ -n "${PORTAINER_API_KEY:-}" ]]
-'
-infisical run --projectId="${INFISICAL_PROJECT_ID}" --env=prod --path=/stacks/management -- bash -lc '
-  [[ -n "${PORTAINER_ADMIN_PASSWORD_HASH:-}" ]]
-'
+portainer_api_url="$(fetch_infisical_secret /management PORTAINER_API_URL)"
+portainer_api_key="$(fetch_infisical_secret /management PORTAINER_API_KEY)"
+portainer_admin_password_hash="$(fetch_infisical_secret /stacks/management PORTAINER_ADMIN_PASSWORD_HASH)"
+
+assert_https_url_value "PORTAINER_API_URL" "${portainer_api_url}"
+assert_nonplaceholder_value "PORTAINER_API_KEY" "${portainer_api_key}"
+assert_bcrypt_hash_value "PORTAINER_ADMIN_PASSWORD_HASH" "${portainer_admin_password_hash}"
