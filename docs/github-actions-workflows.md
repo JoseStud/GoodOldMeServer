@@ -17,11 +17,11 @@ This page maps each active workflow to its responsibility, trigger or caller, an
 
 | Workflow | Caller | Responsibility | Required Inputs | Outputs / Artifacts |
 |----------|--------|----------------|-----------------|---------------------|
-| `.github/workflows/reusable-resolve-plan.yml` | `infra-orchestrator.yml` | Validate dispatch payload contract and emit canonical `plan_json` | Event metadata fields from the caller | `plan_json` |
-| `.github/workflows/reusable-orch-preflight.yml` | `infra-orchestrator.yml` `preflight` job | Cloud runner guard, stacks SHA trust, secret validation, network policy sync | `plan_json` | `runner_label`, `network_access_policy_json`, `portainer_automation_allowed_cidrs` |
-| `.github/workflows/reusable-orch-infra.yml` | `infra-orchestrator.yml` `infra` job | Infra apply, deterministic inventory render, SSH network preflight | `plan_json`, `runner_label`, `network_access_policy_json` | Uploads `inventory-ci` artifact containing `inventory-ci.yml` |
-| `.github/workflows/reusable-orch-ansible.yml` | `infra-orchestrator.yml` `ansible` job | Ansible bootstrap and/or host runtime sync | `plan_json`, `runner_label` | Consumes `inventory-ci` artifact |
-| `.github/workflows/reusable-orch-portainer.yml` | `infra-orchestrator.yml` `portainer` job | Post-bootstrap secret checks, Portainer API preflight, optional config sync, Portainer apply, health-gated redeploy | `plan_json`, `runner_label`, `network_access_policy_json` | Consumes `inventory-ci` artifact |
+| `.github/workflows/reusable-resolve-plan.yml` | `infra-orchestrator.yml`, `ansible-orchestrator.yml` | Validate dispatch payload contract and emit canonical `plan_json` | Event metadata fields from the caller | `plan_json` |
+| `.github/workflows/reusable-orch-preflight.yml` | `infra-orchestrator.yml`, `ansible-orchestrator.yml` | Cloud runner guard, stacks SHA trust, secret validation, network policy sync. Validates `plan_schema_version`. | `plan_json` | `runner_label`, `network_access_policy_json`, `portainer_automation_allowed_cidrs` |
+| `.github/workflows/reusable-orch-infra.yml` | `infra-orchestrator.yml`, `ansible-orchestrator.yml` | Infra apply (skipped in ansible-only mode), deterministic inventory render, SSH network preflight. Validates `plan_schema_version`. | `plan_json`, `runner_label`, `network_access_policy_json` | Uploads `inventory-ci` artifact containing `inventory-ci.yml` |
+| `.github/workflows/reusable-orch-ansible.yml` | `infra-orchestrator.yml`, `ansible-orchestrator.yml` | Ansible bootstrap and/or host runtime sync. Validates `plan_schema_version`. | `plan_json`, `runner_label` | Consumes `inventory-ci` artifact |
+| `.github/workflows/reusable-orch-portainer.yml` | `infra-orchestrator.yml`, `ansible-orchestrator.yml` | Post-bootstrap secret checks, Portainer API preflight, optional config sync, Portainer apply, health-gated redeploy. Validates `plan_schema_version`. | `plan_json`, `runner_label`, `network_access_policy_json` | Consumes `inventory-ci` artifact |
 
 ## Stable Contracts
 

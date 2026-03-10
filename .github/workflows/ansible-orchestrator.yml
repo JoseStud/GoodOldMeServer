@@ -28,7 +28,7 @@ jobs:
     uses: ./.github/workflows/reusable-resolve-plan.yml
     with:
       source_event_name: ${{ github.event_name }}
-      push_before: ${{ github.event.before }}
+      push_before: ${{ github.event.before || '' }}
       push_sha: ${{ github.sha }}
       ansible_only_mode: true
 

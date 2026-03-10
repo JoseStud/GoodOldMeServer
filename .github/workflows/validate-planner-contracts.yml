@@ -119,6 +119,10 @@ jobs:
       - name: Run workflow contract tests
         run: bash .github/scripts/tests/test_workflow_contracts.sh
 
+  # Intentionally does NOT wait/poll for CI signals (unlike the orchestrator
+  # preflight which sets WAIT_FOR_SUCCESS=true).  PRs should only bump the
+  # stacks submodule to a SHA whose CI has already completed; this enforces
+  # that discipline by failing immediately if signals are missing or red.
   stacks-sha-trust:
     runs-on: ubuntu-latest
 

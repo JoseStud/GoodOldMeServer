@@ -15,7 +15,17 @@ to_bool() {
 emit_output() {
   local key="$1"
   local value="$2"
-  echo "${key}=${value}" >> "${GITHUB_OUTPUT}"
+  if [[ "${value}" == *$'\n'* ]]; then
+    # Multiline: use heredoc delimiter form (GitHub Actions requirement).
+    local delimiter="EOF_${RANDOM}_${RANDOM}"
+    {
+      printf '%s<<%s\n' "${key}" "${delimiter}"
+      printf '%s\n' "${value}"
+      printf '%s\n' "${delimiter}"
+    } >> "${GITHUB_OUTPUT}"
+  else
+    printf '%s=%s\n' "${key}" "${value}" >> "${GITHUB_OUTPUT}"
+  fi
 }
 
 normalize_nullable() {
@@ -120,11 +130,7 @@ is_placeholder_url_value() {
   local normalized="${1:-}"
   normalized="${normalized,,}"
 
-  if is_placeholder_value "${normalized}"; then
-    return 0
-  fi
-
-  [[ "${normalized}" == *"example.com"* || "${normalized}" == *"example.org"* || "${normalized}" == *"example.net"* ]]
+  is_placeholder_value "${normalized}"
 }
 
 assert_nonempty_value() {

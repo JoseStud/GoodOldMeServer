@@ -36,14 +36,7 @@ resolve_meta_mode() {
       run_portainer_apply="true"
     else
       run_infra_apply="true"
-
-      if [[ "${run_infra_apply}" == "true" ]]; then
-        run_ansible_bootstrap="true"
-        run_portainer_apply="true"
-      fi
-    fi
-
-    if [[ "${run_ansible_bootstrap}" == "true" ]]; then
+      run_ansible_bootstrap="true"
       run_portainer_apply="true"
     fi
 
@@ -53,6 +46,10 @@ resolve_meta_mode() {
       reason="manual-dispatch"
     fi
   elif [[ "${EVENT_NAME}" == "repository_dispatch" ]]; then
+    # Guard retained for direct script invocation (e.g. tests) where the
+    # caller has not already validated.  In CI the reusable-resolve-plan
+    # workflow validates in a dedicated step and passes
+    # VALIDATE_DISPATCH_CONTRACT=false to avoid double-validation.
     if [[ "$(to_bool "${VALIDATE_DISPATCH_CONTRACT:-true}")" == "true" ]]; then
       .github/scripts/plan/validate_dispatch_payload.sh "meta"
     fi

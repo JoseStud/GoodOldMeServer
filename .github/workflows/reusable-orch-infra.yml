@@ -22,14 +22,21 @@ env:
   TFC_WORKSPACE_INFRA: ${{ vars.TFC_WORKSPACE_INFRA || 'goodoldme-infra' }}
 
 jobs:
+  # Defensive: validates plan_json independently of upstream resolve-plan.
   validate-plan-json:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Validate plan_json is valid JSON
+      - name: Validate plan_json is valid JSON with expected schema version
+        env:
+          PLAN_JSON: ${{ inputs.plan_json || '{}' }}
         run: |
-          printf '%s' "${{ inputs.plan_json || '{}' }}" > /tmp/plan.json
-          jq -e . /tmp/plan.json >/dev/null || (echo "Invalid JSON in inputs.plan_json" && exit 1)
+          printf '%s' "${PLAN_JSON}" | jq -e . >/dev/null || { echo "Invalid JSON in inputs.plan_json"; exit 1; }
+          schema_version="$(printf '%s' "${PLAN_JSON}" | jq -r '.plan_schema_version // ""')"
+          if [[ -n "${schema_version}" && "${schema_version}" != "ci-plan-v1" ]]; then
+            echo "Unexpected plan_schema_version: ${schema_version} (expected ci-plan-v1)"
+            exit 1
+          fi
 
   infra-apply:
     needs: validate-plan-json
