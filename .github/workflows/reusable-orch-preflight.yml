@@ -30,16 +30,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Validate plan_json is valid JSON with expected schema version
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate plan_json
         env:
-          PLAN_JSON: ${{ inputs.plan_json || '{}' }}
-        run: |
-          printf '%s' "${PLAN_JSON}" | jq -e . >/dev/null || { echo "Invalid JSON in inputs.plan_json"; exit 1; }
-          schema_version="$(printf '%s' "${PLAN_JSON}" | jq -r '.plan_schema_version // ""')"
-          if [[ -n "${schema_version}" && "${schema_version}" != "ci-plan-v1" ]]; then
-            echo "Unexpected plan_schema_version: ${schema_version} (expected ci-plan-v1)"
-            exit 1
-          fi
+          PLAN_JSON: ${{ inputs.plan_json }}
+        run: bash .github/scripts/plan/validate_plan_json.sh
 
   cloud-runner-guard:
     needs: validate-plan-json

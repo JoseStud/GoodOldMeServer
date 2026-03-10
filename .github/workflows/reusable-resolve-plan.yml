@@ -44,7 +44,7 @@ on:
 
     outputs:
       plan_json:
-        value: ${{ jobs.resolve.outputs.plan_json || '{}' }}
+        value: ${{ jobs.resolve.outputs.plan_json }}
 
 permissions:
   contents: read
@@ -53,7 +53,7 @@ jobs:
   resolve:
     runs-on: ubuntu-latest
     outputs:
-      plan_json: ${{ steps.resolve.outputs.plan_json || '{}' }}
+      plan_json: ${{ steps.resolve.outputs.plan_json }}
 
     steps:
       - name: Checkout
