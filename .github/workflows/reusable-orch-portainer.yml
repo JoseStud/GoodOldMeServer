@@ -29,20 +29,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Validate plan_json is valid JSON with expected schema version
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate plan_json
         env:
           PLAN_JSON: ${{ inputs.plan_json }}
-        run: |
-          if [[ -z "${PLAN_JSON}" || "${PLAN_JSON}" == "{}" ]]; then
-            echo "::error::plan_json is empty or missing — aborting"
-            exit 1
-          fi
-          printf '%s' "${PLAN_JSON}" | jq -e . >/dev/null || { echo "::error::Invalid JSON in inputs.plan_json"; exit 1; }
-          schema_version="$(printf '%s' "${PLAN_JSON}" | jq -r '.plan_schema_version // ""')"
-          if [[ "${schema_version}" != "ci-plan-v1" ]]; then
-            echo "::error::Missing or unexpected plan_schema_version: '${schema_version}' (expected ci-plan-v1)"
-            exit 1
-          fi
+        run: bash .github/scripts/plan/validate_plan_json.sh
 
   post-bootstrap-secret-check:
     needs: validate-plan-json
