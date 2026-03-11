@@ -417,7 +417,7 @@ The root `infisical.json` file stores the workspace ID for the Infisical CLI (us
 }
 ```
 
-This file is intentionally kept in the repo (without secrets) so that `infisical` CLI commands work without passing `--projectId` every time.
+This file is intentionally kept in the repo (without secrets) so that ad hoc local `infisical` CLI debugging can work without passing `--projectId` every time. Committed workflow scripts and helper automation still pass `--projectId` explicitly and must not rely on ambient CLI state.
 
 ## Adding a New Secret
 

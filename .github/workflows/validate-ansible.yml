@@ -12,7 +12,6 @@ on:
       - "stacks"
       - ".gitmodules"
   push:
-    branches-ignore: [main]
     paths:
       - "ansible/**"
       - ".ansible-lint"

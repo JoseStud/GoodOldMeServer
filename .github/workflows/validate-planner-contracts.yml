@@ -11,7 +11,6 @@ on:
       - "stacks"
       - ".gitmodules"
   push:
-    branches-ignore: [main]
     paths:
       - ".github/ci/**"
       - ".github/actions/**"
@@ -53,6 +52,9 @@ jobs:
 
       - name: Run network preflight tests
         run: bash .github/scripts/tests/test_preflight_network_access.sh
+
+      - name: Run network policy sync tests
+        run: bash .github/scripts/tests/test_sync_network_access_policy.sh
 
       - name: Run secret validation tests
         run: bash .github/scripts/tests/test_secret_validation.sh

@@ -14,8 +14,10 @@ Validation is split by concern instead of being bundled into a single workflow:
 - `validate-terraform.yml` runs `terraform fmt`, `terraform validate` for `terraform/infra`, `terraform/oci`, `terraform/gcp`, `terraform/portainer-root`, and `terraform/portainer`, plus the fixed Terraform Cloud speculative plan for `terraform/infra`
 - `validate-ansible.yml` runs ansible lint + syntax checks
 
+Each validation workflow runs on both `pull_request` and path-filtered `push`, including pushes to `main`.
 None of the active validation workflows do path-derived project selection inside the workflow body. Each workflow is triggered only by the path set relevant to its concern.
 Submodule pointer updates are treated as first-class infra changes: the active validation workflows and orchestrator trigger on `stacks` and `.gitmodules`.
+Post-merge validation for deployment shell changes under `.github/scripts/**` is provided by these validation workflows, not by expanding the production orchestrator push paths.
 
 ## Orchestrator Push Behavior
 

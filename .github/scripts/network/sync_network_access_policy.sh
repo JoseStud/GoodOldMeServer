@@ -91,6 +91,7 @@ fi
 
 infisical secrets set \
   PORTAINER_AUTOMATION_ALLOWED_CIDRS="${portainer_cidrs_csv}" \
+  --projectId="${INFISICAL_PROJECT_ID}" \
   --env=prod \
   --path="/stacks/management" \
   >/dev/null

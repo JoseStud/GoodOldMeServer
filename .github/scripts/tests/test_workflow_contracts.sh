@@ -187,6 +187,44 @@ assert_trigger_path_contains() {
   assert_array_contains "${case_name}" "${event}.paths" "${expected}" "${paths}"
 }
 
+assert_push_includes_main() {
+  local case_name="$1"
+  local file="$2"
+  local push_branches
+  local push_branches_ignore
+  local includes_main
+
+  push_branches="$(yq -o=json '.on.push.branches // null' "${file}" | jq -c '.')"
+  push_branches_ignore="$(yq -o=json '.on.push."branches-ignore" // []' "${file}" | jq -c '.')"
+
+  includes_main="$(
+    jq -cn \
+      --argjson branches "${push_branches}" \
+      --argjson branches_ignore "${push_branches_ignore}" '
+        if ($branches | type) == "array" then
+          ($branches | index("main")) != null
+        else
+          ($branches_ignore | index("main")) == null
+        end
+      '
+  )"
+
+  assert_eq "${case_name}" "push_includes_main" "true" "${includes_main}"
+}
+
+assert_push_does_not_ignore_main() {
+  local case_name="$1"
+  local file="$2"
+  local ignores_main
+
+  ignores_main="$(
+    yq -o=json '.on.push."branches-ignore" // []' "${file}" \
+      | jq -c 'index("main") != null'
+  )"
+
+  assert_eq "${case_name}" "push_ignores_main" "false" "${ignores_main}"
+}
+
 assert_no_regex_match() {
   local case_name="$1"
   local pattern="$2"
@@ -383,11 +421,14 @@ assert_eq "planner_validation" "jobs" '["bootstrap-query-tools-smoke","planner-c
 assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_resolve_ci_plan.sh"
 assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_trigger_webhooks_with_gates.sh"
 assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_preflight_network_access.sh"
+assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_sync_network_access_policy.sh"
 assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_secret_validation.sh"
 assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_post_bootstrap_secret_check.sh"
 assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_portainer_apply.sh"
 assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_import_infisical_secrets.sh"
 assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_workflow_contracts.sh"
+assert_push_includes_main "planner_validation" "${PLANNER_VALIDATION}"
+assert_push_does_not_ignore_main "planner_validation" "${PLANNER_VALIDATION}"
 assert_trigger_path_contains "planner_validation" "${PLANNER_VALIDATION}" "push" "scripts/**"
 assert_trigger_path_contains "planner_validation" "${PLANNER_VALIDATION}" "push" "stacks"
 assert_trigger_path_contains "planner_validation" "${PLANNER_VALIDATION}" "push" ".gitmodules"
@@ -413,6 +454,8 @@ terraform_jobs="$(yq -o=json '.jobs | keys' "${TERRAFORM_VALIDATION}" | jq -c 's
 assert_eq "terraform_validation" "jobs" '["terraform-fmt","terraform-validate","tfc-speculative-plan"]' "${terraform_jobs}"
 tfc_directory="$(yq -r '.jobs."tfc-speculative-plan".steps[] | select(.uses == "hashicorp/tfc-workflows-github/actions/upload-configuration@v1.0.0") | .with.directory' "${TERRAFORM_VALIDATION}")"
 assert_eq "terraform_validation" "tfc_directory" "terraform/infra" "${tfc_directory}"
+assert_push_includes_main "terraform_validation" "${TERRAFORM_VALIDATION}"
+assert_push_does_not_ignore_main "terraform_validation" "${TERRAFORM_VALIDATION}"
 assert_trigger_path_contains "terraform_validation" "${TERRAFORM_VALIDATION}" "push" "stacks"
 assert_trigger_path_contains "terraform_validation" "${TERRAFORM_VALIDATION}" "push" ".gitmodules"
 assert_trigger_path_contains "terraform_validation" "${TERRAFORM_VALIDATION}" "pull_request" "stacks"
@@ -420,6 +463,8 @@ assert_trigger_path_contains "terraform_validation" "${TERRAFORM_VALIDATION}" "p
 
 ansible_jobs="$(yq -o=json '.jobs | keys' "${ANSIBLE_VALIDATION}" | jq -c 'sort')"
 assert_eq "ansible_validation" "jobs" '["ansible-validate"]' "${ansible_jobs}"
+assert_push_includes_main "ansible_validation" "${ANSIBLE_VALIDATION}"
+assert_push_does_not_ignore_main "ansible_validation" "${ANSIBLE_VALIDATION}"
 assert_trigger_path_contains "ansible_validation" "${ANSIBLE_VALIDATION}" "push" "stacks"
 assert_trigger_path_contains "ansible_validation" "${ANSIBLE_VALIDATION}" "push" ".gitmodules"
 assert_trigger_path_contains "ansible_validation" "${ANSIBLE_VALIDATION}" "pull_request" "stacks"
