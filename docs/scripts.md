@@ -27,6 +27,8 @@ This document catalogs operator-facing helper scripts in `scripts/` plus the dir
 
 These wrappers under `.github/scripts/stages/` are invoked directly by the reusable workflows and compose the lower-level helpers listed above.
 
+For Infisical-backed wrappers, the reusable workflow must export both `INFISICAL_MACHINE_IDENTITY_ID` and `INFISICAL_PROJECT_ID` into the shell environment. The bootstrap action can perform an early login, but the wrapper scripts still call `setup_infisical` and `infisical run` themselves.
+
 | Script | Invoked By | Responsibility |
 |-------|------------|----------------|
 | `.github/scripts/stages/ansible_run.sh` | `reusable-orch-ansible.yml`, `reusable-orch-portainer.yml` | Checks out the trusted `STACKS_SHA`, logs into Infisical, mints an ephemeral SSH certificate, and runs `ansible/playbooks/provision.yml` with optional tag scoping |

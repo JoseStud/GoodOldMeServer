@@ -107,6 +107,17 @@ assert_job_needs() {
   assert_eq "${case_name}" "${job_id}.needs" "${expected_json}" "${actual}"
 }
 
+assert_workflow_env_value() {
+  local case_name="$1"
+  local file="$2"
+  local key="$3"
+  local expected="$4"
+  local actual
+
+  actual="$(yq -r ".env.\"${key}\" // \"\"" "${file}")"
+  assert_eq "${case_name}" "env.${key}" "${expected}" "${actual}"
+}
+
 assert_line_order() {
   local case_name="$1"
   shift
@@ -277,15 +288,21 @@ preflight_inputs="$(yq -o=json '.on.workflow_call.inputs | keys | sort' "${PRELI
 assert_eq "preflight_contract" "inputs" '["plan_json"]' "${preflight_inputs}"
 preflight_outputs="$(yq -o=json '.on.workflow_call.outputs | keys | sort' "${PRELIGHT}" | jq -c '.')"
 assert_eq "preflight_contract" "outputs" '["network_access_policy_json","portainer_automation_allowed_cidrs","runner_label"]' "${preflight_outputs}"
+assert_workflow_env_value "preflight_contract" "${PRELIGHT}" "INFISICAL_MACHINE_IDENTITY_ID" '${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}'
+assert_workflow_env_value "preflight_contract" "${PRELIGHT}" "INFISICAL_PROJECT_ID" '${{ vars.INFISICAL_PROJECT_ID }}'
 
 infra_inputs="$(yq -o=json '.on.workflow_call.inputs | keys | sort' "${INFRA}" | jq -c '.')"
 assert_eq "infra_contract" "inputs" '["network_access_policy_json","plan_json","runner_label"]' "${infra_inputs}"
 
 ansible_inputs="$(yq -o=json '.on.workflow_call.inputs | keys | sort' "${ANSIBLE}" | jq -c '.')"
 assert_eq "ansible_contract" "inputs" '["plan_json","runner_label"]' "${ansible_inputs}"
+assert_workflow_env_value "ansible_contract" "${ANSIBLE}" "INFISICAL_MACHINE_IDENTITY_ID" '${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}'
+assert_workflow_env_value "ansible_contract" "${ANSIBLE}" "INFISICAL_PROJECT_ID" '${{ vars.INFISICAL_PROJECT_ID }}'
 
 portainer_inputs="$(yq -o=json '.on.workflow_call.inputs | keys | sort' "${PORTAINER}" | jq -c '.')"
 assert_eq "portainer_contract" "inputs" '["network_access_policy_json","plan_json","runner_label"]' "${portainer_inputs}"
+assert_workflow_env_value "portainer_contract" "${PORTAINER}" "INFISICAL_MACHINE_IDENTITY_ID" '${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}'
+assert_workflow_env_value "portainer_contract" "${PORTAINER}" "INFISICAL_PROJECT_ID" '${{ vars.INFISICAL_PROJECT_ID }}'
 
 inventory_upload_name="$(yq -r '.jobs."inventory-handover".steps[] | select(.uses == "actions/upload-artifact@v4") | .with.name' "${INFRA}")"
 inventory_upload_path="$(yq -r '.jobs."inventory-handover".steps[] | select(.uses == "actions/upload-artifact@v4") | .with.path' "${INFRA}")"
