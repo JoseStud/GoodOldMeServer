@@ -451,15 +451,24 @@ portainer_runner_local_actions="$(runner_jobs_with_local_actions "${PORTAINER}" 
 assert_eq "runner_contract" "portainer_local_actions" "" "${portainer_runner_local_actions}"
 
 terraform_jobs="$(yq -o=json '.jobs | keys' "${TERRAFORM_VALIDATION}" | jq -c 'sort')"
-assert_eq "terraform_validation" "jobs" '["terraform-fmt","terraform-validate","tfc-speculative-plan"]' "${terraform_jobs}"
+assert_eq "terraform_validation" "jobs" '["cloud-runner-guard","portainer-live-plan","terraform-fmt","terraform-validate","tfc-speculative-plan"]' "${terraform_jobs}"
+terraform_permissions_id_token="$(yq -r '.permissions."id-token" // ""' "${TERRAFORM_VALIDATION}")"
+assert_eq "terraform_validation" "permissions.id-token" "write" "${terraform_permissions_id_token}"
+assert_job_runs_on "terraform_validation" "${TERRAFORM_VALIDATION}" "portainer-live-plan" '${{ needs.cloud-runner-guard.outputs.runner_label }}'
+assert_job_needs "terraform_validation" "${TERRAFORM_VALIDATION}" "portainer-live-plan" '["terraform-validate","cloud-runner-guard"]'
 tfc_directory="$(yq -r '.jobs."tfc-speculative-plan".steps[] | select(.uses == "hashicorp/tfc-workflows-github/actions/upload-configuration@v1.0.0") | .with.directory' "${TERRAFORM_VALIDATION}")"
 assert_eq "terraform_validation" "tfc_directory" "terraform/infra" "${tfc_directory}"
+portainer_live_plan_shadow_mode="$(yq -r '.jobs."portainer-live-plan".steps[] | select(.run == ".github/scripts/stages/portainer_apply.sh") | .env.SHADOW_MODE // ""' "${TERRAFORM_VALIDATION}")"
+assert_eq "terraform_validation" "portainer_live_plan.shadow_mode" "true" "${portainer_live_plan_shadow_mode}"
 assert_push_includes_main "terraform_validation" "${TERRAFORM_VALIDATION}"
 assert_push_does_not_ignore_main "terraform_validation" "${TERRAFORM_VALIDATION}"
 assert_trigger_path_contains "terraform_validation" "${TERRAFORM_VALIDATION}" "push" "stacks"
 assert_trigger_path_contains "terraform_validation" "${TERRAFORM_VALIDATION}" "push" ".gitmodules"
 assert_trigger_path_contains "terraform_validation" "${TERRAFORM_VALIDATION}" "pull_request" "stacks"
 assert_trigger_path_contains "terraform_validation" "${TERRAFORM_VALIDATION}" "pull_request" ".gitmodules"
+
+portainer_apply_tfc_token="$(yq -r '.jobs."portainer-apply".steps[] | select(.run == ".github/scripts/stages/portainer_apply.sh") | .env.TFC_TOKEN // ""' "${PORTAINER}")"
+assert_eq "portainer_contract" "portainer_apply.env.TFC_TOKEN" '${{ secrets.TFC_TOKEN }}' "${portainer_apply_tfc_token}"
 
 ansible_jobs="$(yq -o=json '.jobs | keys' "${ANSIBLE_VALIDATION}" | jq -c 'sort')"
 assert_eq "ansible_validation" "jobs" '["ansible-validate"]' "${ansible_jobs}"

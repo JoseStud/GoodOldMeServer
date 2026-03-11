@@ -22,6 +22,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
   checks: read
   statuses: read
   pull-requests: read
@@ -68,6 +69,20 @@ jobs:
 
       - name: Terraform validate
         run: terraform -chdir=${{ matrix.root }} validate
+
+  cloud-runner-guard:
+    runs-on: ubuntu-latest
+    outputs:
+      runner_label: ${{ steps.guard.outputs.runner_label }}
+
+    steps:
+      - name: Verify cloud runner guard
+        id: guard
+        env:
+          CLOUD_STATIC_RUNNER_LABEL: ${{ vars.CLOUD_STATIC_RUNNER_LABEL }}
+        run: |
+          : "${CLOUD_STATIC_RUNNER_LABEL:?Missing required variable: CLOUD_STATIC_RUNNER_LABEL}"
+          echo "runner_label=${CLOUD_STATIC_RUNNER_LABEL}" >> "${GITHUB_OUTPUT}"
 
   tfc-speculative-plan:
     needs: terraform-validate
@@ -129,3 +144,56 @@ jobs:
           TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
           TF_API_TOKEN: ${{ secrets.TFC_TOKEN }}
         run: .github/scripts/tfc/wait_for_tfc_run.sh "${RUN_ID}" "${WORKSPACE_NAME}"
+
+  portainer-live-plan:
+    needs: [terraform-validate, cloud-runner-guard]
+    runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
+    env:
+      INFISICAL_MACHINE_IDENTITY_ID: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
+      INFISICAL_PROJECT_ID: ${{ vars.INFISICAL_PROJECT_ID }}
+      TFC_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
+      TFC_WORKSPACE_PORTAINER: ${{ vars.TFC_WORKSPACE_PORTAINER || 'goodoldme-portainer' }}
+      TF_VAR_infisical_project_id: ${{ vars.INFISICAL_PROJECT_ID }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Resolve stacks SHA
+        id: stacks-sha
+        run: echo "stacks_sha=$(git rev-parse HEAD:stacks)" >> "${GITHUB_OUTPUT}"
+
+      - name: Validate required secret paths
+        env:
+          RUN_INFRA: "false"
+          RUN_ANSIBLE: "false"
+          RUN_PORTAINER: "true"
+          RUN_HOST_SYNC: "false"
+          RUN_HEALTH: "false"
+          INFISICAL_TOKEN: ${{ secrets.INFISICAL_TOKEN }}
+        run: .github/scripts/stages/secret_validation.sh
+
+      - name: Build network access policy
+        id: network-policy
+        run: .github/scripts/network/build_network_access_policy.sh
+
+      - name: Preflight egress + Portainer API reachability
+        env:
+          NETWORK_ACCESS_POLICY_JSON: ${{ steps.network-policy.outputs.network_access_policy_json }}
+          RUN_HEALTH: "false"
+          RUN_PORTAINER: "true"
+          PORTAINER_ALLOWLIST_PROPAGATION_TIMEOUT_SECONDS: ${{ vars.PORTAINER_ALLOWLIST_PROPAGATION_TIMEOUT_SECONDS || '420' }}
+          PORTAINER_ALLOWLIST_PROPAGATION_POLL_INTERVAL_SECONDS: ${{ vars.PORTAINER_ALLOWLIST_PROPAGATION_POLL_INTERVAL_SECONDS || '5' }}
+        run: .github/scripts/stages/portainer_api_preflight.sh
+
+      - name: Terraform Portainer plan (local operations mode)
+        env:
+          STACKS_SHA: ${{ steps.stacks-sha.outputs.stacks_sha }}
+          SHADOW_MODE: "true"
+          INFISICAL_TOKEN: ${{ secrets.INFISICAL_TOKEN }}
+          TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+          TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TOKEN }}
+        run: .github/scripts/stages/portainer_apply.sh
