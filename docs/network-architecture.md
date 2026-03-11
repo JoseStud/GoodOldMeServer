@@ -212,6 +212,8 @@ With the `replica 3 arbiter 1` configuration, the GCP witness node acts as a tie
 
 The `network-preflight-ssh` job in `reusable-orch-infra.yml` runs on a **self-hosted cloud runner** (`${{ inputs.runner_label }}`). It requires the following outbound connectivity:
 
+That runner is expected to conform to the `toolingDebian` contract, so the workflow does not install `jq`, `yq`, `nc`, `ansible`, or `infisical` at runtime.
+
 | Destination | Protocol/Port | Purpose |
 |-------------|---------------|---------|
 | `api.ipify.org` | HTTPS (443) | Detect runner public IPv4 for network policy validation |

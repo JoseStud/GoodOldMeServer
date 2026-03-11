@@ -1,5 +1,5 @@
 name: Bootstrap Query Tools
-description: Install pinned query tools (jq, yq) via the shared bootstrap script.
+description: Install pinned jq and yq versions for GitHub-hosted validation jobs.
 
 inputs:
   tool_versions_lock_path:
@@ -56,4 +56,4 @@ runs:
         INPUT_YQ_VERSION: ${{ inputs.yq_version }}
         INPUT_JQ_SHA256: ${{ inputs.jq_sha256 }}
         INPUT_YQ_SHA256: ${{ inputs.yq_sha256 }}
-      run: "${{ github.action_path }}/../bootstrap-tools/bootstrap-tools.sh"
+      run: "${{ github.action_path }}/bootstrap-query-tools.sh"

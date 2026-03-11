@@ -6,7 +6,7 @@ This document defines the current GitHub Actions workflow set.
 
 | Workflow | Purpose |
 |----------|---------|
-| `.github/workflows/validate-planner-contracts.yml` | Public planner/workflow validation entry point for shell contract tests, workflow contract checks, bootstrap-tools smoke, and trusted stacks SHA verification. |
+| `.github/workflows/validate-planner-contracts.yml` | Public planner/workflow validation entry point for shell contract tests, workflow contract checks, bootstrap-query-tools smoke, and trusted stacks SHA verification. |
 | `.github/workflows/validate-terraform.yml` | Public Terraform validation entry point for `terraform fmt`, multi-root `terraform validate`, and the fixed speculative Terraform Cloud run for `terraform/infra`. |
 | `.github/workflows/validate-ansible.yml` | Public Ansible validation entry point for `ansible-lint` and syntax checks. |
 | `.github/workflows/infra-orchestrator.yml` | Thin infrastructure orchestration entry point triggered by `terraform/**`, `stacks`, `.gitmodules` pushes, `stacks-redeploy-intent-v5` dispatch, and `workflow_dispatch` (manual rerun; `ansible_only` boolean input to skip TFC apply). Fans into `preflight`, `infra`, `ansible`, and `portainer` reusable stage workflows. |

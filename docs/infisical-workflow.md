@@ -192,7 +192,7 @@ While Infisical manages infrastructure and application secrets, a few bootstrap 
 
 Most workflow stage scripts authenticate to Infisical via **OIDC**. The Terraform-based `terraform/portainer-root` apply path still needs `INFISICAL_TOKEN` because the Terraform provider reads Infisical directly during local/runner-side execution.
 
-The reusable orchestrator workflows export both `INFISICAL_MACHINE_IDENTITY_ID` and `INFISICAL_PROJECT_ID` into their shell environment. This is required because the stage wrapper scripts call `setup_infisical` themselves and then use `infisical run --projectId=...` or `fetch_infisical_secret`, so passing the machine identity only to the bootstrap action is not sufficient.
+The reusable orchestrator workflows export both `INFISICAL_MACHINE_IDENTITY_ID` and `INFISICAL_PROJECT_ID` into their shell environment. This is required because the stage wrapper scripts call `setup_infisical` themselves and then use `infisical run --projectId=...` or `fetch_infisical_secret`, so the runner must already provide the Infisical CLI and the stage wrappers still own the actual OIDC login flow.
 
 #### Variables (`vars.*`)
 
@@ -202,7 +202,7 @@ The reusable orchestrator workflows export both `INFISICAL_MACHINE_IDENTITY_ID` 
 | `INFISICAL_PROJECT_ID` | Infisical → Project Settings → Project ID | Terraform/Ansible workflows and webhook runner secret reads; exported alongside `INFISICAL_MACHINE_IDENTITY_ID` to reusable workflow shell steps |
 | `INFISICAL_SSH_CA_ID` | Infisical → SSH Management → SSH CA details | Reusable Ansible/config-sync stages that mint ephemeral SSH certs |
 | `TFC_ORGANIZATION` (or `TFC_ORG`) | Terraform Cloud organization slug | Infrastructure orchestrator + infrastructure validation Terraform Cloud API calls |
-| `CLOUD_STATIC_RUNNER_LABEL` | Label of your static-egress private runner | Infrastructure orchestrator jobs that require deterministic egress + private reachability |
+| `CLOUD_STATIC_RUNNER_LABEL` | Label of your static-egress private runner conforming to the `toolingDebian` contract (`bash`, `jq`, `yq`, `openssh-client`, `python3`, `ansible`, `infisical`, `gcloud`, `oci`, `gomplate`, `nc` on `PATH`) | Infrastructure orchestrator jobs that require deterministic egress + private reachability |
 | `TFC_WORKSPACE_INFRA` | Terraform Cloud → Workspace name (`goodoldme-infra`) | Infra workspace apply (`terraform/infra`) |
 | `TFC_WORKSPACE_PORTAINER` | Terraform Cloud → Workspace name (`goodoldme-portainer`) | Portainer workspace apply (`terraform/portainer-root`) |
 | `TFC_INFRA_APPLY_WAIT_TIMEOUT_SECONDS` *(optional)* | Integer seconds (default `7200`) | Infra manual-confirm wait loop in infrastructure orchestrator |

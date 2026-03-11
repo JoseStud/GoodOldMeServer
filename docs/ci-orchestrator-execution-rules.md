@@ -10,7 +10,7 @@ This document is the single source of truth for:
 
 Validation is split by concern instead of being bundled into a single workflow:
 
-- `validate-planner-contracts.yml` runs planner shell tests, workflow contract checks, bootstrap-tools smoke, and trusted stacks SHA verification for the current `HEAD:stacks` gitlink
+- `validate-planner-contracts.yml` runs planner shell tests, workflow contract checks, bootstrap-query-tools smoke, and trusted stacks SHA verification for the current `HEAD:stacks` gitlink
 - `validate-terraform.yml` runs `terraform fmt`, `terraform validate` for `terraform/infra`, `terraform/oci`, `terraform/gcp`, `terraform/portainer-root`, and `terraform/portainer`, plus the fixed Terraform Cloud speculative plan for `terraform/infra`
 - `validate-ansible.yml` runs ansible lint + syntax checks
 
@@ -54,6 +54,7 @@ The top-level orchestrator remains thin and stable:
 - `infra` runs infra apply, inventory handover, and SSH network preflight
 - `ansible` runs bootstrap and/or host runtime sync
 - `portainer` runs post-bootstrap checks, Portainer API preflight, optional config sync, Portainer apply, and optional health-gated redeploy
+- Any job running on `runner_label` assumes the `toolingDebian` runner contract and does not bootstrap deployment tooling inside the workflow
 
 ## Trusted `stacks_sha` Boundary
 

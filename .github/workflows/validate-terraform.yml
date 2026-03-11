@@ -82,7 +82,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Bootstrap jq
-        uses: ./.github/actions/bootstrap-tools
+        uses: ./.github/actions/bootstrap-query-tools
         with:
           install_jq: "true"
 

@@ -13,7 +13,7 @@ TERRAFORM_VALIDATION="${ROOT_DIR}/.github/workflows/validate-terraform.yml"
 ANSIBLE_VALIDATION="${ROOT_DIR}/.github/workflows/validate-ansible.yml"
 LINT="${ROOT_DIR}/.github/workflows/lint-github-actions.yml"
 REUSABLE="${ROOT_DIR}/.github/workflows/reusable-resolve-plan.yml"
-BOOTSTRAP_TOOLS="${ROOT_DIR}/.github/actions/bootstrap-tools/action.yml"
+BOOTSTRAP_QUERY_TOOLS="${ROOT_DIR}/.github/actions/bootstrap-query-tools/action.yml"
 
 if ! command -v yq >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
   echo "SKIP: yq and jq are required to run workflow contract tests."
@@ -59,6 +59,17 @@ assert_file_exists() {
   fi
 }
 
+assert_file_absent() {
+  local case_name="$1"
+  local file="$2"
+
+  if [[ ! -e "${file}" ]]; then
+    pass "${case_name}: ${file} absent"
+  else
+    fail "${case_name}: unexpected ${file}"
+  fi
+}
+
 assert_array_contains() {
   local case_name="$1"
   local key="$2"
@@ -94,6 +105,17 @@ assert_job_uses() {
 
   actual="$(yq -r ".jobs.\"${job_id}\".uses // \"\"" "${file}")"
   assert_eq "${case_name}" "${job_id}.uses" "${expected}" "${actual}"
+}
+
+assert_job_runs_on() {
+  local case_name="$1"
+  local file="$2"
+  local job_id="$3"
+  local expected="$4"
+  local actual
+
+  actual="$(yq -r ".jobs.\"${job_id}\".\"runs-on\" // \"\"" "${file}")"
+  assert_eq "${case_name}" "${job_id}.runs-on" "${expected}" "${actual}"
 }
 
 assert_job_needs() {
@@ -189,6 +211,18 @@ job_ids_with_step_uses() {
   '
 }
 
+runner_jobs_with_local_actions() {
+  local file="$1"
+  local runner_expr="$2"
+
+  yq -o=json '.jobs' "${file}" | jq -r --arg runner_expr "${runner_expr}" '
+    to_entries[]
+    | select((.value["runs-on"] // "") == $runner_expr)
+    | select((.value.steps // []) | any((.uses // "") | startswith("./.github/actions/")))
+    | .key
+  '
+}
+
 assert_checkout_before_local_actions() {
   local case_name="$1"
   shift
@@ -241,9 +275,11 @@ for workflow in \
   "${ANSIBLE_VALIDATION}" \
   "${LINT}" \
   "${REUSABLE}" \
-  "${BOOTSTRAP_TOOLS}"; do
+  "${BOOTSTRAP_QUERY_TOOLS}"; do
   assert_file_exists "active_workflows" "${workflow}"
 done
+
+assert_file_absent "retired_bootstrap_action" "${ROOT_DIR}/.github/actions/bootstrap-tools/action.yml"
 
 assert_checkout_before_local_actions \
   "local_action_bootstrap_order" \
@@ -277,7 +313,7 @@ assert_trigger_path_contains "orchestrator_dispatch" "${ORCHESTRATOR}" "push" "s
 assert_trigger_path_contains "orchestrator_dispatch" "${ORCHESTRATOR}" "push" ".gitmodules"
 
 reusable_inputs="$(yq -o=json '.on.workflow_call.inputs | keys | sort' "${REUSABLE}" | jq -c '.')"
-assert_eq "resolve_plan_contract" "inputs" '["dispatch_payload_json","dispatch_reason","dispatch_schema_version","dispatch_source_repo","dispatch_source_run_id","dispatch_source_sha","dispatch_stacks_sha","push_before","push_sha","source_event_name"]' "${reusable_inputs}"
+assert_eq "resolve_plan_contract" "inputs" '["ansible_only_mode","dispatch_payload_json","dispatch_reason","dispatch_schema_version","dispatch_source_repo","dispatch_source_run_id","dispatch_source_sha","dispatch_stacks_sha","push_before","push_sha","source_event_name"]' "${reusable_inputs}"
 if rg -n 'dorny/paths-filter|META_FILTER_APPLIED|META_INFRA_CHANGED|META_ANSIBLE_CHANGED|META_PORTAINER_CHANGED|path-filters\.yml|Detect changed paths' "${REUSABLE}" >/dev/null; then
   fail "resolve_plan_contract: found retired path-detection references"
 else
@@ -290,6 +326,9 @@ preflight_outputs="$(yq -o=json '.on.workflow_call.outputs | keys | sort' "${PRE
 assert_eq "preflight_contract" "outputs" '["network_access_policy_json","portainer_automation_allowed_cidrs","runner_label"]' "${preflight_outputs}"
 assert_workflow_env_value "preflight_contract" "${PRELIGHT}" "INFISICAL_MACHINE_IDENTITY_ID" '${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}'
 assert_workflow_env_value "preflight_contract" "${PRELIGHT}" "INFISICAL_PROJECT_ID" '${{ vars.INFISICAL_PROJECT_ID }}'
+assert_job_runs_on "preflight_contract" "${PRELIGHT}" "secret-validation" '${{ needs.cloud-runner-guard.outputs.runner_label }}'
+secret_validation_needs="$(yq -o=json '.jobs."secret-validation".needs' "${PRELIGHT}" | jq -c '.')"
+assert_eq "preflight_contract" "secret-validation.needs" '["validate-plan-json","cloud-runner-guard"]' "${secret_validation_needs}"
 
 infra_inputs="$(yq -o=json '.on.workflow_call.inputs | keys | sort' "${INFRA}" | jq -c '.')"
 assert_eq "infra_contract" "inputs" '["network_access_policy_json","plan_json","runner_label"]' "${infra_inputs}"
@@ -303,6 +342,7 @@ portainer_inputs="$(yq -o=json '.on.workflow_call.inputs | keys | sort' "${PORTA
 assert_eq "portainer_contract" "inputs" '["network_access_policy_json","plan_json","runner_label"]' "${portainer_inputs}"
 assert_workflow_env_value "portainer_contract" "${PORTAINER}" "INFISICAL_MACHINE_IDENTITY_ID" '${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}'
 assert_workflow_env_value "portainer_contract" "${PORTAINER}" "INFISICAL_PROJECT_ID" '${{ vars.INFISICAL_PROJECT_ID }}'
+assert_job_runs_on "portainer_contract" "${PORTAINER}" "post-bootstrap-secret-check" '${{ inputs.runner_label }}'
 
 inventory_upload_name="$(yq -r '.jobs."inventory-handover".steps[] | select(.uses == "actions/upload-artifact@v4") | .with.name' "${INFRA}")"
 inventory_upload_path="$(yq -r '.jobs."inventory-handover".steps[] | select(.uses == "actions/upload-artifact@v4") | .with.path' "${INFRA}")"
@@ -328,17 +368,18 @@ portainer_needs="$(yq -o=json '.jobs."portainer-apply".needs' "${PORTAINER}" | j
 assert_array_contains "portainer_gating" "portainer_apply.needs" "config-sync" "${portainer_needs}"
 health_needs="$(yq -o=json '.jobs."health-gated-redeploy".needs' "${PORTAINER}" | jq -c '.')"
 assert_array_contains "portainer_gating" "health_gated_redeploy.needs" "config-sync" "${health_needs}"
+config_sync_if="$(yq -r '.jobs."config-sync".if' "${PORTAINER}")"
+assert_contains_text "portainer_gating" "config_sync.if" "meta.stages.stage_config_sync" "${config_sync_if}"
 portainer_apply_if="$(yq -r '.jobs."portainer-apply".if' "${PORTAINER}")"
-assert_contains_text "portainer_gating" "portainer_apply.if" "stage_config_sync != true" "${portainer_apply_if}"
+assert_contains_text "portainer_gating" "portainer_apply.if" "meta.stages.stage_portainer_apply" "${portainer_apply_if}"
+assert_contains_text "portainer_gating" "portainer_apply.if" "needs.portainer-api-preflight.result == 'success'" "${portainer_apply_if}"
+assert_contains_text "portainer_gating" "portainer_apply.if" "needs.config-sync.result == 'success'" "${portainer_apply_if}"
 
 stacks_sha_trust_if="$(yq -r '.jobs."stacks-sha-trust".if' "${PRELIGHT}")"
-assert_contains_text "stacks_sha_trust" "if" "stage_host_sync == true" "${stacks_sha_trust_if}"
-assert_contains_text "stacks_sha_trust" "if" "stage_portainer_apply == true" "${stacks_sha_trust_if}"
-assert_contains_text "stacks_sha_trust" "if" "stage_config_sync == true" "${stacks_sha_trust_if}"
-assert_contains_text "stacks_sha_trust" "if" "stage_health_gated_redeploy == true" "${stacks_sha_trust_if}"
+assert_contains_text "stacks_sha_trust" "if" "meta.stacks_sha != ''" "${stacks_sha_trust_if}"
 
 planner_jobs="$(yq -o=json '.jobs | keys' "${PLANNER_VALIDATION}" | jq -c 'sort')"
-assert_eq "planner_validation" "jobs" '["bootstrap-tools-smoke","planner-contract-tests","stacks-sha-trust","workflow-contracts"]' "${planner_jobs}"
+assert_eq "planner_validation" "jobs" '["bootstrap-query-tools-smoke","planner-contract-tests","stacks-sha-trust","workflow-contracts"]' "${planner_jobs}"
 assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_resolve_ci_plan.sh"
 assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_trigger_webhooks_with_gates.sh"
 assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_preflight_network_access.sh"
@@ -353,6 +394,20 @@ assert_trigger_path_contains "planner_validation" "${PLANNER_VALIDATION}" "push"
 assert_trigger_path_contains "planner_validation" "${PLANNER_VALIDATION}" "pull_request" "scripts/**"
 assert_trigger_path_contains "planner_validation" "${PLANNER_VALIDATION}" "pull_request" "stacks"
 assert_trigger_path_contains "planner_validation" "${PLANNER_VALIDATION}" "pull_request" ".gitmodules"
+
+bootstrap_query_inputs="$(yq -o=json '.inputs | keys | sort' "${BOOTSTRAP_QUERY_TOOLS}" | jq -c '.')"
+assert_eq "bootstrap_query_contract" "inputs" '["install_jq","install_yq","jq_sha256","jq_version","tool_versions_lock_path","yq_sha256","yq_version"]' "${bootstrap_query_inputs}"
+
+assert_no_regex_match "retired_bootstrap_refs" '\./\.github/actions/bootstrap-tools|install_infisical:|install_netcat:|install_gomplate:' .github/workflows
+
+preflight_runner_local_actions="$(runner_jobs_with_local_actions "${PRELIGHT}" '${{ needs.cloud-runner-guard.outputs.runner_label }}')"
+assert_eq "runner_contract" "preflight_local_actions" "" "${preflight_runner_local_actions}"
+infra_runner_local_actions="$(runner_jobs_with_local_actions "${INFRA}" '${{ inputs.runner_label }}')"
+assert_eq "runner_contract" "infra_local_actions" "" "${infra_runner_local_actions}"
+ansible_runner_local_actions="$(runner_jobs_with_local_actions "${ANSIBLE}" '${{ inputs.runner_label }}')"
+assert_eq "runner_contract" "ansible_local_actions" "" "${ansible_runner_local_actions}"
+portainer_runner_local_actions="$(runner_jobs_with_local_actions "${PORTAINER}" '${{ inputs.runner_label }}')"
+assert_eq "runner_contract" "portainer_local_actions" "" "${portainer_runner_local_actions}"
 
 terraform_jobs="$(yq -o=json '.jobs | keys' "${TERRAFORM_VALIDATION}" | jq -c 'sort')"
 assert_eq "terraform_validation" "jobs" '["terraform-fmt","terraform-validate","tfc-speculative-plan"]' "${terraform_jobs}"

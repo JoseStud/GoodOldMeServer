@@ -27,7 +27,7 @@ This document catalogs operator-facing helper scripts in `scripts/` plus the dir
 
 These wrappers under `.github/scripts/stages/` are invoked directly by the reusable workflows and compose the lower-level helpers listed above.
 
-For Infisical-backed wrappers, the reusable workflow must export both `INFISICAL_MACHINE_IDENTITY_ID` and `INFISICAL_PROJECT_ID` into the shell environment. The bootstrap action can perform an early login, but the wrapper scripts still call `setup_infisical` and `infisical run` themselves.
+For Infisical-backed wrappers, the reusable workflow must export both `INFISICAL_MACHINE_IDENTITY_ID` and `INFISICAL_PROJECT_ID` into the shell environment. Cloud-runner jobs assume the `toolingDebian` toolchain is already present on `PATH`, and the wrapper scripts still call `setup_infisical` and `infisical run` themselves.
 
 | Script | Invoked By | Responsibility |
 |-------|------------|----------------|
@@ -46,11 +46,11 @@ For Infisical-backed wrappers, the reusable workflow must export both `INFISICAL
 - CI scripts are intended to run inside GitHub Actions jobs with explicit env contracts.
 - Reusable planner workflow: `.github/workflows/reusable-resolve-plan.yml` centralizes push/dispatch normalization and `.github/scripts/plan/resolve_ci_plan.sh` execution for the orchestrator workflow. Meta-mode plan construction is delegated internally to `.github/scripts/plan/resolve_meta_plan.sh`.
 - Reusable stage workflows: `.github/workflows/reusable-orch-*.yml` consume `plan_json` directly with `fromJSON(...)` and do not rely on a scalar projection layer.
-- Composite bootstrap action: `.github/actions/bootstrap-tools/action.yml` installs pinned `jq`/`yq`/`nc`/`gomplate` versions from `.github/ci/tool-versions.lock` with SHA256 verification and installs Infisical via APT and optionally runs an OIDC login command instead.
+- Composite query bootstrap action: `.github/actions/bootstrap-query-tools/action.yml` installs pinned `jq`/`yq` versions from `.github/ci/tool-versions.lock` with SHA256 verification for GitHub-hosted validation jobs. Cloud-runner jobs rely on the prebuilt `toolingDebian` runner image instead of runtime installation.
 
 ### Stacks Sub-Repo Tool Pinning
 
-The `stacks/` sub-repo (`stacks-ci.yml` and `stacks-dispatch-redeploy.yml`) cannot reference the parent repository's `.github/actions/bootstrap-tools` composite action. As a result, tool versions (jq, yq) are pinned **inline** in those workflows with hardcoded versions and SHA256 checksums. These **must be kept in sync manually** with the canonical source of truth in `.github/ci/tool-versions.lock`.
+The `stacks/` sub-repo (`stacks-ci.yml` and `stacks-dispatch-redeploy.yml`) cannot reference the parent repository's `.github/actions/bootstrap-query-tools` composite action. As a result, tool versions (jq, yq) are pinned **inline** in those workflows with hardcoded versions and SHA256 checksums. These **must be kept in sync manually** with the canonical source of truth in `.github/ci/tool-versions.lock`.
 
 | Tool | Parent canonical source | Stacks inline location |
 |------|------------------------|----------------------|
