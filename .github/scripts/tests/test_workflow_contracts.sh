@@ -351,7 +351,7 @@ assert_trigger_path_contains "orchestrator_dispatch" "${ORCHESTRATOR}" "push" "s
 assert_trigger_path_contains "orchestrator_dispatch" "${ORCHESTRATOR}" "push" ".gitmodules"
 
 reusable_inputs="$(yq -o=json '.on.workflow_call.inputs | keys | sort' "${REUSABLE}" | jq -c '.')"
-assert_eq "resolve_plan_contract" "inputs" '["ansible_only_mode","dispatch_payload_json","dispatch_reason","dispatch_schema_version","dispatch_source_repo","dispatch_source_run_id","dispatch_source_sha","dispatch_stacks_sha","push_before","push_sha","source_event_name"]' "${reusable_inputs}"
+assert_eq "resolve_plan_contract" "inputs" '["dispatch_payload_json","dispatch_reason","dispatch_source_repo","dispatch_source_run_id","dispatch_source_sha","dispatch_stacks_sha","push_before","push_sha","source_event_name"]' "${reusable_inputs}"
 if rg -n 'dorny/paths-filter|META_FILTER_APPLIED|META_INFRA_CHANGED|META_ANSIBLE_CHANGED|META_PORTAINER_CHANGED|path-filters\.yml|Detect changed paths' "${REUSABLE}" >/dev/null; then
   fail "resolve_plan_contract: found retired path-detection references"
 else

@@ -117,6 +117,9 @@ jobs:
       - name: Run workflow contract tests
         run: bash .github/scripts/tests/test_workflow_contracts.sh
 
+      - name: Run stage exhaustiveness tests
+        run: bash .github/scripts/tests/test_stage_exhaustiveness.sh
+
   # CONTRACT: Intentionally does NOT wait for CI signals (WAIT_FOR_SUCCESS
   # defaults to false).  The orchestrator preflight sets WAIT_FOR_SUCCESS=true
   # and polls up to 900s.  DO NOT add WAIT_FOR_SUCCESS here — it defeats

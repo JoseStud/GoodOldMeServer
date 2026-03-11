@@ -14,15 +14,6 @@ on:
         required: false
         type: string
 
-      ansible_only_mode:
-        description: When true, skip TFC infra-apply and only run Ansible + Portainer stages.
-        required: false
-        type: boolean
-        default: false
-
-      dispatch_schema_version:
-        required: false
-        type: string
       dispatch_payload_json:
         required: false
         type: string
@@ -66,7 +57,6 @@ jobs:
         env:
           EVENT_NAME: repository_dispatch
           PAYLOAD_JSON: ${{ inputs.dispatch_payload_json }}
-          PAYLOAD_SCHEMA_VERSION: ${{ inputs.dispatch_schema_version }}
           PAYLOAD_STACKS_SHA: ${{ inputs.dispatch_stacks_sha }}
           PAYLOAD_REASON: ${{ inputs.dispatch_reason }}
           PAYLOAD_SOURCE_REPO: ${{ inputs.dispatch_source_repo }}
@@ -84,7 +74,6 @@ jobs:
           PUSH_SHA: ${{ inputs.push_sha }}
           GITHUB_SHA_CURRENT: ${{ inputs.push_sha }}
 
-          PAYLOAD_SCHEMA_VERSION: ${{ inputs.dispatch_schema_version }}
           PAYLOAD_STACKS_SHA: ${{ inputs.dispatch_stacks_sha }}
           PAYLOAD_REASON: ${{ inputs.dispatch_reason }}
           PAYLOAD_SOURCE_REPO: ${{ inputs.dispatch_source_repo }}
@@ -92,5 +81,4 @@ jobs:
           PAYLOAD_SOURCE_SHA: ${{ inputs.dispatch_source_sha }}
 
           VALIDATE_DISPATCH_CONTRACT: "false"
-          ANSIBLE_ONLY_MODE: ${{ inputs.ansible_only_mode }}
         run: .github/scripts/plan/resolve_ci_plan.sh

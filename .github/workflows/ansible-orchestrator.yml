@@ -27,10 +27,9 @@ jobs:
   resolve-context:
     uses: ./.github/workflows/reusable-resolve-plan.yml
     with:
-      source_event_name: ${{ github.event_name }}
+      source_event_name: ${{ github.event_name == 'push' && 'push_ansible_only' || 'dispatch_ansible_only' }}
       push_before: ${{ github.event.before || '' }}
       push_sha: ${{ github.sha }}
-      ansible_only_mode: true
 
   preflight:
     needs: [resolve-context]

@@ -34,11 +34,9 @@ jobs:
   resolve-context:
     uses: ./.github/workflows/reusable-resolve-plan.yml
     with:
-      source_event_name: ${{ github.event_name }}
+      source_event_name: ${{ (github.event_name == 'workflow_dispatch' && inputs.ansible_only) && 'dispatch_ansible_only' || github.event_name }}
       push_before: ${{ github.event.before || '' }}
       push_sha: ${{ github.sha }}
-      ansible_only_mode: ${{ github.event_name == 'workflow_dispatch' && inputs.ansible_only || false }}
-      dispatch_schema_version: ${{ github.event.client_payload.schema_version }}
       dispatch_payload_json: ${{ toJson(github.event.client_payload) }}
       dispatch_stacks_sha: ${{ github.event.client_payload.stacks_sha }}
       dispatch_reason: ${{ github.event.client_payload.reason }}

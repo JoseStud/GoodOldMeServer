@@ -129,7 +129,8 @@ validate_source_run_id() {
 }
 
 validate_payload_shape "${PAYLOAD_JSON:-}"
-validate_schema_version "${PAYLOAD_SCHEMA_VERSION:-}"
+_schema_version="$(jq -r '.schema_version // empty' <<<"${PAYLOAD_JSON:-}")"
+validate_schema_version "${_schema_version}"
 validate_sha "stacks_sha" "${PAYLOAD_STACKS_SHA:-}"
 validate_sha "source_sha" "${PAYLOAD_SOURCE_SHA:-}"
 validate_reason "${PAYLOAD_REASON:-}"
