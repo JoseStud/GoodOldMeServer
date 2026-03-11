@@ -43,6 +43,7 @@ jobs:
     needs: validate-plan-json
     if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_cloud_runner_guard }}
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       runner_label: ${{ steps.guard.outputs.runner_label }}
 
@@ -59,6 +60,7 @@ jobs:
     needs: validate-plan-json
     if: ${{ fromJSON(inputs.plan_json || '{}').meta.stacks_sha != '' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -82,6 +84,7 @@ jobs:
     needs: [validate-plan-json, cloud-runner-guard]
     if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_secret_validation && needs.cloud-runner-guard.result == 'success' }}
     runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -99,10 +102,13 @@ jobs:
           INFISICAL_AGENT_CLIENT_SECRET: ${{ secrets.INFISICAL_AGENT_CLIENT_SECRET }}
         run: .github/scripts/stages/secret_validation.sh
 
+  # !cancelled(): stacks-sha-trust may be skipped when no stacks_sha is
+  # in the plan.  Without !cancelled(), this job would be skipped too.
   network-policy-sync:
     needs: [validate-plan-json, cloud-runner-guard, stacks-sha-trust, secret-validation]
     if: ${{ !cancelled() && fromJSON(inputs.plan_json || '{}').meta.stages.stage_network_policy_sync && needs.cloud-runner-guard.result == 'success' && needs.secret-validation.result == 'success' && (needs.stacks-sha-trust.result == 'success' || needs.stacks-sha-trust.result == 'skipped') }}
     runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
+    timeout-minutes: 15
     outputs:
       network_access_policy_json: ${{ steps.sync.outputs.network_access_policy_json }}
       portainer_automation_allowed_cidrs: ${{ steps.sync.outputs.portainer_automation_allowed_cidrs }}
@@ -111,6 +117,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Idempotent mutation: writes to TFC variable sets and Infisical
+      # allowlists.  If later stages fail, these values persist — this is
+      # safe because the policy is derived from the runner's current IP
+      # and static network architecture.  Next run re-syncs identical values.
       - name: Build and sync network policy
         id: sync
         env:

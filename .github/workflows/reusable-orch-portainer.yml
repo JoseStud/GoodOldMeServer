@@ -26,23 +26,10 @@ env:
   TFC_WORKSPACE_PORTAINER: ${{ vars.TFC_WORKSPACE_PORTAINER || 'goodoldme-portainer' }}
 
 jobs:
-  # Defensive: validates plan_json independently of upstream resolve-plan.
-  validate-plan-json:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Validate plan_json
-        env:
-          PLAN_JSON: ${{ inputs.plan_json }}
-        run: bash .github/scripts/plan/validate_plan_json.sh
-
   post-bootstrap-secret-check:
-    needs: validate-plan-json
     if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_post_bootstrap_secret_check }}
     runs-on: ${{ inputs.runner_label }}
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -55,6 +42,7 @@ jobs:
     needs: [post-bootstrap-secret-check]
     if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_portainer_api_preflight && (needs.post-bootstrap-secret-check.result == 'success' || needs.post-bootstrap-secret-check.result == 'skipped') }}
     runs-on: ${{ inputs.runner_label }}
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -69,10 +57,15 @@ jobs:
           PORTAINER_ALLOWLIST_PROPAGATION_POLL_INTERVAL_SECONDS: ${{ vars.PORTAINER_ALLOWLIST_PROPAGATION_POLL_INTERVAL_SECONDS || '5' }}
         run: .github/scripts/stages/portainer_api_preflight.sh
 
+  # !cancelled() + result-checks: config-sync runs in parallel with
+  # portainer-api-preflight.  Without !cancelled(), GitHub would block
+  # this job waiting for all siblings.  Result checks guard against
+  # running after a genuine failure.
   config-sync:
     needs: [post-bootstrap-secret-check]
     if: ${{ !cancelled() && fromJSON(inputs.plan_json || '{}').meta.stages.stage_config_sync && (needs.post-bootstrap-secret-check.result == 'success' || needs.post-bootstrap-secret-check.result == 'skipped') }}
     runs-on: ${{ inputs.runner_label }}
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -95,10 +88,14 @@ jobs:
           ANSIBLE_TIMEOUT: ${{ vars.ANSIBLE_TIMEOUT || '30' }}
         run: .github/scripts/stages/ansible_run.sh
 
+  # !cancelled(): portainer-apply depends on three jobs.  config-sync
+  # and post-bootstrap-secret-check may be skipped.  !cancelled() lets
+  # this job proceed once jobs that DID run completed successfully.
   portainer-apply:
     needs: [post-bootstrap-secret-check, portainer-api-preflight, config-sync]
     if: ${{ !cancelled() && fromJSON(inputs.plan_json || '{}').meta.stages.stage_portainer_apply && (needs.post-bootstrap-secret-check.result == 'success' || needs.post-bootstrap-secret-check.result == 'skipped') && needs.portainer-api-preflight.result == 'success' && (needs.config-sync.result == 'success' || needs.config-sync.result == 'skipped') }}
     runs-on: ${{ inputs.runner_label }}
+    timeout-minutes: 30
     env:
       TF_VAR_infisical_project_id: ${{ vars.INFISICAL_PROJECT_ID }}
       STACKS_SHA: ${{ fromJSON(inputs.plan_json || '{}').meta.stacks_sha }}
@@ -121,6 +118,7 @@ jobs:
     needs: [portainer-api-preflight, portainer-apply, config-sync]
     if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_health_gated_redeploy && needs.portainer-api-preflight.result == 'success' && needs.portainer-apply.result == 'success' && needs.config-sync.result == 'success' }}
     runs-on: ${{ inputs.runner_label }}
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -133,4 +131,5 @@ jobs:
         env:
           STACKS_SHA: ${{ fromJSON(inputs.plan_json || '{}').meta.stacks_sha }}
           FULL_STACKS_RECONCILE: "true"
+          REDEPLOY_TIMEOUT_SECONDS: ${{ vars.REDEPLOY_TIMEOUT_SECONDS || '2400' }}
         run: .github/scripts/stages/health_gated_redeploy.sh

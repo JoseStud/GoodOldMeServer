@@ -41,7 +41,7 @@ if [[ -z "${AUTH_TOKEN}" ]]; then
   exit 1
 fi
 
-if ! [[ "${STACKS_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+if ! is_valid_sha "${STACKS_SHA}"; then
   echo "Invalid STACKS_SHA '${STACKS_SHA}'. Expected a 40-character lowercase hexadecimal commit SHA."
   exit 1
 fi

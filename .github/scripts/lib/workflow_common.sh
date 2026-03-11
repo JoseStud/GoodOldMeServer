@@ -31,6 +31,23 @@ to_bool() {
   esac
 }
 
+# Boolean predicate (exit code) — use in conditionals.
+# to_bool() returns a string for assignment; this returns 0/1 for `if`.
+is_true() {
+  case "${1,,}" in
+    true|1|yes) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# 40-character lowercase hex SHA — used by dispatch validation, stacks trust, plan resolution.
+SHA_REGEX='^[0-9a-f]{40}$'
+
+is_valid_sha() {
+  local sha="${1:-}"
+  [[ "${sha}" =~ ${SHA_REGEX} ]]
+}
+
 emit_output() {
   local key="$1"
   local value="$2"

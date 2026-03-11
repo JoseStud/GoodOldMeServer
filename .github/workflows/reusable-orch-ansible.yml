@@ -21,23 +21,10 @@ env:
   SHADOW_MODE: ${{ vars.SHADOW_MODE || 'false' }}
 
 jobs:
-  # Defensive: validates plan_json independently of upstream resolve-plan.
-  validate-plan-json:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Validate plan_json
-        env:
-          PLAN_JSON: ${{ inputs.plan_json }}
-        run: bash .github/scripts/plan/validate_plan_json.sh
-
   ansible-bootstrap:
-    needs: validate-plan-json
     if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_ansible_bootstrap }}
     runs-on: ${{ inputs.runner_label }}
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -64,9 +51,9 @@ jobs:
   # stage_host_sync and stage_ansible_bootstrap are mutually exclusive
   # (enforced by resolve_meta_plan.sh:105-109), so no dependency needed.
   host-sync:
-    needs: validate-plan-json
     if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_host_sync }}
     runs-on: ${{ inputs.runner_label }}
+    timeout-minutes: 30
 
     steps:
       - name: Checkout

@@ -22,23 +22,10 @@ env:
   TFC_WORKSPACE_INFRA: ${{ vars.TFC_WORKSPACE_INFRA || 'goodoldme-infra' }}
 
 jobs:
-  # Defensive: validates plan_json independently of upstream resolve-plan.
-  validate-plan-json:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Validate plan_json
-        env:
-          PLAN_JSON: ${{ inputs.plan_json }}
-        run: bash .github/scripts/plan/validate_plan_json.sh
-
   infra-apply:
-    needs: validate-plan-json
     if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_infra_apply }}
     runs-on: ubuntu-latest
+    timeout-minutes: 150
 
     steps:
       - name: Checkout
@@ -80,10 +67,15 @@ jobs:
           TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
         run: .github/scripts/stages/infra_apply.sh
 
+  # !cancelled() + result-checks: inventory-handover must run even when
+  # infra-apply was skipped (ansible-only mode).  Without !cancelled(),
+  # GitHub treats a skipped predecessor as "not met".  The explicit
+  # result checks ensure we proceed only on success or intentional skip.
   inventory-handover:
     needs: [infra-apply]
     if: ${{ !cancelled() && fromJSON(inputs.plan_json || '{}').meta.stages.stage_inventory_handover && (needs.infra-apply.result == 'success' || needs.infra-apply.result == 'skipped') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -117,6 +109,7 @@ jobs:
     needs: [inventory-handover]
     if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_network_preflight_ssh && needs.inventory-handover.result == 'success' }}
     runs-on: ${{ inputs.runner_label }}
+    timeout-minutes: 15
 
     steps:
       - name: Checkout

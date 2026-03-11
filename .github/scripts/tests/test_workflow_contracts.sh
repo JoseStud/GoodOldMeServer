@@ -416,6 +416,27 @@ assert_contains_text "portainer_gating" "portainer_apply.if" "needs.config-sync.
 stacks_sha_trust_if="$(yq -r '.jobs."stacks-sha-trust".if' "${PRELIGHT}")"
 assert_contains_text "stacks_sha_trust" "if" "meta.stacks_sha != ''" "${stacks_sha_trust_if}"
 
+# Contract: plan_json validation is centralized in preflight.
+# Downstream workflows must NOT include validate-plan-json.
+infra_has_validate="$(yq -o=json '.jobs | has("validate-plan-json")' "${INFRA}")"
+assert_eq "centralized_validation" "infra_no_validate_plan_json" "false" "${infra_has_validate}"
+
+ansible_has_validate="$(yq -o=json '.jobs | has("validate-plan-json")' "${ANSIBLE}")"
+assert_eq "centralized_validation" "ansible_no_validate_plan_json" "false" "${ansible_has_validate}"
+
+portainer_has_validate="$(yq -o=json '.jobs | has("validate-plan-json")' "${PORTAINER}")"
+assert_eq "centralized_validation" "portainer_no_validate_plan_json" "false" "${portainer_has_validate}"
+
+preflight_has_validate="$(yq -o=json '.jobs | has("validate-plan-json")' "${PRELIGHT}")"
+assert_eq "centralized_validation" "preflight_has_validate_plan_json" "true" "${preflight_has_validate}"
+
+# Contract: validation workflow must NOT wait for signals; preflight MUST.
+planner_wait="$(yq -r '.jobs."stacks-sha-trust".steps[] | select(.run != null and (.run | test("verify_trusted_stacks_sha"))) | .env.WAIT_FOR_SUCCESS // ""' "${PLANNER_VALIDATION}")"
+assert_eq "stacks_sha_trust_wait" "planner_no_wait" "" "${planner_wait}"
+
+preflight_wait="$(yq -r '.jobs."stacks-sha-trust".steps[] | select(.run != null and (.run | test("verify_trusted_stacks_sha"))) | .env.WAIT_FOR_SUCCESS // ""' "${PRELIGHT}")"
+assert_eq "stacks_sha_trust_wait" "preflight_waits" "true" "${preflight_wait}"
+
 planner_jobs="$(yq -o=json '.jobs | keys' "${PLANNER_VALIDATION}" | jq -c 'sort')"
 assert_eq "planner_validation" "jobs" '["bootstrap-query-tools-smoke","planner-contract-tests","stacks-sha-trust","workflow-contracts"]' "${planner_jobs}"
 assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_resolve_ci_plan.sh"

@@ -264,3 +264,19 @@ Pi-hole instances use **host-mode** port 53 (UDP/TCP) to bypass Docker Swarm's i
 | **Entrypoints** | `web` (:80) and `websecure` (:443) |
 | **Port mode** | Both entrypoints use `mode: host` — no Swarm ingress mesh for HTTP traffic |
 | **Forward auth** | Services reference `authelia@docker` middleware for SSO enforcement |
+
+## Network Policy Sync — Idempotent Mutation Contract
+
+The `network-policy-sync` job in `reusable-orch-preflight.yml` writes to two external systems before the main pipeline stages execute:
+
+1. **TFC variable sets** — the runner's current public IPv4/IPv6 are written to Terraform Cloud as `TF_VAR_network_access_policy`, which controls OCI NSG SSH rules and GCP firewall SSH rules.
+2. **Infisical allowlists** — the runner's CIDR is written to Infisical as `PORTAINER_AUTOMATION_ALLOWED_CIDRS`, which Traefik's `ipAllowList` middleware enforces for Portainer API traffic.
+
+### Why mutations that persist through failure are safe here
+
+These writes are **idempotent** for two reasons:
+
+- **Derived from stable inputs**: the policy value is computed from the runner's current egress IP (fetched via `api.ipify.org` / `api64.ipify.org`) and the static network architecture. The same runner always produces the same value.
+- **Re-sync on next run**: if downstream stages fail after the policy sync succeeds, the next pipeline run re-executes `network-policy-sync` and writes identical values — there is no drift.
+
+Because the policy describes *who is allowed to connect*, leaving a stale-but-correct value in place between runs has no adverse effect. The worst-case scenario (runner IP changes between runs) is resolved on the next sync, not by a rollback.

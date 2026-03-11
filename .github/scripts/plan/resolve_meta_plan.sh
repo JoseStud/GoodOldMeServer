@@ -82,7 +82,7 @@ resolve_meta_mode() {
     fi
   fi
 
-  if [[ -n "${stacks_sha}" && ! "${stacks_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+  if [[ -n "${stacks_sha}" ]] && ! is_valid_sha "${stacks_sha}"; then
     echo "Invalid stacks SHA: ${stacks_sha}"
     exit 1
   fi

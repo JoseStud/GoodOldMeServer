@@ -26,13 +26,6 @@ trim() {
   printf '%s' "${value}"
 }
 
-is_true() {
-  case "${1,,}" in
-    true|1|yes) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
 declare -A TARGET_STACKS=()
 
 load_full_reconcile_targets() {
@@ -54,6 +47,8 @@ if ! command -v gomplate >/dev/null 2>&1; then
   echo "gomplate is required but was not found in PATH."
   exit 1
 fi
+
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/workflow_common.sh"
 
 echo "Full reconcile: redeploying all Portainer-managed stacks."
 load_full_reconcile_targets
@@ -160,7 +155,16 @@ for stack in "${INPUT_STACKS[@]}"; do
   visit_stack "${stack}"
 done
 
+# Overall deadline caps total wall time for the entire redeploy.
+# Individual per-stack timeouts guard single-stack hangs; this guards the aggregate.
+REDEPLOY_TIMEOUT_SECONDS="${REDEPLOY_TIMEOUT_SECONDS:-2400}"
+redeploy_deadline=$((SECONDS + REDEPLOY_TIMEOUT_SECONDS))
+
 for stack in "${ORDERED_STACKS[@]}"; do
+  if (( SECONDS >= redeploy_deadline )); then
+    echo "Overall redeploy deadline exceeded (${REDEPLOY_TIMEOUT_SECONDS}s). Aborting remaining stacks."
+    exit 1
+  fi
   while IFS= read -r dep; do
     dep="$(trim "${dep}")"
     [[ -z "${dep}" ]] && continue

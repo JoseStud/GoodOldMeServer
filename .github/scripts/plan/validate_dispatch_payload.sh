@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/workflow_common.sh"
+
 if [[ $# -ne 1 ]]; then
   echo "Usage: $0 <meta>"
   exit 1
@@ -54,7 +56,7 @@ validate_sha() {
     exit 1
   fi
 
-  if ! [[ "${sha}" =~ ^[0-9a-f]{40}$ ]]; then
+  if ! is_valid_sha "${sha}"; then
     echo "Invalid ${field_name}: '${sha}' (must be 40-char lowercase hex)."
     exit 1
   fi
