@@ -40,6 +40,7 @@ All plans share:
   - `stage_portainer_apply`
   - `stage_config_sync`
   - `stage_health_gated_redeploy`
+  - Optional: `meta.ansible_tags` — an array of Ansible tag strings that callers may set to scope `reusable-orch-ansible.yml` runs (for example to run a subset of bootstrap tasks).
 
 ## Event Semantics
 

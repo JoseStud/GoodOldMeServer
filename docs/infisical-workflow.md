@@ -311,6 +311,13 @@ Flow:
 3. The dispatch workflow emits exactly one `stacks-redeploy-intent-v5` event with the minimal `v5` payload
 4. Infra `infra-orchestrator.yml` runs the fixed full-reconcile path through reusable stages: preflight -> infra -> ansible (`phase7_runtime_sync`) -> portainer (`sync-configs`, SHA-pinned Portainer apply, health-gated webhook redeploy).
 
+### Workflow timeout variables
+
+Several optional workflow tunables are referenced by orchestrator stages and redeploy scripts. Two common tunables operators may set via repository `vars.*` or workflow `env`:
+
+- `REDEPLOY_TIMEOUT_SECONDS` — Integer seconds the Portainer redeploy health-gate will wait before timing out when performing health-gated redeploys (used by Portainer redeploy wrappers and health checks).
+- `ANSIBLE_TIMEOUT` — Integer seconds used by Ansible-run wrapper steps to bound long-running bootstrap runs; set this when runs require longer execution time on cloud-runner jobs.
+
 ### `stacks-redeploy-intent-v5` Dispatch Contract
 
 - Event type: `stacks-redeploy-intent-v5`
