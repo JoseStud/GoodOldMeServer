@@ -68,10 +68,13 @@ payload="$(
     }'
 )"
 
+echo "Syncing network access policy to TFC variable '${TFC_POLICY_VAR_KEY}'..."
 if [[ -n "${existing_var_id}" ]]; then
-  api_write "PATCH" "${TFC_API_URL%/}/vars/${existing_var_id}" "${payload}" >/dev/null
+  api_write "PATCH" "${TFC_API_URL%/}/vars/${existing_var_id}" "${payload}" >/dev/null \
+    || { echo "Failed to PATCH TFC variable (id=${existing_var_id})."; exit 1; }
 else
-  api_write "POST" "${TFC_API_URL%/}/workspaces/${workspace_id}/vars" "${payload}" >/dev/null
+  api_write "POST" "${TFC_API_URL%/}/workspaces/${workspace_id}/vars" "${payload}" >/dev/null \
+    || { echo "Failed to create TFC variable '${TFC_POLICY_VAR_KEY}'."; exit 1; }
 fi
 
 vars_after_json="$(api_get "${TFC_API_URL%/}/workspaces/${workspace_id}/vars?page[size]=200")"
@@ -89,12 +92,14 @@ if [[ "${tfc_policy_json}" != "${policy_json}" ]]; then
   exit 1
 fi
 
+echo "Syncing Portainer CIDRs to Infisical /stacks/management..."
 infisical secrets set \
   PORTAINER_AUTOMATION_ALLOWED_CIDRS="${portainer_cidrs_csv}" \
   --projectId="${INFISICAL_PROJECT_ID}" \
   --env=prod \
   --path="/stacks/management" \
-  >/dev/null
+  >/dev/null \
+  || { echo "Failed to write PORTAINER_AUTOMATION_ALLOWED_CIDRS to Infisical."; exit 1; }
 
 infisical_cidrs="$(
   infisical run \

@@ -228,21 +228,21 @@ fetch_check_and_status() {
     fi
   fi
 
-  echo "ready=${ready}"
-  echo "hard_failure=${hard_failure}"
+  echo "::result::ready=${ready}"
+  echo "::result::hard_failure=${hard_failure}"
 }
 
 result_field() {
   local field_name="$1"
   local result_blob="$2"
 
-  awk -F= -v key="${field_name}" '$1 == key {print $2}' <<<"${result_blob}" | tail -n1
+  grep "^::result::${field_name}=" <<<"${result_blob}" | tail -n1 | sed "s/^::result::${field_name}=//"
 }
 
 print_result_logs() {
   local result_blob="$1"
 
-  awk '!/^(ready|hard_failure)=/' <<<"${result_blob}"
+  grep -v '^::result::' <<<"${result_blob}"
 }
 
 if [[ "${WAIT_FOR_SUCCESS}" != "true" ]]; then

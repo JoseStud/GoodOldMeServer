@@ -11,8 +11,6 @@ on:
         value: ${{ jobs.cloud-runner-guard.outputs.runner_label }}
       network_access_policy_json:
         value: ${{ jobs.network-policy-sync.outputs.network_access_policy_json }}
-      portainer_automation_allowed_cidrs:
-        value: ${{ jobs.network-policy-sync.outputs.portainer_automation_allowed_cidrs }}
 
 permissions:
   id-token: write
@@ -43,6 +41,7 @@ jobs:
     needs: validate-plan-json
     if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_cloud_runner_guard }}
     runs-on: ubuntu-latest
+    # timeout: single env-var echo; 5 min is a hard ceiling for this trivial step
     timeout-minutes: 5
     outputs:
       runner_label: ${{ steps.guard.outputs.runner_label }}
@@ -60,6 +59,7 @@ jobs:
     needs: validate-plan-json
     if: ${{ fromJSON(inputs.plan_json || '{}').meta.stacks_sha != '' }}
     runs-on: ubuntu-latest
+    # timeout: polls GitHub Checks API until all stacks CI signals are green (default 900 s) plus headroom
     timeout-minutes: 20
 
     steps:
@@ -84,6 +84,7 @@ jobs:
     needs: [validate-plan-json, cloud-runner-guard]
     if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_secret_validation && needs.cloud-runner-guard.result == 'success' }}
     runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
+    # timeout: Infisical API checks for up to 5 secret paths; 15 min covers transient latency
     timeout-minutes: 15
 
     steps:
@@ -108,6 +109,7 @@ jobs:
     needs: [validate-plan-json, cloud-runner-guard, stacks-sha-trust, secret-validation]
     if: ${{ !cancelled() && fromJSON(inputs.plan_json || '{}').meta.stages.stage_network_policy_sync && needs.cloud-runner-guard.result == 'success' && needs.secret-validation.result == 'success' && (needs.stacks-sha-trust.result == 'success' || needs.stacks-sha-trust.result == 'skipped') }}
     runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
+    # timeout: writes runner IP to TFC variable sets and Infisical allowlists; 15 min covers API retries
     timeout-minutes: 15
     outputs:
       network_access_policy_json: ${{ steps.sync.outputs.network_access_policy_json }}

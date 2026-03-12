@@ -361,7 +361,7 @@ fi
 preflight_inputs="$(yq -o=json '.on.workflow_call.inputs | keys | sort' "${PRELIGHT}" | jq -c '.')"
 assert_eq "preflight_contract" "inputs" '["plan_json"]' "${preflight_inputs}"
 preflight_outputs="$(yq -o=json '.on.workflow_call.outputs | keys | sort' "${PRELIGHT}" | jq -c '.')"
-assert_eq "preflight_contract" "outputs" '["network_access_policy_json","portainer_automation_allowed_cidrs","runner_label"]' "${preflight_outputs}"
+assert_eq "preflight_contract" "outputs" '["network_access_policy_json","runner_label"]' "${preflight_outputs}"
 assert_workflow_env_value "preflight_contract" "${PRELIGHT}" "INFISICAL_MACHINE_IDENTITY_ID" '${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}'
 assert_workflow_env_value "preflight_contract" "${PRELIGHT}" "INFISICAL_PROJECT_ID" '${{ vars.INFISICAL_PROJECT_ID }}'
 assert_job_runs_on "preflight_contract" "${PRELIGHT}" "secret-validation" '${{ needs.cloud-runner-guard.outputs.runner_label }}'
@@ -412,6 +412,9 @@ portainer_apply_if="$(yq -r '.jobs."portainer-apply".if' "${PORTAINER}")"
 assert_contains_text "portainer_gating" "portainer_apply.if" "meta.stages.stage_portainer_apply" "${portainer_apply_if}"
 assert_contains_text "portainer_gating" "portainer_apply.if" "needs.portainer-api-preflight.result == 'success'" "${portainer_apply_if}"
 assert_contains_text "portainer_gating" "portainer_apply.if" "needs.config-sync.result == 'success'" "${portainer_apply_if}"
+
+health_redeploy_if="$(yq -r '.jobs."health-gated-redeploy".if' "${PORTAINER}")"
+assert_contains_text "portainer_gating" "health_gated_redeploy.if" "needs.config-sync.result == 'skipped'" "${health_redeploy_if}"
 
 stacks_sha_trust_if="$(yq -r '.jobs."stacks-sha-trust".if' "${PRELIGHT}")"
 assert_contains_text "stacks_sha_trust" "if" "meta.stacks_sha != ''" "${stacks_sha_trust_if}"

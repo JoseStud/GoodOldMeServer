@@ -38,7 +38,7 @@ fi
 
 outputs_json="$(api_get "${outputs_url}")"
 
-oci_ips_json="$(jq -c '.data[] | select(.attributes.name == "oci_public_ips") | .attributes.value' <<<"${outputs_json}")"
+oci_ips_json="$(jq -c '.data[] | select(.attributes.name == "oci_public_ips") | .attributes.value // empty' <<<"${outputs_json}")"
 if [[ -z "${oci_ips_json}" || "${oci_ips_json}" == "null" ]]; then
   echo "Workspace output 'oci_public_ips' is missing."
   exit 1

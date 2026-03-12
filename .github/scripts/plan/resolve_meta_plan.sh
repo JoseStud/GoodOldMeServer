@@ -23,7 +23,11 @@ compute_ansible_tags_for_push() {
   fi
 
   local changed_files
-  changed_files="$(git diff --name-only "${push_before}" "${push_sha}" 2>/dev/null || true)"
+  changed_files="$(git diff --name-only "${push_before}" "${push_sha}" 2>&1)" || {
+    echo "Warning: git diff failed (falling back to full bootstrap): ${changed_files}" >&2
+    echo ""
+    return
+  }
 
   if [[ -z "${changed_files}" ]]; then
     echo ""
@@ -43,6 +47,9 @@ compute_ansible_tags_for_push() {
   fi
   if echo "${changed_files}" | grep -qE '^ansible/roles/docker/'; then
     phases+=("phase2_docker")
+  fi
+  if echo "${changed_files}" | grep -qE '^ansible/roles/tailscale/'; then
+    phases+=("phase3_tailscale")
   fi
   if echo "${changed_files}" | grep -qE '^ansible/roles/glusterfs/'; then
     phases+=("phase4_glusterfs")

@@ -140,7 +140,7 @@ visit_stack() {
     dep="$(trim "${dep}")"
     [[ -z "${dep}" ]] && continue
     if [[ -n "${TARGET_STACKS[${dep}]:-}" ]]; then
-      visit_stack "${dep}"
+      visit_stack "${dep}" || return 1
     fi
   done < <(yq -r ".stacks.\"${stack}\".depends_on[]?" "${MANIFEST_PATH}")
 
@@ -152,7 +152,7 @@ visit_stack() {
 mapfile -t INPUT_STACKS < <(yq -r '.stacks | to_entries[] | select(.value.portainer_managed == true) | .key' "${MANIFEST_PATH}")
 
 for stack in "${INPUT_STACKS[@]}"; do
-  visit_stack "${stack}"
+  visit_stack "${stack}" || exit 1
 done
 
 # Overall deadline caps total wall time for the entire redeploy.

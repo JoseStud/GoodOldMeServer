@@ -24,6 +24,7 @@ jobs:
   ansible-bootstrap:
     if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_ansible_bootstrap }}
     runs-on: ${{ inputs.runner_label }}
+    # timeout: full 7-phase Ansible provision across 3 nodes includes package installs and GlusterFS setup
     timeout-minutes: 60
 
     steps:
@@ -54,6 +55,7 @@ jobs:
   host-sync:
     if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_host_sync }}
     runs-on: ${{ inputs.runner_label }}
+    # timeout: phase7_runtime_sync across 3 nodes; lighter than full bootstrap but includes file syncs
     timeout-minutes: 30
 
     steps:
