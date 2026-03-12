@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-ORCHESTRATOR="${ROOT_DIR}/.github/workflows/infra-orchestrator.yml"
+ORCHESTRATOR="${ROOT_DIR}/.github/workflows/orchestrator.yml"
 PRELIGHT="${ROOT_DIR}/.github/workflows/reusable-orch-preflight.yml"
 INFRA="${ROOT_DIR}/.github/workflows/reusable-orch-infra.yml"
 ANSIBLE="${ROOT_DIR}/.github/workflows/reusable-orch-ansible.yml"
@@ -318,6 +318,8 @@ for workflow in \
 done
 
 assert_file_absent "retired_bootstrap_action" "${ROOT_DIR}/.github/actions/bootstrap-tools/action.yml"
+assert_file_absent "retired_ansible_orchestrator" "${ROOT_DIR}/.github/workflows/ansible-orchestrator.yml"
+assert_file_absent "retired_infra_orchestrator" "${ROOT_DIR}/.github/workflows/infra-orchestrator.yml"
 
 assert_checkout_before_local_actions \
   "local_action_bootstrap_order" \
@@ -349,6 +351,8 @@ assert_eq "orchestrator_dispatch" "workflow_dispatch" "true" "$(yq -o=json '.on 
 assert_eq "orchestrator_dispatch" "workflow_call" "null" "$(yq -o=json '.on.workflow_call // null' "${ORCHESTRATOR}" | jq -c '.')"
 assert_trigger_path_contains "orchestrator_dispatch" "${ORCHESTRATOR}" "push" "stacks"
 assert_trigger_path_contains "orchestrator_dispatch" "${ORCHESTRATOR}" "push" ".gitmodules"
+assert_trigger_path_contains "orchestrator_dispatch" "${ORCHESTRATOR}" "push" "ansible/**"
+assert_trigger_path_contains "orchestrator_dispatch" "${ORCHESTRATOR}" "push" ".ansible-lint"
 
 reusable_inputs="$(yq -o=json '.on.workflow_call.inputs | keys | sort' "${REUSABLE}" | jq -c '.')"
 assert_eq "resolve_plan_contract" "inputs" '["dispatch_payload_json","dispatch_reason","dispatch_source_repo","dispatch_source_run_id","dispatch_source_sha","dispatch_stacks_sha","push_before","push_sha","source_event_name"]' "${reusable_inputs}"

@@ -7,8 +7,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../lib/workflow_common.sh"
 
-# Compute a comma-separated list of Ansible phase tags for a push_ansible_only
-# event by mapping changed role paths to their corresponding phase tags.
+# Compute a comma-separated list of Ansible phase tags for an ansible-only
+# push event by mapping changed role paths to their corresponding phase tags.
 # Returns an empty string when a full bootstrap is required (ambiguous changes,
 # first push, or changes outside recognised role directories).
 compute_ansible_tags_for_push() {
@@ -75,6 +75,32 @@ compute_ansible_tags_for_push() {
   echo "${phases[*]}"
 }
 
+# Returns "true" if every file changed between PUSH_BEFORE and PUSH_SHA is
+# under ansible/** or is .ansible-lint; "false" otherwise.  A missing diff,
+# empty diff, or first push (null SHA) all return "false" as a safe fallback
+# so the caller treats the event as a full infra push.
+is_ansible_only_push() {
+  local push_before="${PUSH_BEFORE:-}"
+  local push_sha="${PUSH_SHA:-}"
+  local null_sha="0000000000000000000000000000000000000000"
+
+  # Cannot determine → assume infra changes present (safe fallback).
+  if [[ -z "${push_before}" || "${push_before}" == "${null_sha}" || -z "${push_sha}" ]]; then
+    echo "false"; return
+  fi
+  local changed_files
+  changed_files="$(git diff --name-only "${push_before}" "${push_sha}" 2>/dev/null)" || { echo "false"; return; }
+  if [[ -z "${changed_files}" ]]; then
+    echo "false"; return
+  fi
+  # All changed files must be in ansible/** or .ansible-lint.
+  if echo "${changed_files}" | grep -qvE '^(ansible/|\.ansible-lint$)'; then
+    echo "false"
+  else
+    echo "true"
+  fi
+}
+
 resolve_meta_mode() {
   run_infra_apply="false"
   run_ansible_bootstrap="false"
@@ -86,37 +112,36 @@ resolve_meta_mode() {
   stacks_sha=""
   reason=""
 
-  if [[ "${EVENT_NAME}" == "push" || "${EVENT_NAME}" == "push_ansible_only" || "${EVENT_NAME}" == "workflow_dispatch" || "${EVENT_NAME}" == "dispatch_ansible_only" ]]; then
-    # Push planning no longer does per-path impact detection. Any eligible
-    # infra-repo push runs the full infra-side reconcile path pinned to the
-    # current stacks gitlink recorded in this repo.
+  if [[ "${EVENT_NAME}" == "push" || "${EVENT_NAME}" == "workflow_dispatch" || "${EVENT_NAME}" == "dispatch_ansible_only" ]]; then
     stacks_sha="$(git rev-parse HEAD:stacks 2>/dev/null || true)"
     if [[ -z "${stacks_sha}" ]]; then
       echo "Failed to resolve stacks gitlink SHA from HEAD:stacks for push event."
       exit 1
     fi
 
-    # push_ansible_only and dispatch_ansible_only are synthetic event names set by
-    # ansible-orchestrator.yml for pushes/dispatches that only touch ansible/**
-    # or .ansible-lint.  They skip the expensive TFC infra-apply stage but still
-    # run Ansible bootstrap + Portainer reconciliation.
-    if [[ "${EVENT_NAME}" == "push" || "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+    if [[ "${EVENT_NAME}" == "push" ]]; then
+      # Ansible-only pushes (all changed files under ansible/** or .ansible-lint)
+      # skip the expensive TFC infra-apply stage but still run Ansible bootstrap
+      # and Portainer reconciliation.  All other pushes run the full path.
+      if [[ "$(is_ansible_only_push)" == "true" ]]; then
+        run_infra_apply="false"
+        ansible_tags="$(compute_ansible_tags_for_push)"
+      else
+        run_infra_apply="true"
+      fi
+      run_ansible_bootstrap="true"
+      run_portainer_apply="true"
+      reason="infra-repo-push"
+    elif [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
       run_infra_apply="true"
       run_ansible_bootstrap="true"
       run_portainer_apply="true"
+      reason="manual-dispatch"
     else
-      # push_ansible_only / dispatch_ansible_only
+      # dispatch_ansible_only: workflow_dispatch with ansible_only=true
       run_infra_apply="false"
       run_ansible_bootstrap="true"
       run_portainer_apply="true"
-      if [[ "${EVENT_NAME}" == "push_ansible_only" ]]; then
-        ansible_tags="$(compute_ansible_tags_for_push)"
-      fi
-    fi
-
-    if [[ "${EVENT_NAME}" == "push" || "${EVENT_NAME}" == "push_ansible_only" ]]; then
-      reason="infra-repo-push"
-    else
       reason="manual-dispatch"
     fi
   elif [[ "${EVENT_NAME}" == "repository_dispatch" ]]; then
@@ -138,7 +163,7 @@ resolve_meta_mode() {
     run_config_sync="true"
     run_health_redeploy="true"
   else
-    echo "Unsupported EVENT_NAME for meta mode: ${EVENT_NAME}. Expected push, push_ansible_only, workflow_dispatch, dispatch_ansible_only, or repository_dispatch."
+    echo "Unsupported EVENT_NAME for meta mode: ${EVENT_NAME}. Expected push, workflow_dispatch, dispatch_ansible_only, or repository_dispatch."
     exit 1
   fi
 

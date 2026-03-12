@@ -22,25 +22,6 @@ TERMINAL_FAILURE_STATUSES="${TERMINAL_FAILURE_STATUSES:-errored,canceled,discard
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/workflow_common.sh"
 
-trim_csv_item() {
-  local value="$1"
-  echo "${value}" | awk '{$1=$1; print}'
-}
-
-csv_contains() {
-  local csv="$1"
-  local needle="$2"
-  local item=""
-  IFS=',' read -ra parts <<< "${csv}"
-  for item in "${parts[@]}"; do
-    item="$(trim_csv_item "${item}")"
-    if [[ -n "${item}" && "${item}" == "${needle}" ]]; then
-      return 0
-    fi
-  done
-  return 1
-}
-
 REQUIRE_MANUAL_CONFIRM="$(to_bool "${REQUIRE_MANUAL_CONFIRM}")"
 FAIL_IF_AUTO_APPLY="$(to_bool "${FAIL_IF_AUTO_APPLY}")"
 
@@ -96,7 +77,7 @@ while (( SECONDS < deadline )); do
     fi
   fi
 
-  if csv_contains "${TERMINAL_FAILURE_STATUSES}" "${status}"; then
+  if csv_contains "${status}" "${TERMINAL_FAILURE_STATUSES}"; then
     echo "Run '${RUN_ID}' for workspace '${WORKSPACE_NAME}' failed with terminal status '${status}'."
     exit 1
   fi
@@ -110,7 +91,7 @@ while (( SECONDS < deadline )); do
     printed_confirm_hint="true"
   fi
 
-  if csv_contains "${SUCCESS_STATUSES}" "${status}"; then
+  if csv_contains "${status}" "${SUCCESS_STATUSES}"; then
     if [[ "${REQUIRE_MANUAL_CONFIRM}" == "true" ]]; then
       if [[ "${status}" == "applied" ]]; then
         echo "Run '${RUN_ID}' for workspace '${WORKSPACE_NAME}' completed successfully with status '${status}'."

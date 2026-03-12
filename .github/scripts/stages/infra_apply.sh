@@ -7,12 +7,7 @@ source .github/scripts/lib/workflow_common.sh
 : "${RUN_ID:?RUN_ID is required}"
 : "${TFC_WORKSPACE:?TFC_WORKSPACE is required}"
 
-SHADOW_MODE="$(to_bool "${SHADOW_MODE:-false}")"
-
-if [[ "${SHADOW_MODE}" == "true" ]]; then
-  echo "SHADOW_MODE=true: skipping Terraform Cloud wait loop for run ${RUN_ID}."
-  exit 0
-fi
+exit_if_shadow_mode "SHADOW_MODE=true: skipping Terraform Cloud wait loop for run ${RUN_ID}."
 
 REQUIRE_MANUAL_CONFIRM=true \
 FAIL_IF_AUTO_APPLY=true \

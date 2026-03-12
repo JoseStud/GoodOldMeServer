@@ -95,6 +95,20 @@ normalize_csv() {
     | paste -sd, -
 }
 
+csv_contains() {
+  local item="$1" csv="$2"
+  local trimmed_item="${item#"${item%%[![:space:]]*}"}"
+  trimmed_item="${trimmed_item%"${trimmed_item##*[![:space:]]}"}"
+  local IFS=","
+  local part
+  for part in ${csv}; do
+    part="${part#"${part%%[![:space:]]*}"}"
+    part="${part%"${part##*[![:space:]]}"}"
+    [[ "${part}" == "${trimmed_item}" ]] && return 0
+  done
+  return 1
+}
+
 normalize_json_array_to_csv() {
   local input="${1:-}"
   local item_regex="${2:-.*}"
@@ -217,6 +231,14 @@ assert_bcrypt_hash_value() {
   if [[ ! "${value}" =~ ^\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}$ ]]; then
     echo "${name} must be a valid bcrypt hash." >&2
     return 1
+  fi
+}
+
+exit_if_shadow_mode() {
+  local message="${1:-SHADOW_MODE=true: skipping mutation.}"
+  if [[ "$(to_bool "${SHADOW_MODE:-false}")" == "true" ]]; then
+    echo "${message}"
+    exit 0
   fi
 }
 

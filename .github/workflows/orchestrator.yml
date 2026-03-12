@@ -1,25 +1,33 @@
-name: Ansible Orchestrator
-
-# Handles pushes that only affect Ansible configuration.  Skips the expensive
-# TFC infra-apply stage while still bootstrapping hosts and reconciling
-# Portainer.  For full infrastructure changes (Terraform, stacks submodule),
-# see infra-orchestrator.yml.
+name: Orchestrator
 
 on:
   push:
     branches: [main]
     paths:
+      - "terraform/**"
+      - "stacks"
+      - ".gitmodules"
       - "ansible/**"
       - ".ansible-lint"
-  workflow_dispatch: {}
+  repository_dispatch:
+    types: [stacks-redeploy-intent-v5]
+  workflow_dispatch:
+    inputs:
+      ansible_only:
+        description: "Skip Terraform infra-apply (Ansible + Portainer only)"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   id-token: write
   contents: read
 
+# Concurrency note: repository_dispatch events have no github.ref_name, so
+# they fall back to 'main' — sharing the same group as push-to-main.  With
+# cancel-in-progress: false, a dispatch arriving during a long push-triggered
+# run (e.g. TFC apply) will queue rather than cancel it.
 concurrency:
-  # Shares the same concurrency group as the infra orchestrator so an
-  # Ansible-only run and a full infra run cannot execute simultaneously.
   group: infra-orchestrator-${{ github.ref_name || github.event.repository.default_branch || 'main' }}
   cancel-in-progress: false
 
@@ -27,9 +35,15 @@ jobs:
   resolve-context:
     uses: ./.github/workflows/reusable-resolve-plan.yml
     with:
-      source_event_name: ${{ github.event_name == 'push' && 'push_ansible_only' || 'dispatch_ansible_only' }}
+      source_event_name: ${{ (github.event_name == 'workflow_dispatch' && inputs.ansible_only) && 'dispatch_ansible_only' || github.event_name }}
       push_before: ${{ github.event.before || '' }}
       push_sha: ${{ github.sha }}
+      dispatch_payload_json: ${{ toJson(github.event.client_payload) }}
+      dispatch_stacks_sha: ${{ github.event.client_payload.stacks_sha }}
+      dispatch_reason: ${{ github.event.client_payload.reason }}
+      dispatch_source_repo: ${{ github.event.client_payload.source_repo }}
+      dispatch_source_run_id: ${{ github.event.client_payload.source_run_id }}
+      dispatch_source_sha: ${{ github.event.client_payload.source_sha }}
 
   preflight:
     needs: [resolve-context]
@@ -38,9 +52,6 @@ jobs:
     with:
       plan_json: ${{ needs.resolve-context.outputs.plan_json }}
 
-  # The infra stage is included so that inventory-handover and
-  # network-preflight-ssh still run (infra-apply itself is skipped because
-  # the plan has stage_infra_apply=false in ansible-only mode).
   infra:
     needs: [resolve-context, preflight]
     uses: ./.github/workflows/reusable-orch-infra.yml

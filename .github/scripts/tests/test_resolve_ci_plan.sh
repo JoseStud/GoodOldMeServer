@@ -207,18 +207,73 @@ assert_eq "meta_workflow_dispatch_full_reconcile" "run_health_redeploy" "false" 
 assert_eq "meta_workflow_dispatch_full_reconcile" "stacks_sha" "${STACKS_SHA}" "$(read_plan_json_field "${case3_out}" '.meta.stacks_sha')"
 assert_eq "meta_workflow_dispatch_full_reconcile" "reason" "manual-dispatch" "$(read_plan_json_field "${case3_out}" '.meta.reason')"
 
-# Case 4a: push_ansible_only skips infra apply, runs bootstrap + portainer
+# Phase repo setup (used by Case 4a and the phase detection tests below).
+# A minimal git repo with controlled commits so git diff returns predictable
+# output for both is_ansible_only_push() and compute_ansible_tags_for_push().
+_phase_stacks="${TMP_DIR}/phase-stacks"
+_phase_repo="${TMP_DIR}/phase-repo"
+
+git init -q -b main "${_phase_stacks}" 2>/dev/null || git init -q "${_phase_stacks}"
+git -C "${_phase_stacks}" config user.email "ci@test"
+git -C "${_phase_stacks}" config user.name "ci"
+git -C "${_phase_stacks}" commit -q --allow-empty -m "init"
+_phase_stacks_sha="$(git -C "${_phase_stacks}" rev-parse HEAD)"
+
+git init -q -b main "${_phase_repo}" 2>/dev/null || git init -q "${_phase_repo}"
+git -C "${_phase_repo}" config user.email "ci@test"
+git -C "${_phase_repo}" config user.name "ci"
+# Add a stacks gitlink so git rev-parse HEAD:stacks succeeds.
+git -C "${_phase_repo}" update-index --add --cacheinfo "160000,${_phase_stacks_sha},stacks"
+git -C "${_phase_repo}" commit -q -m "initial: add stacks gitlink"
+_phase_base_sha="$(git -C "${_phase_repo}" rev-parse HEAD)"
+
+# Commit: only ansible/roles/runtime_sync/ changed
+mkdir -p "${_phase_repo}/ansible/roles/runtime_sync/tasks"
+printf '# task\n' > "${_phase_repo}/ansible/roles/runtime_sync/tasks/main.yml"
+git -C "${_phase_repo}" add ansible/roles/runtime_sync/tasks/main.yml
+git -C "${_phase_repo}" commit -q -m "change runtime_sync"
+_phase_runtime_sha="$(git -C "${_phase_repo}" rev-parse HEAD)"
+
+# Commit: only ansible/roles/glusterfs/ changed
+mkdir -p "${_phase_repo}/ansible/roles/glusterfs/tasks"
+printf '# task\n' > "${_phase_repo}/ansible/roles/glusterfs/tasks/main.yml"
+git -C "${_phase_repo}" add ansible/roles/glusterfs/tasks/main.yml
+git -C "${_phase_repo}" commit -q -m "change glusterfs"
+_phase_gluster_sha="$(git -C "${_phase_repo}" rev-parse HEAD)"
+
+# Commit: only ansible/roles/tailscale/ changed
+mkdir -p "${_phase_repo}/ansible/roles/tailscale/tasks"
+printf '# task\n' > "${_phase_repo}/ansible/roles/tailscale/tasks/main.yml"
+git -C "${_phase_repo}" add ansible/roles/tailscale/tasks/main.yml
+git -C "${_phase_repo}" commit -q -m "change tailscale"
+_phase_tailscale_sha="$(git -C "${_phase_repo}" rev-parse HEAD)"
+
+# Commit: ansible/playbooks/ changed (shared — triggers full-bootstrap fallback)
+mkdir -p "${_phase_repo}/ansible/playbooks"
+printf '# playbook\n' > "${_phase_repo}/ansible/playbooks/provision.yml"
+git -C "${_phase_repo}" add ansible/playbooks/provision.yml
+git -C "${_phase_repo}" commit -q -m "change playbook"
+_phase_playbook_sha="$(git -C "${_phase_repo}" rev-parse HEAD)"
+
+# Commit: terraform file changed — not ansible-only, so full infra apply
+mkdir -p "${_phase_repo}/terraform"
+printf '# tf\n' > "${_phase_repo}/terraform/main.tf"
+git -C "${_phase_repo}" add terraform/main.tf
+git -C "${_phase_repo}" commit -q -m "change terraform"
+_phase_terraform_sha="$(git -C "${_phase_repo}" rev-parse HEAD)"
+
+# Case 4a: ansible-only push (path auto-detected) skips infra apply, runs bootstrap + portainer
 case4a_env="${TMP_DIR}/case4a.env"
 write_env_file "${case4a_env}" \
-  "PUSH_BEFORE=${HEAD_SHA}" \
-  "PUSH_SHA=${HEAD_SHA}"
-case4a_out="$(run_plan_case "meta_push_ansible_only" "meta" "push_ansible_only" "${case4a_env}")"
+  "PUSH_BEFORE=${_phase_base_sha}" \
+  "PUSH_SHA=${_phase_runtime_sha}"
+case4a_out="$(run_plan_case_in_dir "meta_push_ansible_only" "meta" "push" "${case4a_env}" "${_phase_repo}")"
 assert_eq "meta_push_ansible_only" "run_infra_apply" "false" "$(read_plan_json_field "${case4a_out}" '.meta.run_infra_apply')"
 assert_eq "meta_push_ansible_only" "run_ansible_bootstrap" "true" "$(read_plan_json_field "${case4a_out}" '.meta.run_ansible_bootstrap')"
 assert_eq "meta_push_ansible_only" "run_portainer_apply" "true" "$(read_plan_json_field "${case4a_out}" '.meta.run_portainer_apply')"
 assert_eq "meta_push_ansible_only" "run_health_redeploy" "false" "$(read_plan_json_field "${case4a_out}" '.meta.run_health_redeploy')"
 assert_eq "meta_push_ansible_only" "reason" "infra-repo-push" "$(read_plan_json_field "${case4a_out}" '.meta.reason')"
-assert_eq "meta_push_ansible_only" "stacks_sha" "${STACKS_SHA}" "$(read_plan_json_field "${case4a_out}" '.meta.stacks_sha')"
+assert_eq "meta_push_ansible_only" "stacks_sha" "${_phase_stacks_sha}" "$(read_plan_json_field "${case4a_out}" '.meta.stacks_sha')"
 
 # Case 4b: dispatch_ansible_only skips infra apply, runs bootstrap + portainer
 case4b_env="${TMP_DIR}/case4b.env"
@@ -276,59 +331,14 @@ write_env_file "${case7_env}" \
 run_validator_expect_fail "dispatch_validator_removed_field_rejected" "${case7_env}"
 
 # ── Phase detection tests ──────────────────────────────────────────────────
-# Set up a minimal git repo with controlled commits so git diff returns
-# predictable output for ansible_tags computation.
-_phase_stacks="${TMP_DIR}/phase-stacks"
-_phase_repo="${TMP_DIR}/phase-repo"
-
-git init -q -b main "${_phase_stacks}" 2>/dev/null || git init -q "${_phase_stacks}"
-git -C "${_phase_stacks}" config user.email "ci@test"
-git -C "${_phase_stacks}" config user.name "ci"
-git -C "${_phase_stacks}" commit -q --allow-empty -m "init"
-_phase_stacks_sha="$(git -C "${_phase_stacks}" rev-parse HEAD)"
-
-git init -q -b main "${_phase_repo}" 2>/dev/null || git init -q "${_phase_repo}"
-git -C "${_phase_repo}" config user.email "ci@test"
-git -C "${_phase_repo}" config user.name "ci"
-# Add a stacks gitlink so git rev-parse HEAD:stacks succeeds.
-git -C "${_phase_repo}" update-index --add --cacheinfo "160000,${_phase_stacks_sha},stacks"
-git -C "${_phase_repo}" commit -q -m "initial: add stacks gitlink"
-_phase_base_sha="$(git -C "${_phase_repo}" rev-parse HEAD)"
-
-# Commit: only ansible/roles/runtime_sync/ changed
-mkdir -p "${_phase_repo}/ansible/roles/runtime_sync/tasks"
-printf '# task\n' > "${_phase_repo}/ansible/roles/runtime_sync/tasks/main.yml"
-git -C "${_phase_repo}" add ansible/roles/runtime_sync/tasks/main.yml
-git -C "${_phase_repo}" commit -q -m "change runtime_sync"
-_phase_runtime_sha="$(git -C "${_phase_repo}" rev-parse HEAD)"
-
-# Commit: only ansible/roles/glusterfs/ changed
-mkdir -p "${_phase_repo}/ansible/roles/glusterfs/tasks"
-printf '# task\n' > "${_phase_repo}/ansible/roles/glusterfs/tasks/main.yml"
-git -C "${_phase_repo}" add ansible/roles/glusterfs/tasks/main.yml
-git -C "${_phase_repo}" commit -q -m "change glusterfs"
-_phase_gluster_sha="$(git -C "${_phase_repo}" rev-parse HEAD)"
-
-# Commit: only ansible/roles/tailscale/ changed
-mkdir -p "${_phase_repo}/ansible/roles/tailscale/tasks"
-printf '# task\n' > "${_phase_repo}/ansible/roles/tailscale/tasks/main.yml"
-git -C "${_phase_repo}" add ansible/roles/tailscale/tasks/main.yml
-git -C "${_phase_repo}" commit -q -m "change tailscale"
-_phase_tailscale_sha="$(git -C "${_phase_repo}" rev-parse HEAD)"
-
-# Commit: ansible/playbooks/ changed (shared — triggers full-bootstrap fallback)
-mkdir -p "${_phase_repo}/ansible/playbooks"
-printf '# playbook\n' > "${_phase_repo}/ansible/playbooks/provision.yml"
-git -C "${_phase_repo}" add ansible/playbooks/provision.yml
-git -C "${_phase_repo}" commit -q -m "change playbook"
-_phase_playbook_sha="$(git -C "${_phase_repo}" rev-parse HEAD)"
+# (Phase repo was already set up above, before Case 4a.)
 
 # Case P1: runtime_sync only → ansible_tags=phase7_runtime_sync
 casep1_env="${TMP_DIR}/casep1.env"
 write_env_file "${casep1_env}" \
   "PUSH_BEFORE=${_phase_base_sha}" \
   "PUSH_SHA=${_phase_runtime_sha}"
-casep1_out="$(run_plan_case_in_dir "phase_runtime_only" "meta" "push_ansible_only" "${casep1_env}" "${_phase_repo}")"
+casep1_out="$(run_plan_case_in_dir "phase_runtime_only" "meta" "push" "${casep1_env}" "${_phase_repo}")"
 assert_eq "phase_runtime_only" "ansible_tags" "phase7_runtime_sync" "$(read_plan_json_field "${casep1_out}" '.meta.ansible_tags')"
 assert_eq "phase_runtime_only" "run_infra_apply" "false" "$(read_plan_json_field "${casep1_out}" '.meta.run_infra_apply')"
 assert_eq "phase_runtime_only" "run_ansible_bootstrap" "true" "$(read_plan_json_field "${casep1_out}" '.meta.run_ansible_bootstrap')"
@@ -338,7 +348,7 @@ casep2_env="${TMP_DIR}/casep2.env"
 write_env_file "${casep2_env}" \
   "PUSH_BEFORE=${_phase_base_sha}" \
   "PUSH_SHA=${_phase_gluster_sha}"
-casep2_out="$(run_plan_case_in_dir "phase_gluster_and_runtime" "meta" "push_ansible_only" "${casep2_env}" "${_phase_repo}")"
+casep2_out="$(run_plan_case_in_dir "phase_gluster_and_runtime" "meta" "push" "${casep2_env}" "${_phase_repo}")"
 assert_eq "phase_gluster_and_runtime" "ansible_tags" "phase4_glusterfs,phase7_runtime_sync" "$(read_plan_json_field "${casep2_out}" '.meta.ansible_tags')"
 
 # Case P2b: tailscale only → ansible_tags=phase3_tailscale
@@ -346,7 +356,7 @@ casep2b_env="${TMP_DIR}/casep2b.env"
 write_env_file "${casep2b_env}" \
   "PUSH_BEFORE=${_phase_gluster_sha}" \
   "PUSH_SHA=${_phase_tailscale_sha}"
-casep2b_out="$(run_plan_case_in_dir "phase_tailscale_only" "meta" "push_ansible_only" "${casep2b_env}" "${_phase_repo}")"
+casep2b_out="$(run_plan_case_in_dir "phase_tailscale_only" "meta" "push" "${casep2b_env}" "${_phase_repo}")"
 assert_eq "phase_tailscale_only" "ansible_tags" "phase3_tailscale" "$(read_plan_json_field "${casep2b_out}" '.meta.ansible_tags')"
 
 # Case P3: playbook change → falls back to full bootstrap (ansible_tags="")
@@ -354,17 +364,17 @@ casep3_env="${TMP_DIR}/casep3.env"
 write_env_file "${casep3_env}" \
   "PUSH_BEFORE=${_phase_tailscale_sha}" \
   "PUSH_SHA=${_phase_playbook_sha}"
-casep3_out="$(run_plan_case_in_dir "phase_playbook_fallback" "meta" "push_ansible_only" "${casep3_env}" "${_phase_repo}")"
+casep3_out="$(run_plan_case_in_dir "phase_playbook_fallback" "meta" "push" "${casep3_env}" "${_phase_repo}")"
 assert_eq "phase_playbook_fallback" "ansible_tags" "" "$(read_plan_json_field "${casep3_out}" '.meta.ansible_tags')"
 
-# Case P4: regular push always has ansible_tags="" (phase detection only for push_ansible_only)
+# Case P4: push with non-ansible-only changes → full infra apply, no ansible_tags
 casep4_env="${TMP_DIR}/casep4.env"
 write_env_file "${casep4_env}" \
-  "PUSH_BEFORE=${_phase_base_sha}" \
-  "PUSH_SHA=${_phase_runtime_sha}"
-casep4_out="$(run_plan_case_in_dir "phase_push_no_tags" "meta" "push" "${casep4_env}" "${_phase_repo}")"
-assert_eq "phase_push_no_tags" "ansible_tags" "" "$(read_plan_json_field "${casep4_out}" '.meta.ansible_tags')"
-assert_eq "phase_push_no_tags" "run_infra_apply" "true" "$(read_plan_json_field "${casep4_out}" '.meta.run_infra_apply')"
+  "PUSH_BEFORE=${_phase_playbook_sha}" \
+  "PUSH_SHA=${_phase_terraform_sha}"
+casep4_out="$(run_plan_case_in_dir "phase_push_non_ansible" "meta" "push" "${casep4_env}" "${_phase_repo}")"
+assert_eq "phase_push_non_ansible" "ansible_tags" "" "$(read_plan_json_field "${casep4_out}" '.meta.ansible_tags')"
+assert_eq "phase_push_non_ansible" "run_infra_apply" "true" "$(read_plan_json_field "${casep4_out}" '.meta.run_infra_apply')"
 
 echo "PASS=${PASS_COUNT} FAIL=${FAIL_COUNT}"
 
