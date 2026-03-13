@@ -117,6 +117,9 @@ jobs:
           install_jq: "true"
           install_yq: "true"
 
+      - name: Install plan resolver (for stage exhaustiveness check)
+        run: pip install --quiet .github/scripts/plan/
+
       - name: Run workflow contract tests
         run: bash .github/scripts/tests/test_workflow_contracts.sh
 

@@ -24,22 +24,14 @@ pass() { echo "[PASS] $1"; PASS_COUNT=$((PASS_COUNT + 1)); }
 fail() { echo "[FAIL] $1"; FAIL_COUNT=$((FAIL_COUNT + 1)); }
 
 # Extract stage field names from the Python Stages dataclass.
+# Requires ci_plan package to be installed (pip install .github/scripts/plan/).
 mapfile -t stage_keys < <(
   python3 -c "
 from dataclasses import fields
 from ci_plan.models import Stages
 for f in fields(Stages):
     print(f.name)
-" 2>/dev/null || {
-    # Fallback: try with pip install if not already installed.
-    pip install --quiet "${ROOT_DIR}/.github/scripts/plan/" >&2
-    python3 -c "
-from dataclasses import fields
-from ci_plan.models import Stages
-for f in fields(Stages):
-    print(f.name)
 "
-  }
 )
 
 if [[ ${#stage_keys[@]} -eq 0 ]]; then
