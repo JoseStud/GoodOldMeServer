@@ -12,8 +12,8 @@ Before deploying any stack, verify that all infrastructure layers are operationa
 |-------------|---------------|-----|
 | Cutover checklist complete | Review [Infrastructure Orchestrator Cutover Checklist](meta-pipeline-cutover-checklist.md) and confirm all required items | Complete missing GitHub/TFC/Infisical prerequisites before deploy |
 | Automation-managed variables understood | Review [Variable Ownership & Mutability](infisical-workflow.md#variable-ownership--mutability) | Do not manually edit automation-managed variables outside their owning workflow |
-| Terraform infra workspace applied | Terraform Cloud run for `goodoldme-infra` succeeds (or `terraform -chdir=terraform/infra output`) | Merge/push a change under `terraform/infra`, `terraform/oci`, or `terraform/gcp` to `main` so `infra-orchestrator.yml` runs automatically, or use `terraform -chdir=terraform/infra apply` |
-| Terraform Portainer workspace applied | Local CI apply for `terraform/portainer-root` succeeds against TFC remote state (`goodoldme-portainer`) (or `terraform -chdir=terraform/portainer-root output`) | Merge/push a change under `terraform/portainer` or `terraform/portainer-root` to `main` so `infra-orchestrator.yml` runs automatically, or use `terraform -chdir=terraform/portainer-root apply` |
+| Terraform infra workspace applied | Terraform Cloud run for `goodoldme-infra` succeeds (or `terraform -chdir=terraform/infra output`) | Merge/push a change under `terraform/infra`, `terraform/oci`, or `terraform/gcp` to `main` so `orchestrator.yml` runs automatically, or use `terraform -chdir=terraform/infra apply` |
+| Terraform Portainer workspace applied | Local CI apply for `terraform/portainer-root` succeeds against TFC remote state (`goodoldme-portainer`) (or `terraform -chdir=terraform/portainer-root output`) | Merge/push a change under `terraform/portainer` or `terraform/portainer-root` to `main` so `orchestrator.yml` runs automatically, or use `terraform -chdir=terraform/portainer-root apply` |
 | Cloud static runner ready | `vars.CLOUD_STATIC_RUNNER_LABEL` is set and workflow logs show deterministic IPv4/IPv6 egress | Configure runner label and egress routing, then re-run |
 | Ansible provisioning complete | SSH into nodes, verify Docker/Tailscale/GlusterFS/Portainer | Re-run `ansible-playbook` |
 | Portainer running | `curl -s http://localhost:9000/api/system/status` returns HTTP 200 | Re-run Ansible `portainer_bootstrap` role |
@@ -208,7 +208,7 @@ Use this decision gate before running local/manual fallback commands.
 
 | Condition | Mode | Allowed actions | Controls required | Post-action reconciliation |
 |-----------|------|-----------------|------------------|----------------------------|
-| Terraform Cloud workspaces are reachable, metadata is healthy, and no urgent outage is active | Normal | `infra-orchestrator.yml` execution, Terraform-managed apply paths, health-gated webhook redeploys | Follow cutover checklist prerequisites, run pipeline preflights, keep network policy sync enabled | Verify no drift via planned managed run and document execution reason/output |
+| Terraform Cloud workspaces are reachable, metadata is healthy, and no urgent outage is active | Normal | `orchestrator.yml` execution, Terraform-managed apply paths, health-gated webhook redeploys | Follow cutover checklist prerequisites, run pipeline preflights, keep network policy sync enabled | Verify no drift via planned managed run and document execution reason/output |
 | Terraform Cloud control plane unavailable or degraded but service-impacting change is required | Break-Glass | Local `terraform -chdir=... apply` and/or direct `docker stack deploy` fallback commands | Record incident ticket/change record, limit operator set, keep commands scoped to impacted stack(s) only | Re-run normal managed workflow ASAP, confirm drift is cleared, attach evidence to incident record |
 | Portainer API allowlist propagation or webhook automation path is blocked during incident response | Break-Glass | Direct CLI stack deploy or targeted service update commands | Confirm operator SSH source is approved, capture exact commands and timestamps | Reconcile by rerunning managed redeploy and validating webhooks/allowlist behavior |
 | Routine updates with no control-plane issues | Normal | GitOps webhook path and Terraform `portainer-root` managed apply only | Standard review + validation checks | Confirm expected job chain completed and archive logs/artifacts |
@@ -265,7 +265,7 @@ Every stack is linked to the `JoseStud/stacks` Git repository in Portainer with 
 
 1. Push to `main` in the stacks repo triggers `stacks/.github/workflows/stacks-ci.yml` and `stacks/.github/workflows/stacks-dispatch-redeploy.yml`.
 2. After `stacks-ci.yml` succeeds on `main`, the dispatch workflow emits one `stacks-redeploy-intent-v5` event with the minimal full-reconcile payload.
-3. Infra `infra-orchestrator.yml` treats every valid stacks dispatch as a full reconcile: it waits for trusted `stacks_sha` checks before preflight mutations, validates secrets, runs `phase7_runtime_sync`, runs `sync-configs`, runs `terraform/portainer-root apply` with the trusted `stacks_sha` pinned into both the Portainer Git ref and the fetched `stacks.yaml`, then redeploys every Portainer-managed stack from that applied ref.
+3. Infra `orchestrator.yml` treats every valid stacks dispatch as a full reconcile: it waits for trusted `stacks_sha` checks before preflight mutations, validates secrets, runs `phase7_runtime_sync`, runs `sync-configs`, runs `terraform/portainer-root apply` with the trusted `stacks_sha` pinned into both the Portainer Git ref and the fetched `stacks.yaml`, then redeploys every Portainer-managed stack from that applied ref.
 4. Health gates use manifest dependencies and manifest order: Gateway is checked first (`gateway-health.<BASE_DOMAIN>/healthz`), then Auth, then the remaining Portainer-managed stacks. The Ansible-managed `management` stack stays outside this webhook flow.
 
 Trusted `stacks_sha` means:
@@ -308,7 +308,7 @@ Stacks are now managed declaratively via the `portainer` Terraform module. To ad
 
 1. Create the `docker-compose.yml` in the stacks repo under `<name>/`
 2. Add a new entry to `stacks/stacks.yaml` with `compose_path`, `portainer_managed`, dependencies, and optional health check metadata
-3. Run `terraform -chdir=terraform/portainer-root apply` (or merge the corresponding `terraform/portainer-root` / `terraform/portainer` change to `main` so `infra-orchestrator.yml` applies it automatically) — the stack, webhook, and Infisical secret are all created automatically
+3. Run `terraform -chdir=terraform/portainer-root apply` (or merge the corresponding `terraform/portainer-root` / `terraform/portainer` change to `main` so `orchestrator.yml` applies it automatically) — the stack, webhook, and Infisical secret are all created automatically
 
 The webhook URL is written to Infisical `/deployments` as `WEBHOOK_URL_<STACK_NAME>` and appended to the combined `PORTAINER_WEBHOOK_URLS` secret.
 

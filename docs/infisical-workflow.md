@@ -52,8 +52,8 @@ Use this as the source of truth for whether a value is operator-managed or autom
 | `/stacks/management/PORTAINER_ADMIN_PASSWORD_HASH` | Platform | Auto-generated/re-written by Ansible `portainer_bootstrap` on bootstrap runs. Do not set manually. |
 | `/management/PORTAINER_URL`, `/management/PORTAINER_API_URL`, `/management/PORTAINER_API_KEY` | Platform | Auto-written by Ansible `portainer_bootstrap` after bootstrap (API key may be rotated). Do not set manually. |
 | `/deployments/PORTAINER_WEBHOOK_URLS` + `/deployments/WEBHOOK_URL_*` | Platform | Auto-written by Terraform `portainer` module on Portainer workspace apply. Do not edit manually. |
-| `TF_VAR_network_access_policy` (Terraform Cloud env var) | Security | Auto-created/updated by `infra-orchestrator.yml` preflight stage (`reusable-orch-preflight.yml` / `network-policy-sync`). Do not set manually outside policy sync flow. |
-| `/stacks/management/PORTAINER_AUTOMATION_ALLOWED_CIDRS` | Security | Auto-synced by `infra-orchestrator.yml` preflight stage from `network_access_policy.portainer_api.source_ranges`. Do not set manually outside break-glass recovery. |
+| `TF_VAR_network_access_policy` (Terraform Cloud env var) | Security | Auto-created/updated by `orchestrator.yml` preflight stage (`reusable-orch-preflight.yml` / `network-policy-sync`). Do not set manually outside policy sync flow. |
+| `/stacks/management/PORTAINER_AUTOMATION_ALLOWED_CIDRS` | Security | Auto-synced by `orchestrator.yml` preflight stage from `network_access_policy.portainer_api.source_ranges`. Do not set manually outside break-glass recovery. |
 
 > For first-run setup and required GitHub/TFC inputs, see [Infrastructure Orchestrator Cutover Checklist](meta-pipeline-cutover-checklist.md).
 
@@ -295,7 +295,7 @@ The management stack is **not** in this list.
 
 1. Create the compose file in `github.com/JoseStud/stacks`
 2. Add a new entry in `stacks/stacks.yaml` (`compose_path`, `portainer_managed`, `depends_on`, optional health checks)
-3. Run `terraform -chdir=terraform/portainer-root apply` (or merge the corresponding `terraform/portainer-root` / `terraform/portainer` change to `main` so `infra-orchestrator.yml` applies it automatically)
+3. Run `terraform -chdir=terraform/portainer-root apply` (or merge the corresponding `terraform/portainer-root` / `terraform/portainer` change to `main` so `orchestrator.yml` applies it automatically)
 
 ## Private Webhook Automation
 
@@ -309,7 +309,7 @@ Flow:
 1. Push to `main` in stacks repo
 2. `stacks-ci.yml` completes successfully with repo-level validation
 3. The dispatch workflow emits exactly one `stacks-redeploy-intent-v5` event with the minimal `v5` payload
-4. Infra `infra-orchestrator.yml` runs the fixed full-reconcile path through reusable stages: preflight -> infra -> ansible (`phase7_runtime_sync`) -> portainer (`sync-configs`, SHA-pinned Portainer apply, health-gated webhook redeploy).
+4. Infra `orchestrator.yml` runs the fixed full-reconcile path through reusable stages: preflight -> infra -> ansible (`phase7_runtime_sync`) -> portainer (`sync-configs`, SHA-pinned Portainer apply, health-gated webhook redeploy).
 
 ### Workflow timeout variables
 
@@ -328,7 +328,7 @@ Several optional workflow tunables are referenced by orchestrator stages and red
 - Required `client_payload.source_repo`: source repository (`owner/repo`)
 - Required `client_payload.source_run_id`: source workflow run id
 
-Manual stacks reconciliation is no longer supported from `infra-orchestrator.yml`; manual workflow use remains for infra/bootstrap/Portainer operations only.
+Manual stacks reconciliation is no longer supported from `orchestrator.yml`; manual workflow use remains for infra/bootstrap/Portainer operations only.
 
 ## Infisical Agent (Docker Swarm)
 

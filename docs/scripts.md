@@ -45,7 +45,7 @@ For Infisical-backed wrappers, the reusable workflow must export both `INFISICAL
 
 - CI scripts are intended to run inside GitHub Actions jobs with explicit env contracts.
 - Committed automation helpers pass `--projectId` explicitly for Infisical reads and writes; the repo root `infisical.json` is only a convenience for manual local debugging.
-- Reusable planner workflow: `.github/workflows/reusable-resolve-plan.yml` centralizes push/dispatch normalization and `.github/scripts/plan/resolve_ci_plan.sh` execution for the orchestrator workflow. Meta-mode plan construction is delegated internally to `.github/scripts/plan/resolve_meta_plan.sh`.
+- Reusable planner workflow: `.github/workflows/reusable-resolve-plan.yml` centralizes push/dispatch normalization and plan resolution for the orchestrator workflow. Plan computation is handled by the `ci_plan` Python package (`.github/scripts/plan/ci_plan/`), which replaces the former `resolve_meta_plan.sh` and `validate_dispatch_payload.sh` bash scripts. The package is stdlib-only (zero runtime dependencies) and is installed via `pip install .github/scripts/plan/` in CI. Dispatch payload validation is absorbed into the resolver and controlled by the `VALIDATE_DISPATCH_CONTRACT` env var.
 - Reusable stage workflows: `.github/workflows/reusable-orch-*.yml` consume `plan_json` directly with `fromJSON(...)` and do not rely on a scalar projection layer.
 - Composite query bootstrap action: `.github/actions/bootstrap-query-tools/action.yml` installs pinned `jq`/`yq` versions from `.github/ci/tool-versions.lock` with SHA256 verification for GitHub-hosted validation jobs. Cloud-runner jobs rely on the prebuilt `toolingDebian` runner image instead of runtime installation.
 

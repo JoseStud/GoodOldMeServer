@@ -1,6 +1,6 @@
 # Infrastructure Orchestrator Cutover Checklist (Minimal)
 
-Use this checklist before the first full run of `.github/workflows/infra-orchestrator.yml`.
+Use this checklist before the first full run of `.github/workflows/orchestrator.yml`.
 For ownership context, see [Infisical Workflow](infisical-workflow.md#variable-ownership--mutability).
 
 ## 0) Auto-Managed Values (Do Not Set Manually)
@@ -108,7 +108,7 @@ Expected dispatch payload example:
 | Run `validate-planner-contracts.yml`, `validate-terraform.yml`, and `validate-ansible.yml` and confirm their key jobs pass | Required | Operator | Let normal PR/push automation run them before the first orchestrator execution. | [ ] |
 | Verify `stacks-ci.yml` passes in stacks repo | Required | Platform | Repo-level validation must pass before dispatching the full reconcile. Checks-only, statuses-only, or mixed GitHub CI models are all valid as long as at least one signal is published for the dispatched SHA and every published signal is green. | [ ] |
 | Verify cloud runner deterministic dual-stack egress | Required | Platform | `curl -4 https://api.ipify.org` and `curl -6 https://api64.ipify.org` from runner. | [ ] |
-| Merge a representative infra change to `main` | Required | Operator | A change under `terraform/infra`, `terraform/oci`, or `terraform/gcp` should trigger `infra-orchestrator.yml` automatically and start the infra run sequence. | [ ] |
+| Merge a representative infra change to `main` | Required | Operator | A change under `terraform/infra`, `terraform/oci`, or `terraform/gcp` should trigger `orchestrator.yml` automatically and start the infra run sequence. | [ ] |
 | Confirm/apply infra run in Terraform Cloud UI when prompted | Required | Operator | Required because Auto Apply is disabled. | [ ] |
 | Confirm dispatch path validates `schema_version=v5` and waits for trusted `stacks_sha` checks | Required | Platform | `stacks-sha-trust` should pass before any preflight mutations or later stack-consuming stages, including network policy sync, host sync, and config sync. | [ ] |
 | Ensure CI governance checks are required | Required | Platform | Include `Lint GitHub Actions / lint`, `Validate Planner Contracts / workflow-contracts`, `Validate Terraform / tfc-speculative-plan`, and `Validate Ansible / ansible-validate` in required PR checks. **Note:** `tfc-speculative-plan` requires `TFC_TOKEN`. Since this is a private repo, fork PRs are not expected. If the repo is ever made public, add `if: github.event.pull_request.head.repo.full_name == github.repository` to the `tfc-speculative-plan` job to prevent guaranteed failures for external contributors. | [ ] |
