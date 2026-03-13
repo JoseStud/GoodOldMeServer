@@ -1,0 +1,15 @@
+[project]
+name = "ci-plan"
+version = "1.0.0"
+description = "CI plan resolver for the orchestrator pipeline"
+requires-python = ">=3.12"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["ci_plan*"]

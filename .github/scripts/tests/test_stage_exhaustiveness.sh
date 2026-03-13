@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verifies that every stage_* key emitted by resolve_meta_plan.sh is consumed
+# Verifies that every stage_* key emitted by the ci_plan Python package is consumed
 # by at least one job's `if:` condition in the reusable orchestrator workflows.
 # This ensures that adding a new stage flag without wiring it into a workflow
 # causes a CI failure rather than a silent no-op.
@@ -8,7 +8,6 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
-RESOLVER="${ROOT_DIR}/.github/scripts/plan/resolve_meta_plan.sh"
 WORKFLOW_DIR="${ROOT_DIR}/.github/workflows"
 
 REUSABLE_WORKFLOWS=(
@@ -24,14 +23,27 @@ FAIL_COUNT=0
 pass() { echo "[PASS] $1"; PASS_COUNT=$((PASS_COUNT + 1)); }
 fail() { echo "[FAIL] $1"; FAIL_COUNT=$((FAIL_COUNT + 1)); }
 
-# Extract all stage_* keys from the jq template in resolve_meta_plan.sh.
-# They appear as lines like:  stage_foo: ($stage_foo == "true")
+# Extract stage field names from the Python Stages dataclass.
 mapfile -t stage_keys < <(
-  grep -oE 'stage_[a-z_]+:' "${RESOLVER}" | sed 's/:$//' | sort -u
+  python3 -c "
+from dataclasses import fields
+from ci_plan.models import Stages
+for f in fields(Stages):
+    print(f.name)
+" 2>/dev/null || {
+    # Fallback: try with pip install if not already installed.
+    pip install --quiet "${ROOT_DIR}/.github/scripts/plan/" >&2
+    python3 -c "
+from dataclasses import fields
+from ci_plan.models import Stages
+for f in fields(Stages):
+    print(f.name)
+"
+  }
 )
 
 if [[ ${#stage_keys[@]} -eq 0 ]]; then
-  echo "ERROR: no stage_* keys found in ${RESOLVER}"
+  echo "ERROR: no stage_* keys found in ci_plan.models.Stages"
   exit 1
 fi
 

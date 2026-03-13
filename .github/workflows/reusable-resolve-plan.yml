@@ -52,17 +52,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate repository_dispatch payload contract
-        if: ${{ inputs.source_event_name == 'repository_dispatch' }}
-        env:
-          EVENT_NAME: repository_dispatch
-          PAYLOAD_JSON: ${{ inputs.dispatch_payload_json }}
-          PAYLOAD_STACKS_SHA: ${{ inputs.dispatch_stacks_sha }}
-          PAYLOAD_REASON: ${{ inputs.dispatch_reason }}
-          PAYLOAD_SOURCE_REPO: ${{ inputs.dispatch_source_repo }}
-          PAYLOAD_SOURCE_RUN_ID: ${{ inputs.dispatch_source_run_id }}
-          PAYLOAD_SOURCE_SHA: ${{ inputs.dispatch_source_sha }}
-        run: .github/scripts/plan/validate_dispatch_payload.sh meta
+      - name: Install plan resolver
+        run: pip install --quiet .github/scripts/plan/
 
       - name: Resolve execution context
         id: resolve
@@ -72,13 +63,13 @@ jobs:
 
           PUSH_BEFORE: ${{ inputs.push_before }}
           PUSH_SHA: ${{ inputs.push_sha }}
-          GITHUB_SHA_CURRENT: ${{ inputs.push_sha }}
 
+          PAYLOAD_JSON: ${{ inputs.dispatch_payload_json }}
           PAYLOAD_STACKS_SHA: ${{ inputs.dispatch_stacks_sha }}
           PAYLOAD_REASON: ${{ inputs.dispatch_reason }}
           PAYLOAD_SOURCE_REPO: ${{ inputs.dispatch_source_repo }}
           PAYLOAD_SOURCE_RUN_ID: ${{ inputs.dispatch_source_run_id }}
           PAYLOAD_SOURCE_SHA: ${{ inputs.dispatch_source_sha }}
 
-          VALIDATE_DISPATCH_CONTRACT: "false"
-        run: .github/scripts/plan/resolve_ci_plan.sh
+          VALIDATE_DISPATCH_CONTRACT: "true"
+        run: python3 -m ci_plan

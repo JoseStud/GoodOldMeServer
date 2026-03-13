@@ -44,8 +44,11 @@ jobs:
           install_jq: "true"
           install_yq: "true"
 
+      - name: Install plan resolver
+        run: pip install --quiet '.github/scripts/plan/[dev]'
+
       - name: Run resolver contract tests
-        run: bash .github/scripts/tests/test_resolve_ci_plan.sh
+        run: python3 -m pytest .github/scripts/plan/tests/ -v
 
       - name: Run webhook gate tests
         run: bash .github/scripts/tests/test_trigger_webhooks_with_gates.sh

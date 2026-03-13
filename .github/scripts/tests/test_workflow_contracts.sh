@@ -446,7 +446,7 @@ assert_eq "stacks_sha_trust_wait" "preflight_waits" "true" "${preflight_wait}"
 
 planner_jobs="$(yq -o=json '.jobs | keys' "${PLANNER_VALIDATION}" | jq -c 'sort')"
 assert_eq "planner_validation" "jobs" '["bootstrap-query-tools-smoke","planner-contract-tests","stacks-sha-trust","workflow-contracts"]' "${planner_jobs}"
-assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_resolve_ci_plan.sh"
+assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "python3 -m pytest .github/scripts/plan/tests/ -v"
 assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_trigger_webhooks_with_gates.sh"
 assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_preflight_network_access.sh"
 assert_run_present "planner_validation" "${PLANNER_VALIDATION}" "bash .github/scripts/tests/test_sync_network_access_policy.sh"
