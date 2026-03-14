@@ -67,7 +67,10 @@ jobs:
         run: python3 -m ci_pipeline.context
         working-directory: ci/src
 
+  # ── Legacy path: reusable workflows (active when USE_DAGGER != 'true') ──
+
   preflight:
+    if: ${{ vars.USE_DAGGER != 'true' }}
     needs: [compute-context]
     uses: ./.github/workflows/reusable-orch-preflight.yml
     secrets: inherit
@@ -81,6 +84,7 @@ jobs:
       run_health_redeploy: ${{ needs['compute-context'].outputs.run_health_redeploy == 'true' }}
 
   infra:
+    if: ${{ vars.USE_DAGGER != 'true' }}
     needs: [compute-context, preflight]
     uses: ./.github/workflows/reusable-orch-infra.yml
     secrets: inherit
@@ -94,6 +98,7 @@ jobs:
       network_access_policy_json: ${{ needs['preflight'].outputs.network_access_policy_json }}
 
   ansible:
+    if: ${{ vars.USE_DAGGER != 'true' }}
     needs: [compute-context, preflight, infra]
     uses: ./.github/workflows/reusable-orch-ansible.yml
     secrets: inherit
@@ -105,6 +110,7 @@ jobs:
       runner_label: ${{ needs['preflight'].outputs.runner_label }}
 
   portainer:
+    if: ${{ vars.USE_DAGGER != 'true' }}
     needs: [compute-context, preflight, ansible]
     uses: ./.github/workflows/reusable-orch-portainer.yml
     secrets: inherit
@@ -115,3 +121,117 @@ jobs:
       stacks_sha: ${{ needs['compute-context'].outputs.stacks_sha }}
       runner_label: ${{ needs['preflight'].outputs.runner_label }}
       network_access_policy_json: ${{ needs['preflight'].outputs.network_access_policy_json }}
+
+  # ── Dagger path: infra-apply (GHA) + dagger-pipeline (active when USE_DAGGER == 'true') ──
+
+  # infra-apply stays as a GHA job using marketplace actions.
+  # It runs on ubuntu-latest (no Tailscale needed — TFC API only).
+  infra-apply:
+    if: ${{ vars.USE_DAGGER == 'true' && needs['compute-context'].outputs.run_infra_apply == 'true' }}
+    needs: [compute-context]
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      SHADOW_MODE: ${{ vars.SHADOW_MODE || 'false' }}
+      TFC_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
+      TFC_WORKSPACE_INFRA: ${{ vars.TFC_WORKSPACE_INFRA || 'goodoldme-infra' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bootstrap jq
+        uses: ./.github/actions/bootstrap-query-tools
+        with:
+          install_jq: "true"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Upload infra configuration
+        id: upload
+        uses: hashicorp/tfc-workflows-github/actions/upload-configuration@v1.0.0
+        env:
+          TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+        with:
+          workspace: ${{ env.TFC_WORKSPACE_INFRA }}
+          directory: terraform/infra
+
+      - name: Create Terraform Cloud Infra Run
+        id: tfc-run
+        uses: hashicorp/tfc-workflows-github/actions/create-run@v1.0.0
+        env:
+          TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+        with:
+          workspace: ${{ env.TFC_WORKSPACE_INFRA }}
+          configuration_version: ${{ steps.upload.outputs.configuration_version_id }}
+          message: Infrastructure orchestrator infra apply (${{ needs['compute-context'].outputs.reason }})
+
+      - name: Wait for Terraform Cloud infra run
+        env:
+          RUN_ID: ${{ steps.tfc-run.outputs.run_id }}
+          TFC_WORKSPACE: ${{ env.TFC_WORKSPACE_INFRA }}
+          WAIT_TIMEOUT_SECONDS: ${{ vars.TFC_INFRA_APPLY_WAIT_TIMEOUT_SECONDS || '7200' }}
+          POLL_INTERVAL_SECONDS: ${{ vars.TFC_PLAN_POLL_INTERVAL_SECONDS || '10' }}
+          TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+        run: .github/scripts/stages/infra_apply.sh
+
+  # The Dagger pipeline: connects to Tailscale via OIDC, then runs all
+  # non-infra stages inside Dagger containers.
+  # !cancelled(): infra-apply may be skipped (ansible-only push).
+  # Without !cancelled(), GHA would skip this job too.
+  dagger-pipeline:
+    if: ${{ !cancelled() && vars.USE_DAGGER == 'true' && needs['compute-context'].outputs.has_work == 'true' && needs['compute-context'].result == 'success' && (needs['infra-apply'].result == 'success' || needs['infra-apply'].result == 'skipped') }}
+    needs: [compute-context, infra-apply]
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      SHADOW_MODE: ${{ vars.SHADOW_MODE || 'false' }}
+      TFC_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
+      TFC_WORKSPACE_INFRA: ${{ vars.TFC_WORKSPACE_INFRA || 'goodoldme-infra' }}
+      TFC_WORKSPACE_PORTAINER: ${{ vars.TFC_WORKSPACE_PORTAINER || 'goodoldme-portainer' }}
+      INFISICAL_PROJECT_ID: ${{ vars.INFISICAL_PROJECT_ID }}
+      INFISICAL_MACHINE_IDENTITY_ID: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
+      INFISICAL_SSH_CA_ID: ${{ vars.INFISICAL_SSH_CA_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Connect to Tailnet
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ vars.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Install Dagger
+        uses: dagger/dagger-for-github@v7
+        with:
+          verb: version
+
+      - name: Install pipeline and Ansible dependencies
+        run: |
+          pip install ./ci
+          pip install ansible-core==${{ vars.ANSIBLE_CORE_VERSION || '2.20.2' }}
+
+      - name: Run Dagger pipeline
+        env:
+          # Execution context (from compute-context job)
+          RUN_INFRA_APPLY: ${{ needs['compute-context'].outputs.run_infra_apply }}
+          RUN_ANSIBLE_BOOTSTRAP: ${{ needs['compute-context'].outputs.run_ansible_bootstrap }}
+          RUN_PORTAINER_APPLY: ${{ needs['compute-context'].outputs.run_portainer_apply }}
+          RUN_HOST_SYNC: ${{ needs['compute-context'].outputs.run_host_sync }}
+          RUN_CONFIG_SYNC: ${{ needs['compute-context'].outputs.run_config_sync }}
+          RUN_HEALTH_REDEPLOY: ${{ needs['compute-context'].outputs.run_health_redeploy }}
+          HAS_WORK: ${{ needs['compute-context'].outputs.has_work }}
+          STACKS_SHA: ${{ needs['compute-context'].outputs.stacks_sha }}
+          ANSIBLE_TAGS: ${{ needs['compute-context'].outputs.ansible_tags }}
+          REASON: ${{ needs['compute-context'].outputs.reason }}
+          # Secrets
+          GITHUB_TOKEN: ${{ github.token }}
+          STACKS_REPO_READ_TOKEN: ${{ secrets.STACKS_REPO_READ_TOKEN }}
+          TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
+          INFISICAL_TOKEN: ${{ secrets.INFISICAL_TOKEN }}
+        run: dagger run python -m ci_pipeline
