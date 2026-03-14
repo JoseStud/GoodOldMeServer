@@ -67,67 +67,10 @@ jobs:
         run: python3 -m ci_pipeline.context
         working-directory: ci/src
 
-  # ── Legacy path: reusable workflows (active when USE_DAGGER != 'true') ──
+  # ── infra-apply: GHA marketplace actions (TFC API only, no Tailscale) ──
 
-  preflight:
-    if: ${{ vars.USE_DAGGER != 'true' }}
-    needs: [compute-context]
-    uses: ./.github/workflows/reusable-orch-preflight.yml
-    secrets: inherit
-    with:
-      has_work: ${{ needs['compute-context'].outputs.has_work == 'true' }}
-      stacks_sha: ${{ needs['compute-context'].outputs.stacks_sha }}
-      run_infra_apply: ${{ needs['compute-context'].outputs.run_infra_apply == 'true' }}
-      run_ansible_bootstrap: ${{ needs['compute-context'].outputs.run_ansible_bootstrap == 'true' }}
-      run_portainer_apply: ${{ needs['compute-context'].outputs.run_portainer_apply == 'true' }}
-      run_host_sync: ${{ needs['compute-context'].outputs.run_host_sync == 'true' }}
-      run_health_redeploy: ${{ needs['compute-context'].outputs.run_health_redeploy == 'true' }}
-
-  infra:
-    if: ${{ vars.USE_DAGGER != 'true' }}
-    needs: [compute-context, preflight]
-    uses: ./.github/workflows/reusable-orch-infra.yml
-    secrets: inherit
-    with:
-      run_infra_apply: ${{ needs['compute-context'].outputs.run_infra_apply == 'true' }}
-      run_ansible_bootstrap: ${{ needs['compute-context'].outputs.run_ansible_bootstrap == 'true' }}
-      run_host_sync: ${{ needs['compute-context'].outputs.run_host_sync == 'true' }}
-      run_config_sync: ${{ needs['compute-context'].outputs.run_config_sync == 'true' }}
-      reason: ${{ needs['compute-context'].outputs.reason }}
-      runner_label: ${{ needs['preflight'].outputs.runner_label }}
-      network_access_policy_json: ${{ needs['preflight'].outputs.network_access_policy_json }}
-
-  ansible:
-    if: ${{ vars.USE_DAGGER != 'true' }}
-    needs: [compute-context, preflight, infra]
-    uses: ./.github/workflows/reusable-orch-ansible.yml
-    secrets: inherit
-    with:
-      run_ansible_bootstrap: ${{ needs['compute-context'].outputs.run_ansible_bootstrap == 'true' }}
-      run_host_sync: ${{ needs['compute-context'].outputs.run_host_sync == 'true' }}
-      stacks_sha: ${{ needs['compute-context'].outputs.stacks_sha }}
-      ansible_tags: ${{ needs['compute-context'].outputs.ansible_tags }}
-      runner_label: ${{ needs['preflight'].outputs.runner_label }}
-
-  portainer:
-    if: ${{ vars.USE_DAGGER != 'true' }}
-    needs: [compute-context, preflight, ansible]
-    uses: ./.github/workflows/reusable-orch-portainer.yml
-    secrets: inherit
-    with:
-      run_portainer_apply: ${{ needs['compute-context'].outputs.run_portainer_apply == 'true' }}
-      run_health_redeploy: ${{ needs['compute-context'].outputs.run_health_redeploy == 'true' }}
-      run_config_sync: ${{ needs['compute-context'].outputs.run_config_sync == 'true' }}
-      stacks_sha: ${{ needs['compute-context'].outputs.stacks_sha }}
-      runner_label: ${{ needs['preflight'].outputs.runner_label }}
-      network_access_policy_json: ${{ needs['preflight'].outputs.network_access_policy_json }}
-
-  # ── Dagger path: infra-apply (GHA) + dagger-pipeline (active when USE_DAGGER == 'true') ──
-
-  # infra-apply stays as a GHA job using marketplace actions.
-  # It runs on ubuntu-latest (no Tailscale needed — TFC API only).
   infra-apply:
-    if: ${{ vars.USE_DAGGER == 'true' && needs['compute-context'].outputs.run_infra_apply == 'true' }}
+    if: ${{ needs['compute-context'].outputs.run_infra_apply == 'true' }}
     needs: [compute-context]
     runs-on: ubuntu-latest
     timeout-minutes: 150
@@ -175,12 +118,11 @@ jobs:
           TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
         run: .github/scripts/stages/infra_apply.sh
 
-  # The Dagger pipeline: connects to Tailscale via OIDC, then runs all
-  # non-infra stages inside Dagger containers.
+  # ── Dagger pipeline: Tailscale OIDC + containerized stages ──
   # !cancelled(): infra-apply may be skipped (ansible-only push).
   # Without !cancelled(), GHA would skip this job too.
   dagger-pipeline:
-    if: ${{ !cancelled() && vars.USE_DAGGER == 'true' && needs['compute-context'].outputs.has_work == 'true' && needs['compute-context'].result == 'success' && (needs['infra-apply'].result == 'success' || needs['infra-apply'].result == 'skipped') }}
+    if: ${{ !cancelled() && needs['compute-context'].outputs.has_work == 'true' && needs['compute-context'].result == 'success' && (needs['infra-apply'].result == 'success' || needs['infra-apply'].result == 'skipped') }}
     needs: [compute-context, infra-apply]
     runs-on: ubuntu-latest
     timeout-minutes: 120
