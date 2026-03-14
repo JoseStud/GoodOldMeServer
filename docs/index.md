@@ -111,7 +111,7 @@ flowchart TD
 - [**Network Architecture**](network-architecture.md) — Tailscale mesh, 3-manager Swarm topology, GlusterFS replication, overlay networks, DNS & ingress flow. Last reviewed: `2026-03-07`.
 - [**Infisical Secrets Workflow**](infisical-workflow.md) — Agent config, `.env.tmpl` templating, secret injection pipeline. Last reviewed: `2026-03-07`.
 - [**CI Orchestrator Execution Rules**](ci-orchestrator-execution-rules.md) — Push and dispatch planning rules for the active infrastructure workflows. Last reviewed: `2026-03-07`.
-- [**CI Plan Contract**](ci-plan-contract.md) — Canonical `plan_json` schema and direct workflow-consumption rules. Last reviewed: `2026-03-07`.
+- [**CI Plan Contract**](ci-plan-contract.md) — Canonical execution-context contract and workflow-consumption rules. Last reviewed: `2026-03-13`.
 - [**GitHub Actions Workflows**](github-actions-workflows.md) — Public workflow entry points plus reusable stage workflow inputs, outputs, and artifacts. Last reviewed: `2026-03-07`.
 - [**Workflow Lifecycle**](workflow-lifecycle.md) — Current workflow entry points and reusable stage workflows. Last reviewed: `2026-03-07`.
 - [**Infrastructure Orchestrator Cutover Checklist**](meta-pipeline-cutover-checklist.md) — Minimal first-run checklist (GitHub vars/secrets + Terraform workspace vars). Last reviewed: `2026-03-07`.

@@ -45,7 +45,7 @@ For first-time pipeline setup, use the [Infrastructure Orchestrator Cutover Chec
 For the current GitHub Actions entry points, see the [Workflow Lifecycle](docs/workflow-lifecycle.md).
 For workflow responsibilities, triggers, and reusable inputs/outputs, see [GitHub Actions Workflows](docs/github-actions-workflows.md).
 For CI orchestration planning behavior, see the [CI Orchestrator Execution Rules](docs/ci-orchestrator-execution-rules.md).
-For the canonical `plan_json` schema and consumption rules, see the [CI Plan Contract](docs/ci-plan-contract.md).
+For the canonical orchestration execution contract, see the [CI Plan Contract](docs/ci-plan-contract.md).
 
 ## Documentation
 

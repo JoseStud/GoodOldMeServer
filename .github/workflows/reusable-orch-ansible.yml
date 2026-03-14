@@ -3,9 +3,20 @@ name: Reusable Orchestrator Ansible
 on:
   workflow_call:
     inputs:
-      plan_json:
+      run_ansible_bootstrap:
         required: true
+        type: boolean
+      run_host_sync:
+        required: true
+        type: boolean
+      stacks_sha:
+        required: false
         type: string
+        default: ''
+      ansible_tags:
+        required: false
+        type: string
+        default: ''
       runner_label:
         required: true
         type: string
@@ -22,7 +33,7 @@ env:
 
 jobs:
   ansible-bootstrap:
-    if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_ansible_bootstrap }}
+    if: ${{ inputs.run_ansible_bootstrap }}
     runs-on: ${{ inputs.runner_label }}
     # timeout: full 7-phase Ansible provision across 3 nodes includes package installs and GlusterFS setup
     timeout-minutes: 60
@@ -42,9 +53,9 @@ jobs:
 
       - name: Run Ansible bootstrap
         env:
-          STACKS_SHA: ${{ fromJSON(inputs.plan_json || '{}').meta.stacks_sha }}
+          STACKS_SHA: ${{ inputs.stacks_sha }}
           INVENTORY_FILE: inventory-ci.yml
-          ANSIBLE_TAGS: ${{ fromJSON(inputs.plan_json || '{}').meta.ansible_tags }}
+          ANSIBLE_TAGS: ${{ inputs.ansible_tags }}
           ANSIBLE_TIMEOUT: ${{ vars.ANSIBLE_TIMEOUT || '30' }}
           INFISICAL_AGENT_CLIENT_ID: ${{ secrets.INFISICAL_AGENT_CLIENT_ID }}
           INFISICAL_AGENT_CLIENT_SECRET: ${{ secrets.INFISICAL_AGENT_CLIENT_SECRET }}
@@ -53,7 +64,7 @@ jobs:
   # stage_host_sync and stage_ansible_bootstrap are mutually exclusive
   # (enforced by resolve_meta_plan.sh:105-109), so no dependency needed.
   host-sync:
-    if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_host_sync }}
+    if: ${{ inputs.run_host_sync }}
     runs-on: ${{ inputs.runner_label }}
     # timeout: phase7_runtime_sync across 3 nodes; lighter than full bootstrap but includes file syncs
     timeout-minutes: 30
@@ -73,7 +84,7 @@ jobs:
 
       - name: Sync host runtime assets
         env:
-          STACKS_SHA: ${{ fromJSON(inputs.plan_json || '{}').meta.stacks_sha }}
+          STACKS_SHA: ${{ inputs.stacks_sha }}
           INVENTORY_FILE: inventory-ci.yml
           ANSIBLE_TAGS: phase7_runtime_sync
           ANSIBLE_TIMEOUT: ${{ vars.ANSIBLE_TIMEOUT || '30' }}

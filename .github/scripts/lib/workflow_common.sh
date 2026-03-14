@@ -2,27 +2,6 @@
 
 set -euo pipefail
 
-PLAN_SCHEMA_VERSION="ci-plan-v1"
-
-validate_plan_json() {
-  local plan_json="${1:-${PLAN_JSON:-}}"
-
-  if [[ -z "${plan_json}" || "${plan_json}" == "{}" ]]; then
-    echo "::error::plan_json is empty or missing — aborting"
-    return 1
-  fi
-
-  local schema_version
-  if ! schema_version="$(printf '%s' "${plan_json}" | jq -r '.plan_schema_version // ""' 2>/dev/null)"; then
-    echo "::error::Invalid JSON in inputs.plan_json"
-    return 1
-  fi
-  if [[ "${schema_version}" != "${PLAN_SCHEMA_VERSION}" ]]; then
-    echo "::error::Missing or unexpected plan_schema_version: '${schema_version}' (expected ${PLAN_SCHEMA_VERSION})"
-    return 1
-  fi
-}
-
 to_bool() {
   local value="${1:-}"
   case "${value,,}" in

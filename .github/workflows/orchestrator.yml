@@ -32,48 +32,263 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  resolve-context:
-    uses: ./.github/workflows/reusable-resolve-plan.yml
-    with:
-      source_event_name: ${{ (github.event_name == 'workflow_dispatch' && inputs.ansible_only) && 'dispatch_ansible_only' || github.event_name }}
-      push_before: ${{ github.event.before || '' }}
-      push_sha: ${{ github.sha }}
-      dispatch_payload_json: ${{ toJson(github.event.client_payload) }}
-      dispatch_stacks_sha: ${{ github.event.client_payload.stacks_sha }}
-      dispatch_reason: ${{ github.event.client_payload.reason }}
-      dispatch_source_repo: ${{ github.event.client_payload.source_repo }}
-      dispatch_source_run_id: ${{ github.event.client_payload.source_run_id }}
-      dispatch_source_sha: ${{ github.event.client_payload.source_sha }}
+  compute-context:
+    runs-on: ubuntu-latest
+    outputs:
+      run_infra_apply: ${{ steps.compute.outputs.run_infra_apply }}
+      run_ansible_bootstrap: ${{ steps.compute.outputs.run_ansible_bootstrap }}
+      run_portainer_apply: ${{ steps.compute.outputs.run_portainer_apply }}
+      run_host_sync: ${{ steps.compute.outputs.run_host_sync }}
+      run_config_sync: ${{ steps.compute.outputs.run_config_sync }}
+      run_health_redeploy: ${{ steps.compute.outputs.run_health_redeploy }}
+      has_work: ${{ steps.compute.outputs.has_work }}
+      stacks_sha: ${{ steps.compute.outputs.stacks_sha }}
+      ansible_tags: ${{ steps.compute.outputs.ansible_tags }}
+      reason: ${{ steps.compute.outputs.reason }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute execution context
+        id: compute
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_ANSIBLE_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.ansible_only }}
+          PUSH_BEFORE: ${{ github.event.before || '' }}
+          PUSH_SHA: ${{ github.sha }}
+          PAYLOAD_JSON: ${{ toJson(github.event.client_payload) }}
+          PAYLOAD_STACKS_SHA: ${{ github.event.client_payload.stacks_sha }}
+          PAYLOAD_REASON: ${{ github.event.client_payload.reason }}
+          PAYLOAD_SOURCE_REPO: ${{ github.event.client_payload.source_repo }}
+          PAYLOAD_SOURCE_RUN_ID: ${{ github.event.client_payload.source_run_id }}
+          PAYLOAD_SOURCE_SHA: ${{ github.event.client_payload.source_sha }}
+        run: |
+          set -euo pipefail
+
+          run_infra_apply=false
+          run_ansible_bootstrap=false
+          run_portainer_apply=false
+          run_host_sync=false
+          run_config_sync=false
+          run_health_redeploy=false
+          ansible_tags=""
+          stacks_sha=""
+          reason=""
+
+          is_sha() {
+            [[ "$1" =~ ^[0-9a-f]{40}$ ]]
+          }
+
+          if [[ "${EVENT_NAME}" == "repository_dispatch" ]]; then
+            python3 - <<'PY'
+              import json
+              import os
+              import re
+
+              payload_json = os.environ.get("PAYLOAD_JSON", "")
+              if not payload_json or payload_json == "null":
+                raise SystemExit("repository_dispatch payload must be a JSON object.")
+
+              try:
+                payload = json.loads(payload_json)
+              except json.JSONDecodeError:
+                raise SystemExit("repository_dispatch payload must be a JSON object.")
+
+              if not isinstance(payload, dict):
+                raise SystemExit("repository_dispatch payload must be a JSON object.")
+
+              expected = ["reason", "schema_version", "source_repo", "source_run_id", "source_sha", "stacks_sha"]
+              if sorted(payload.keys()) != expected:
+                raise SystemExit(
+                  "repository_dispatch payload must contain only: schema_version, stacks_sha, source_sha, source_repo, source_run_id, reason."
+                )
+
+              schema_version = payload.get("schema_version")
+              if schema_version != "v5":
+                raise SystemExit(f"Unsupported dispatch schema_version '{schema_version}'. Expected 'v5'.")
+
+              stacks_sha = str(os.environ.get("PAYLOAD_STACKS_SHA", ""))
+              source_sha = str(os.environ.get("PAYLOAD_SOURCE_SHA", ""))
+              reason = str(os.environ.get("PAYLOAD_REASON", ""))
+              source_repo = str(os.environ.get("PAYLOAD_SOURCE_REPO", ""))
+              source_run_id = str(os.environ.get("PAYLOAD_SOURCE_RUN_ID", ""))
+
+              if not re.fullmatch(r"[0-9a-f]{40}", stacks_sha):
+                raise SystemExit(f"Invalid stacks_sha: '{stacks_sha}' (must be 40-char lowercase hex).")
+              if not re.fullmatch(r"[0-9a-f]{40}", source_sha):
+                raise SystemExit(f"Invalid source_sha: '{source_sha}' (must be 40-char lowercase hex).")
+              if reason != "full-reconcile":
+                raise SystemExit(f"Invalid reason '{reason}'. Expected 'full-reconcile'.")
+              if not re.fullmatch(r"[A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-]+", source_repo):
+                raise SystemExit(f"Invalid source_repo '{source_repo}'. Expected 'owner/repo'.")
+              if not source_run_id.isdigit():
+                raise SystemExit(f"Invalid source_run_id '{source_run_id}'. Expected numeric run id.")
+            PY
+
+            run_portainer_apply=true
+            run_host_sync=true
+            run_config_sync=true
+            run_health_redeploy=true
+            stacks_sha="${PAYLOAD_STACKS_SHA}"
+            reason="${PAYLOAD_REASON}"
+
+          elif [[ "${EVENT_NAME}" == "push" || "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            stacks_sha="$(git rev-parse HEAD:stacks 2>/dev/null || true)"
+            if [[ -z "${stacks_sha}" ]]; then
+              echo "Failed to resolve stacks gitlink SHA from HEAD:stacks." >&2
+              exit 1
+            fi
+
+            if [[ "${EVENT_NAME}" == "push" ]]; then
+              run_ansible_bootstrap=true
+              run_portainer_apply=true
+              reason="infra-repo-push"
+
+              changed_files=""
+              if [[ -n "${PUSH_BEFORE}" && "${PUSH_BEFORE}" != "0000000000000000000000000000000000000000" && -n "${PUSH_SHA}" ]]; then
+                changed_files="$(git diff --name-only "${PUSH_BEFORE}" "${PUSH_SHA}" || true)"
+              fi
+
+              ansible_only=true
+              if [[ -z "${changed_files}" ]]; then
+                ansible_only=false
+              else
+                while IFS= read -r file; do
+                  [[ -z "${file}" ]] && continue
+                  if [[ "${file}" == ".ansible-lint" || "${file}" == ansible/* ]]; then
+                    continue
+                  fi
+                  ansible_only=false
+                  break
+                done <<< "${changed_files}"
+              fi
+
+              if [[ "${ansible_only}" == true ]]; then
+                run_infra_apply=false
+
+                roles_only=true
+                while IFS= read -r file; do
+                  [[ -z "${file}" ]] && continue
+                  if [[ "${file}" != ansible/roles/* ]]; then
+                    roles_only=false
+                    break
+                  fi
+                done <<< "${changed_files}"
+
+                if [[ "${roles_only}" == true ]]; then
+                  tags=""
+                  add_tag() {
+                    local tag="$1"
+                    if [[ -z "${tags}" ]]; then
+                      tags="${tag}"
+                    elif [[ ",${tags}," != *",${tag},"* ]]; then
+                      tags="${tags},${tag}"
+                    fi
+                  }
+
+                  while IFS= read -r file; do
+                    [[ -z "${file}" ]] && continue
+                    [[ "${file}" == ansible/roles/system_user/* ]] && add_tag "phase1_base"
+                    [[ "${file}" == ansible/roles/storage/* ]] && add_tag "phase1_base"
+                    [[ "${file}" == ansible/roles/docker/* ]] && add_tag "phase2_docker"
+                    [[ "${file}" == ansible/roles/tailscale/* ]] && add_tag "phase3_tailscale"
+                    [[ "${file}" == ansible/roles/glusterfs/* ]] && add_tag "phase4_glusterfs"
+                    [[ "${file}" == ansible/roles/swarm/* ]] && add_tag "phase5_swarm"
+                    [[ "${file}" == ansible/roles/portainer_bootstrap/* ]] && add_tag "phase6_portainer"
+                    [[ "${file}" == ansible/roles/runtime_sync/* ]] && add_tag "phase7_runtime_sync"
+                  done <<< "${changed_files}"
+
+                  ansible_tags="${tags}"
+                fi
+              else
+                run_infra_apply=true
+              fi
+            else
+              if [[ "${WORKFLOW_ANSIBLE_ONLY}" == "true" ]]; then
+                run_infra_apply=false
+              else
+                run_infra_apply=true
+              fi
+              run_ansible_bootstrap=true
+              run_portainer_apply=true
+              reason="manual-dispatch"
+            fi
+
+          else
+            echo "Unsupported event: ${EVENT_NAME}" >&2
+            exit 1
+          fi
+
+          if [[ -n "${stacks_sha}" ]] && ! is_sha "${stacks_sha}"; then
+            echo "Invalid stacks SHA: ${stacks_sha}" >&2
+            exit 1
+          fi
+
+          has_work=false
+          if [[ "${run_infra_apply}" == true || "${run_ansible_bootstrap}" == true || "${run_portainer_apply}" == true || "${run_host_sync}" == true || "${run_config_sync}" == true || "${run_health_redeploy}" == true ]]; then
+            has_work=true
+          fi
+
+          {
+            echo "run_infra_apply=${run_infra_apply}"
+            echo "run_ansible_bootstrap=${run_ansible_bootstrap}"
+            echo "run_portainer_apply=${run_portainer_apply}"
+            echo "run_host_sync=${run_host_sync}"
+            echo "run_config_sync=${run_config_sync}"
+            echo "run_health_redeploy=${run_health_redeploy}"
+            echo "has_work=${has_work}"
+            echo "stacks_sha=${stacks_sha}"
+            echo "ansible_tags=${ansible_tags}"
+            echo "reason=${reason}"
+          } >> "${GITHUB_OUTPUT}"
 
   preflight:
-    needs: [resolve-context]
+    needs: [compute-context]
     uses: ./.github/workflows/reusable-orch-preflight.yml
     secrets: inherit
     with:
-      plan_json: ${{ needs.resolve-context.outputs.plan_json }}
+      has_work: ${{ needs['compute-context'].outputs.has_work == 'true' }}
+      stacks_sha: ${{ needs['compute-context'].outputs.stacks_sha }}
+      run_infra_apply: ${{ needs['compute-context'].outputs.run_infra_apply == 'true' }}
+      run_ansible_bootstrap: ${{ needs['compute-context'].outputs.run_ansible_bootstrap == 'true' }}
+      run_portainer_apply: ${{ needs['compute-context'].outputs.run_portainer_apply == 'true' }}
+      run_host_sync: ${{ needs['compute-context'].outputs.run_host_sync == 'true' }}
+      run_health_redeploy: ${{ needs['compute-context'].outputs.run_health_redeploy == 'true' }}
 
   infra:
-    needs: [resolve-context, preflight]
+    needs: [compute-context, preflight]
     uses: ./.github/workflows/reusable-orch-infra.yml
     secrets: inherit
     with:
-      plan_json: ${{ needs.resolve-context.outputs.plan_json }}
-      runner_label: ${{ needs.preflight.outputs.runner_label }}
-      network_access_policy_json: ${{ needs.preflight.outputs.network_access_policy_json }}
+      run_infra_apply: ${{ needs['compute-context'].outputs.run_infra_apply == 'true' }}
+      run_ansible_bootstrap: ${{ needs['compute-context'].outputs.run_ansible_bootstrap == 'true' }}
+      run_host_sync: ${{ needs['compute-context'].outputs.run_host_sync == 'true' }}
+      run_config_sync: ${{ needs['compute-context'].outputs.run_config_sync == 'true' }}
+      reason: ${{ needs['compute-context'].outputs.reason }}
+      runner_label: ${{ needs['preflight'].outputs.runner_label }}
+      network_access_policy_json: ${{ needs['preflight'].outputs.network_access_policy_json }}
 
   ansible:
-    needs: [resolve-context, preflight, infra]
+    needs: [compute-context, preflight, infra]
     uses: ./.github/workflows/reusable-orch-ansible.yml
     secrets: inherit
     with:
-      plan_json: ${{ needs.resolve-context.outputs.plan_json }}
-      runner_label: ${{ needs.preflight.outputs.runner_label }}
+      run_ansible_bootstrap: ${{ needs['compute-context'].outputs.run_ansible_bootstrap == 'true' }}
+      run_host_sync: ${{ needs['compute-context'].outputs.run_host_sync == 'true' }}
+      stacks_sha: ${{ needs['compute-context'].outputs.stacks_sha }}
+      ansible_tags: ${{ needs['compute-context'].outputs.ansible_tags }}
+      runner_label: ${{ needs['preflight'].outputs.runner_label }}
 
   portainer:
-    needs: [resolve-context, preflight, ansible]
+    needs: [compute-context, preflight, ansible]
     uses: ./.github/workflows/reusable-orch-portainer.yml
     secrets: inherit
     with:
-      plan_json: ${{ needs.resolve-context.outputs.plan_json }}
-      runner_label: ${{ needs.preflight.outputs.runner_label }}
-      network_access_policy_json: ${{ needs.preflight.outputs.network_access_policy_json }}
+      run_portainer_apply: ${{ needs['compute-context'].outputs.run_portainer_apply == 'true' }}
+      run_health_redeploy: ${{ needs['compute-context'].outputs.run_health_redeploy == 'true' }}
+      run_config_sync: ${{ needs['compute-context'].outputs.run_config_sync == 'true' }}
+      stacks_sha: ${{ needs['compute-context'].outputs.stacks_sha }}
+      runner_label: ${{ needs['preflight'].outputs.runner_label }}
+      network_access_policy_json: ${{ needs['preflight'].outputs.network_access_policy_json }}

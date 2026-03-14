@@ -3,7 +3,19 @@ name: Reusable Orchestrator Infra
 on:
   workflow_call:
     inputs:
-      plan_json:
+      run_infra_apply:
+        required: true
+        type: boolean
+      run_ansible_bootstrap:
+        required: true
+        type: boolean
+      run_host_sync:
+        required: true
+        type: boolean
+      run_config_sync:
+        required: true
+        type: boolean
+      reason:
         required: true
         type: string
       runner_label:
@@ -23,7 +35,7 @@ env:
 
 jobs:
   infra-apply:
-    if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_infra_apply }}
+    if: ${{ inputs.run_infra_apply }}
     runs-on: ubuntu-latest
     # timeout: TFC remote apply for OCI + GCP infra can take up to 2 hours on slow API / cold state
     timeout-minutes: 150
@@ -57,7 +69,7 @@ jobs:
         with:
           workspace: ${{ env.TFC_WORKSPACE_INFRA }}
           configuration_version: ${{ steps.upload.outputs.configuration_version_id }}
-          message: Infrastructure orchestrator infra apply (${{ fromJSON(inputs.plan_json || '{}').meta.reason }})
+          message: Infrastructure orchestrator infra apply (${{ inputs.reason }})
 
       - name: Wait for Terraform Cloud infra run
         env:
@@ -74,7 +86,7 @@ jobs:
   # result checks ensure we proceed only on success or intentional skip.
   inventory-handover:
     needs: [infra-apply]
-    if: ${{ !cancelled() && fromJSON(inputs.plan_json || '{}').meta.stages.stage_inventory_handover && (needs.infra-apply.result == 'success' || needs.infra-apply.result == 'skipped') }}
+    if: ${{ !cancelled() && (inputs.run_ansible_bootstrap || inputs.run_host_sync || inputs.run_config_sync) && (needs.infra-apply.result == 'success' || needs.infra-apply.result == 'skipped') }}
     runs-on: ubuntu-latest
     # timeout: TFC API call + inventory rendering is fast; 15 min covers transient API slowness
     timeout-minutes: 15
@@ -109,7 +121,7 @@ jobs:
   # allow-listed.  See docs/network-architecture.md § CI Runner Egress.
   network-preflight-ssh:
     needs: [inventory-handover]
-    if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_network_preflight_ssh && needs.inventory-handover.result == 'success' }}
+    if: ${{ (inputs.run_ansible_bootstrap || inputs.run_host_sync || inputs.run_config_sync) && needs.inventory-handover.result == 'success' }}
     runs-on: ${{ inputs.runner_label }}
     # timeout: SSH probe to 3 nodes over Tailscale; 15 min is generous for network settle
     timeout-minutes: 15
@@ -127,9 +139,9 @@ jobs:
       - name: Preflight SSH access checks
         env:
           NETWORK_ACCESS_POLICY_JSON: ${{ inputs.network_access_policy_json }}
-          RUN_ANSIBLE: ${{ fromJSON(inputs.plan_json || '{}').meta.run_ansible_bootstrap }}
-          RUN_HOST_SYNC: ${{ fromJSON(inputs.plan_json || '{}').meta.run_host_sync }}
-          RUN_CONFIG: ${{ fromJSON(inputs.plan_json || '{}').meta.run_config_sync }}
+          RUN_ANSIBLE: ${{ inputs.run_ansible_bootstrap }}
+          RUN_HOST_SYNC: ${{ inputs.run_host_sync }}
+          RUN_CONFIG: ${{ inputs.run_config_sync }}
           RUN_HEALTH: "false"
           RUN_PORTAINER: "false"
           INVENTORY_FILE: inventory-ci.yml

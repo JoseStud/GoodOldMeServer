@@ -3,9 +3,28 @@ name: Reusable Orchestrator Preflight
 on:
   workflow_call:
     inputs:
-      plan_json:
+      has_work:
         required: true
+        type: boolean
+      stacks_sha:
+        required: false
         type: string
+        default: ''
+      run_infra_apply:
+        required: true
+        type: boolean
+      run_ansible_bootstrap:
+        required: true
+        type: boolean
+      run_portainer_apply:
+        required: true
+        type: boolean
+      run_host_sync:
+        required: true
+        type: boolean
+      run_health_redeploy:
+        required: true
+        type: boolean
     outputs:
       runner_label:
         value: ${{ jobs.cloud-runner-guard.outputs.runner_label }}
@@ -24,22 +43,8 @@ env:
   TFC_WORKSPACE_INFRA: ${{ vars.TFC_WORKSPACE_INFRA || 'goodoldme-infra' }}
 
 jobs:
-  # Defensive: validates plan_json independently of upstream resolve-plan.
-  validate-plan-json:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Validate plan_json
-        env:
-          PLAN_JSON: ${{ inputs.plan_json }}
-        run: bash .github/scripts/plan/validate_plan_json.sh
-
   cloud-runner-guard:
-    needs: validate-plan-json
-    if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_cloud_runner_guard }}
+    if: ${{ inputs.has_work }}
     runs-on: ubuntu-latest
     # timeout: single env-var echo; 5 min is a hard ceiling for this trivial step
     timeout-minutes: 5
@@ -56,8 +61,7 @@ jobs:
           echo "runner_label=${CLOUD_STATIC_RUNNER_LABEL}" >> "${GITHUB_OUTPUT}"
 
   stacks-sha-trust:
-    needs: validate-plan-json
-    if: ${{ fromJSON(inputs.plan_json || '{}').meta.stacks_sha != '' }}
+    if: ${{ inputs.stacks_sha != '' }}
     runs-on: ubuntu-latest
     # timeout: polls GitHub Checks API until all stacks CI signals are green (default 900 s) plus headroom
     timeout-minutes: 20
@@ -78,11 +82,11 @@ jobs:
           WAIT_FOR_SUCCESS: "true"
           WAIT_TIMEOUT_SECONDS: ${{ vars.STACKS_SHA_TRUST_WAIT_TIMEOUT_SECONDS || '900' }}
           POLL_INTERVAL_SECONDS: ${{ vars.STACKS_SHA_TRUST_POLL_INTERVAL_SECONDS || '15' }}
-        run: .github/scripts/stacks/verify_trusted_stacks_sha.sh "${{ fromJSON(inputs.plan_json || '{}').meta.stacks_sha }}"
+        run: .github/scripts/stacks/verify_trusted_stacks_sha.sh "${{ inputs.stacks_sha }}"
 
   secret-validation:
-    needs: [validate-plan-json, cloud-runner-guard]
-    if: ${{ fromJSON(inputs.plan_json || '{}').meta.stages.stage_secret_validation && needs.cloud-runner-guard.result == 'success' }}
+    needs: [cloud-runner-guard]
+    if: ${{ inputs.has_work && needs.cloud-runner-guard.result == 'success' }}
     runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
     # timeout: Infisical API checks for up to 5 secret paths; 15 min covers transient latency
     timeout-minutes: 15
@@ -93,11 +97,11 @@ jobs:
 
       - name: Validate required secret paths
         env:
-          RUN_INFRA: ${{ fromJSON(inputs.plan_json || '{}').meta.run_infra_apply }}
-          RUN_ANSIBLE: ${{ fromJSON(inputs.plan_json || '{}').meta.run_ansible_bootstrap }}
-          RUN_PORTAINER: ${{ fromJSON(inputs.plan_json || '{}').meta.run_portainer_apply }}
-          RUN_HOST_SYNC: ${{ fromJSON(inputs.plan_json || '{}').meta.run_host_sync }}
-          RUN_HEALTH: ${{ fromJSON(inputs.plan_json || '{}').meta.run_health_redeploy }}
+          RUN_INFRA: ${{ inputs.run_infra_apply }}
+          RUN_ANSIBLE: ${{ inputs.run_ansible_bootstrap }}
+          RUN_PORTAINER: ${{ inputs.run_portainer_apply }}
+          RUN_HOST_SYNC: ${{ inputs.run_host_sync }}
+          RUN_HEALTH: ${{ inputs.run_health_redeploy }}
           INFISICAL_TOKEN: ${{ secrets.INFISICAL_TOKEN }}
           INFISICAL_AGENT_CLIENT_ID: ${{ secrets.INFISICAL_AGENT_CLIENT_ID }}
           INFISICAL_AGENT_CLIENT_SECRET: ${{ secrets.INFISICAL_AGENT_CLIENT_SECRET }}
@@ -106,8 +110,8 @@ jobs:
   # !cancelled(): stacks-sha-trust may be skipped when no stacks_sha is
   # in the plan.  Without !cancelled(), this job would be skipped too.
   network-policy-sync:
-    needs: [validate-plan-json, cloud-runner-guard, stacks-sha-trust, secret-validation]
-    if: ${{ !cancelled() && fromJSON(inputs.plan_json || '{}').meta.stages.stage_network_policy_sync && needs.cloud-runner-guard.result == 'success' && needs.secret-validation.result == 'success' && (needs.stacks-sha-trust.result == 'success' || needs.stacks-sha-trust.result == 'skipped') }}
+    needs: [cloud-runner-guard, stacks-sha-trust, secret-validation]
+    if: ${{ !cancelled() && inputs.has_work && needs.cloud-runner-guard.result == 'success' && needs.secret-validation.result == 'success' && (needs.stacks-sha-trust.result == 'success' || needs.stacks-sha-trust.result == 'skipped') }}
     runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
     # timeout: writes runner IP to TFC variable sets and Infisical allowlists; 15 min covers API retries
     timeout-minutes: 15
