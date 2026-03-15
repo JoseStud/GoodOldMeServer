@@ -120,3 +120,4 @@ flowchart TD
 ### Guides & External Setups
 
 - [OCI Terraform Authentication](oci-tfc-oidc-setup.md) — Decision record: why OIDC/Workload Identity is not viable (provider limitation) and the API key auth setup used instead. Last reviewed: `2026-03-15`.
+- [GCP Workload Identity Federation for Terraform Cloud](gcp-wif-tfc-setup.md) — Bootstrap guide for replacing `GOOGLE_CREDENTIALS` with TFC dynamic credentials via GCP WIF OIDC. Last reviewed: `2026-03-15`.

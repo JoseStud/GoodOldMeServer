@@ -79,7 +79,9 @@ Expected dispatch payload example:
 | `TF_VAR_network_access_policy` (env var JSON) | Required | Security | `oci_ssh.source_ranges` IPv4 only, `gcp_ssh.source_ranges` IPv6 only, `portainer_api.source_ranges` dual-stack allowed. | [ ] |
 | Infisical provider auth variables | Required | Security | For example `INFISICAL_TOKEN` in attached variable set. | [ ] |
 | OCI provider auth (`auth = "SecurityToken"`) | Required | Security | Ensure workspace has valid OCI auth variables. | [ ] |
-| GCP provider auth | Required | Security | For example `GOOGLE_CREDENTIALS`. | [ ] |
+| `TFC_GCP_PROVIDER_AUTH=true` (env var) | Required | Security | Enables TFC dynamic credentials for GCP. | [ ] |
+| `TFC_GCP_WORKLOAD_PROVIDER_NAME` (env var) | Required | Security | Full WIF provider resource name. Created manually via `gcloud` — see [GCP WIF TFC Setup](gcp-wif-tfc-setup.md). | [ ] |
+| `TFC_GCP_SERVICE_ACCOUNT_EMAIL` (env var) | Required | Security | TFC impersonation SA email. Created manually via `gcloud` — see [GCP WIF TFC Setup](gcp-wif-tfc-setup.md). | [ ] |
 | Workspace Auto Apply disabled | Required | Platform | Infrastructure Orchestrator waits for manual confirm/apply in Terraform Cloud. | [ ] |
 
 ### Workspace: `goodoldme-portainer` (`terraform/portainer-root`)
