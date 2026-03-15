@@ -19,12 +19,9 @@ validate_policy_shape() {
     . as $p
     | ($p | type) == "object"
     | . and ($p.oci_ssh | type) == "object"
-    | . and ($p.gcp_ssh | type) == "object"
     | . and ($p.portainer_api | type) == "object"
     | . and ($p.oci_ssh.enabled | type) == "boolean"
-    | . and ($p.gcp_ssh.enabled | type) == "boolean"
     | . and ($p.oci_ssh.source_ranges | type) == "array"
-    | . and ($p.gcp_ssh.source_ranges | type) == "array"
     | . and ($p.portainer_api.source_ranges | type) == "array"
     | . and ($p.portainer_api.source_ranges | length) > 0
   ' <<<"${policy_json}" >/dev/null
@@ -53,8 +50,7 @@ def check_ranges(name, ranges, family, allow_empty=False):
             raise ValueError(f"{name}.source_ranges must contain only IPv6 CIDRs: '{raw}'")
 
 check_ranges("oci_ssh", policy["oci_ssh"]["source_ranges"], "ipv4", allow_empty=not policy["oci_ssh"]["enabled"])
-check_ranges("gcp_ssh", policy["gcp_ssh"]["source_ranges"], "ipv6", allow_empty=not policy["gcp_ssh"]["enabled"])
-check_ranges("portainer_api", policy["portainer_api"]["source_ranges"], "dual")
+check_ranges("portainer_api", policy["portainer_api"]["source_ranges"], "ipv4")
 PY
 }
 
@@ -74,15 +70,12 @@ elif [[ -n "${BREAK_GLASS_POLICY_JSON}" ]]; then
   echo "Using break-glass policy from workflow input."
 else
   runner_ipv4="$(detect_public_ip 4 "https://api.ipify.org")"
-  runner_ipv6="$(detect_public_ip 6 "https://api64.ipify.org")"
   policy_json="$(
     jq -cn \
       --arg ipv4 "${runner_ipv4}/32" \
-      --arg ipv6 "${runner_ipv6}/128" \
       '{
         oci_ssh: { enabled: true, source_ranges: [$ipv4] },
-        gcp_ssh: { enabled: true, source_ranges: [$ipv6] },
-        portainer_api: { source_ranges: [$ipv4, $ipv6] }
+        portainer_api: { source_ranges: [$ipv4] }
       }'
   )"
 fi
@@ -93,14 +86,12 @@ validate_policy_families "${policy_json}"
 policy_json="$(jq -cS '.' <<<"${policy_json}")"
 portainer_cidrs_csv="$(jq -r '.portainer_api.source_ranges | join(",")' <<<"${policy_json}")"
 oci_ssh_cidrs_csv="$(jq -r '.oci_ssh.source_ranges | join(",")' <<<"${policy_json}")"
-gcp_ssh_cidrs_csv="$(jq -r '.gcp_ssh.source_ranges | join(",")' <<<"${policy_json}")"
 
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   {
     echo "network_access_policy_json=${policy_json}"
     echo "portainer_automation_allowed_cidrs=${portainer_cidrs_csv}"
     echo "oci_ssh_source_ranges=${oci_ssh_cidrs_csv}"
-    echo "gcp_ssh_source_ranges=${gcp_ssh_cidrs_csv}"
   } >>"${GITHUB_OUTPUT}"
 fi
 

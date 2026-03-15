@@ -38,19 +38,24 @@ All validation workflows run on `pull_request` and path-filtered `push`, includi
 
 ## Runtime Job Chain
 
-Top-level chain:
+Top-level GHA jobs:
 
-- `compute-context`
-- `preflight`
-- `infra`
-- `ansible`
-- `portainer`
+- `compute-context` — outputs execution toggles (runs on `ubuntu-latest`)
+- `infra-apply` — TFC API apply via HashiCorp marketplace actions; gated on `run_infra_apply == 'true'` (runs on `ubuntu-latest`)
+- `dagger-pipeline` — Tailscale-connected Dagger containerized pipeline; runs when `has_work == 'true'` and `infra-apply` succeeded or was skipped (runs on `ubuntu-latest`)
 
-Execution is serialized through this chain, with gating handled by per-job `if` conditions and `needs` checks.
+Within `dagger-pipeline`, phases execute in this order:
+
+1. **Preflight** (parallel): stacks-sha-trust + secret-validation; inventory-handover (if needed)
+2. **Network policy sync**: depends on preflight completing
+3. **Ansible** (host subprocess): bootstrap and/or host-sync, using Tailscale SSH; depends on inventory-handover + network-policy-sync
+4. **Portainer**: post-bootstrap-secret-check, portainer-api-preflight, portainer-apply, health-gated-redeploy; depends on network-policy-sync
+
+Execution is gated by Python conditionals in `ci_pipeline/__main__.py` based on the toggle env vars from `compute-context`.
 
 ## Trusted `stacks_sha` Boundary
 
-`reusable-orch-preflight.yml` verifies trusted stacks SHA before any downstream stack-consuming stage mutates infrastructure.
+The `dagger-pipeline` preflight phase (`ci_pipeline/phases/preflight.py`) verifies trusted stacks SHA before any downstream stack-consuming stage mutates infrastructure.
 
 This trust boundary applies to:
 

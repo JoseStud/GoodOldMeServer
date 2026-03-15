@@ -23,28 +23,28 @@ This document catalogs operator-facing helper scripts in `scripts/` plus the dir
 
 ## Workflow Stage Wrappers
 
-These wrappers under `.github/scripts/stages/` are invoked directly by the reusable workflows and compose the lower-level helpers listed above.
+These wrappers under `.github/scripts/stages/` are invoked by the Dagger pipeline phase modules in `ci/src/ci_pipeline/phases/` (or directly from GHA job steps in `orchestrator.yml`) and compose the lower-level helpers listed above.
 
-For Infisical-backed wrappers, the reusable workflow must export both `INFISICAL_MACHINE_IDENTITY_ID` and `INFISICAL_PROJECT_ID` into the shell environment. Cloud-runner jobs assume the `toolingDebian` toolchain is already present on `PATH`, and the wrapper scripts still call `setup_infisical` and `infisical run` themselves.
+For Infisical-backed wrappers, the calling phase module injects `INFISICAL_MACHINE_IDENTITY_ID`, `INFISICAL_PROJECT_ID`, and OIDC token vars into the container environment. The wrapper scripts call `setup_infisical` and `infisical run` themselves. Ansible stages run as host subprocesses (not inside Dagger containers), receiving env vars directly from the runner environment.
 
 | Script | Invoked By | Responsibility |
 |-------|------------|----------------|
-| `.github/scripts/stages/ansible_run.sh` | `reusable-orch-ansible.yml`, `reusable-orch-portainer.yml` | Checks out the trusted `STACKS_SHA`, logs into Infisical, mints an ephemeral SSH certificate, and runs `ansible/playbooks/provision.yml` with optional tag scoping |
-| `.github/scripts/stages/health_gated_redeploy.sh` | `reusable-orch-portainer.yml` | Checks out the trusted stacks ref, logs into Infisical, and triggers `trigger_webhooks_with_gates.sh` for the full Portainer-managed reconcile |
-| `.github/scripts/stages/infra_apply.sh` | `reusable-orch-infra.yml` | Wraps `wait_for_tfc_run.sh` with the orchestrator’s manual-confirm and terminal-status expectations |
-| `.github/scripts/stages/network_policy_sync.sh` | `reusable-orch-preflight.yml` | Builds the canonical access policy and syncs it to Terraform Cloud plus Infisical |
-| `.github/scripts/stages/portainer_api_preflight.sh` | `reusable-orch-portainer.yml` | Reads `PORTAINER_API_URL` from Infisical, waits for allowlist propagation, and runs network reachability preflight checks |
-| `.github/scripts/stages/portainer_apply.sh` | `reusable-orch-portainer.yml` | Verifies `operations=false`, then runs `terraform/portainer-root` init/plan/apply with optional `STACKS_SHA` pinning |
-| `.github/scripts/stages/post_bootstrap_secret_check.sh` | `reusable-orch-portainer.yml` | Verifies that bootstrap-managed Portainer secrets already exist in Infisical before Terraform tries to use them |
-| `.github/scripts/stages/secret_validation.sh` | `reusable-orch-preflight.yml` | Fail-closed validation for the exact secret sets required by the current plan toggles, rejecting seeded placeholder values as well as empty secrets |
+| `.github/scripts/stages/ansible_run.sh` | `ci_pipeline/phases/ansible.py` (host subprocess on GHA runner) | Checks out the trusted `STACKS_SHA`, logs into Infisical, mints an ephemeral SSH certificate, and runs `ansible/playbooks/provision.yml` with optional tag scoping |
+| `.github/scripts/stages/health_gated_redeploy.sh` | `ci_pipeline/phases/portainer.py` (inside Dagger container, `webhook` profile) | Checks out the trusted stacks ref, logs into Infisical, and triggers `trigger_webhooks_with_gates.sh` for the full Portainer-managed reconcile |
+| `.github/scripts/stages/infra_apply.sh` | `orchestrator.yml` `infra-apply` GHA job (direct step) | Wraps `wait_for_tfc_run.sh` with the orchestrator’s manual-confirm and terminal-status expectations |
+| `.github/scripts/stages/network_policy_sync.sh` | `ci_pipeline/phases/preflight.py` (inside Dagger container, `network` profile) | Builds the canonical access policy and syncs it to Terraform Cloud plus Infisical |
+| `.github/scripts/stages/portainer_api_preflight.sh` | `ci_pipeline/phases/portainer.py` (inside Dagger container, `infisical` profile) | Reads `PORTAINER_API_URL` from Infisical, waits for allowlist propagation, and runs network reachability preflight checks |
+| `.github/scripts/stages/portainer_apply.sh` | `ci_pipeline/phases/portainer.py` (inside Dagger container, `terraform` profile) | Verifies `operations=false`, then runs `terraform/portainer-root` init/plan/apply with optional `STACKS_SHA` pinning |
+| `.github/scripts/stages/post_bootstrap_secret_check.sh` | `ci_pipeline/phases/portainer.py` (inside Dagger container, `infisical` profile) | Verifies that bootstrap-managed Portainer secrets already exist in Infisical before Terraform tries to use them |
+| `.github/scripts/stages/secret_validation.sh` | `ci_pipeline/phases/preflight.py` (inside Dagger container, `infisical` profile) | Fail-closed validation for the exact secret sets required by the current plan toggles, rejecting seeded placeholder values as well as empty secrets |
 | `.github/scripts/stages/tfc_speculative_preflight.sh` | `validate-terraform.yml` | Resolves the Terraform Cloud workspace name for speculative validation and fails early on missing inputs |
 
 ## Notes
 
-- CI scripts are intended to run inside GitHub Actions jobs with explicit env contracts.
+- CI scripts are intended to run inside Dagger containers or as GHA job steps with explicit env contracts.
 - Committed automation helpers pass `--projectId` explicitly for Infisical reads and writes; the repo root `infisical.json` is only a convenience for manual local debugging.
-- Reusable stage workflows: `.github/workflows/reusable-orch-*.yml` consume explicit typed workflow inputs from orchestrator `compute-context` outputs.
-- Composite query bootstrap action: `.github/actions/bootstrap-query-tools/action.yml` installs pinned `jq`/`yq` versions from `.github/ci/tool-versions.lock` with SHA256 verification for GitHub-hosted validation jobs. Cloud-runner jobs rely on the prebuilt `toolingDebian` runner image instead of runtime installation.
+- Dagger pipeline phases (`ci/src/ci_pipeline/phases/`) pass required env vars (including `INFISICAL_MACHINE_IDENTITY_ID`, `INFISICAL_PROJECT_ID`, and OIDC tokens) into containers or the host subprocess environment before invoking these scripts.
+- Composite query bootstrap action: `.github/actions/bootstrap-query-tools/action.yml` installs pinned `jq`/`yq` versions from `.github/ci/tool-versions.lock` with SHA256 verification for GitHub-hosted validation jobs. Cloud-runner jobs (used only by `validate-terraform.yml` `portainer-live-plan`) rely on the prebuilt `toolingDebian` runner image instead of runtime installation.
 
 ### Stacks Sub-Repo Tool Pinning
 

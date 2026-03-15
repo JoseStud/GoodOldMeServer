@@ -41,7 +41,6 @@ If you are bootstrapping or validating CI/CD for the first time, read these firs
 1. [Infisical Workflow](infisical-workflow.md#variable-ownership--mutability)
 2. [Infrastructure Orchestrator Cutover Checklist](meta-pipeline-cutover-checklist.md#0-auto-managed-values-do-not-set-manually)
 3. [Network Architecture](network-architecture.md#port-and-protocol-matrix)
-4. [OCI Terraform Cloud OIDC Setup](oci-tfc-oidc-setup.md)
 
 ## High-Level Architecture
 
@@ -120,4 +119,4 @@ flowchart TD
 
 ### Guides & External Setups
 
-- [OCI Terraform Cloud OIDC Setup](oci-tfc-oidc-setup.md) — Federated identity setup and fallback pattern. Last reviewed: `2026-03-05`.
+- [OCI Terraform Authentication](oci-tfc-oidc-setup.md) — Decision record: why OIDC/Workload Identity is not viable (provider limitation) and the API key auth setup used instead. Last reviewed: `2026-03-15`.

@@ -50,9 +50,9 @@ if [[ ${#OCI_IPS[@]} -eq 0 ]]; then
   exit 1
 fi
 
-GCP_WITNESS_IPV6="$(jq -r '.data[] | select(.attributes.name == "gcp_witness_ipv6") | .attributes.value // empty' <<<"${outputs_json}")"
-if [[ -z "${GCP_WITNESS_IPV6}" ]]; then
-  echo "Workspace output 'gcp_witness_ipv6' is missing."
+GCP_WITNESS_HOSTNAME="$(jq -r '.data[] | select(.attributes.name == "gcp_witness_tailscale_hostname") | .attributes.value // empty' <<<"${outputs_json}")"
+if [[ -z "${GCP_WITNESS_HOSTNAME}" ]]; then
+  echo "Workspace output 'gcp_witness_tailscale_hostname' is missing."
   exit 1
 fi
 
@@ -66,7 +66,7 @@ fi
     echo "      ansible_user: \"ubuntu\""
   done
   echo "    gcp-witness:"
-  echo "      ansible_host: \"${GCP_WITNESS_IPV6}\""
+  echo "      ansible_host: \"${GCP_WITNESS_HOSTNAME}\""
   echo "      ansible_user: \"debian\""
   echo "  children:"
   echo "    oci_nodes:"

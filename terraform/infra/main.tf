@@ -14,8 +14,11 @@ provider "infisical" {
 }
 
 provider "oci" {
-  auth   = "SecurityToken"
-  region = var.oci_region
+  region       = var.oci_region
+  tenancy_ocid = var.oci_tenancy_ocid
+  user_ocid    = var.oci_user_ocid
+  fingerprint  = var.oci_fingerprint
+  private_key  = var.oci_private_key
 }
 
 provider "google" {
@@ -42,12 +45,19 @@ data "infisical_secrets" "gcp" {
   folder_path  = "/cloud-provider/gcp"
 }
 
+data "infisical_secrets" "infrastructure" {
+  env_slug     = "prod"
+  workspace_id = var.infisical_project_id
+  folder_path  = "/infrastructure"
+}
+
 locals {
   secrets = {
     ssh_ca_public_key  = data.infisical_secrets.security.secrets["SSH_CA_PUBLIC_KEY"].value
     oci_compartment_id = data.infisical_secrets.oci.secrets["OCI_COMPARTMENT_OCID"].value
     oci_image_ocid     = data.infisical_secrets.oci.secrets["OCI_IMAGE_OCID"].value
     gcp_project_id     = data.infisical_secrets.gcp.secrets["GCP_PROJECT_ID"].value
+    tailscale_auth_key = data.infisical_secrets.infrastructure.secrets["TAILSCALE_AUTH_KEY"].value
   }
 }
 
@@ -63,14 +73,34 @@ variable "oci_region" {
   default     = "us-ashburn-1"
 }
 
+variable "oci_tenancy_ocid" {
+  description = "OCI tenancy OCID for API key authentication"
+  type        = string
+  sensitive   = true
+}
+
+variable "oci_user_ocid" {
+  description = "OCI user OCID for API key authentication"
+  type        = string
+  sensitive   = true
+}
+
+variable "oci_fingerprint" {
+  description = "OCI API key fingerprint (MD5 hash of the public key)"
+  type        = string
+  sensitive   = true
+}
+
+variable "oci_private_key" {
+  description = "OCI API private key PEM content"
+  type        = string
+  sensitive   = true
+}
+
 variable "network_access_policy" {
-  description = "Canonical network access policy for OCI SSH (IPv4), GCP SSH (IPv6), and Portainer API allowlist (dual-stack)"
+  description = "Canonical network access policy for OCI SSH (IPv4) and Portainer API allowlist"
   type = object({
     oci_ssh = object({
-      enabled       = bool
-      source_ranges = list(string)
-    })
-    gcp_ssh = object({
       enabled       = bool
       source_ranges = list(string)
     })
@@ -82,13 +112,11 @@ variable "network_access_policy" {
   validation {
     condition = (
       alltrue([for cidr in var.network_access_policy.oci_ssh.source_ranges : can(cidrhost(cidr, 0)) && !strcontains(cidr, ":")]) &&
-      alltrue([for cidr in var.network_access_policy.gcp_ssh.source_ranges : can(cidrhost(cidr, 0)) && strcontains(cidr, ":")]) &&
       alltrue([for cidr in var.network_access_policy.portainer_api.source_ranges : can(cidrhost(cidr, 0))]) &&
       (!var.network_access_policy.oci_ssh.enabled || length(var.network_access_policy.oci_ssh.source_ranges) > 0) &&
-      (!var.network_access_policy.gcp_ssh.enabled || length(var.network_access_policy.gcp_ssh.source_ranges) > 0) &&
       length(var.network_access_policy.portainer_api.source_ranges) > 0
     )
-    error_message = "network_access_policy is invalid: oci_ssh must use IPv4 CIDRs, gcp_ssh must use IPv6 CIDRs, portainer_api must include at least one valid CIDR."
+    error_message = "network_access_policy is invalid: oci_ssh must use IPv4 CIDRs, portainer_api must include at least one valid CIDR."
   }
 }
 
@@ -103,10 +131,10 @@ module "oci" {
 }
 
 module "gcp" {
-  source            = "../gcp"
-  gcp_project       = local.secrets.gcp_project_id
-  ssh_enabled       = var.network_access_policy.gcp_ssh.enabled
-  ssh_allowed_cidrs = var.network_access_policy.gcp_ssh.source_ranges
+  source             = "../gcp"
+  gcp_project        = local.secrets.gcp_project_id
+  tailscale_auth_key = local.secrets.tailscale_auth_key
+  # ssh_enabled and ssh_allowed_cidrs intentionally omitted — module defaults to ssh_enabled=false
 }
 
 # Outputs
@@ -115,7 +143,7 @@ output "oci_public_ips" {
   value       = module.oci.public_worker_ips
 }
 
-output "gcp_witness_ipv6" {
-  description = "External IPv6 address of the GCP Swarm witness instance"
-  value       = module.gcp.witness_ipv6
+output "gcp_witness_tailscale_hostname" {
+  description = "Tailscale MagicDNS hostname of the GCP Swarm witness instance"
+  value       = module.gcp.witness_tailscale_hostname
 }

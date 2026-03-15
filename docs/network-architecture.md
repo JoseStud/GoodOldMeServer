@@ -52,7 +52,6 @@ graph TB
 |--------|-------------|---------------|---------|-------------------|
 | Internet clients | OCI workers (`app-worker-1`, `app-worker-2`) | TCP `80`, `443` | Public HTTP/HTTPS ingress to Traefik entrypoints | OCI Gateway NSG ingress rules (`gateway_http`, `gateway_https`) |
 | Cloud static runner IPv4 egress | OCI workers | TCP `22` | Ansible/SSH administrative access to OCI nodes | OCI NSG SSH rule (`oci_core_network_security_group_security_rule.ssh`) driven by `TF_VAR_network_access_policy.oci_ssh.source_ranges` |
-| Cloud static runner IPv6 egress | GCP witness | TCP `22` | Initial Ansible connectivity to witness | GCP firewall `allow_ssh` rule using `ssh_allowed_cidrs` from `TF_VAR_network_access_policy.gcp_ssh.source_ranges` |
 | Cloud static runner dual-stack egress | `portainer-api.<BASE_DOMAIN>` (Traefik -> Portainer service) | TCP `443` | Terraform Portainer provider calls and private webhook automation traffic | Traefik `ipAllowList` middleware (`PORTAINER_AUTOMATION_ALLOWED_CIDRS`) + rate limit middleware |
 | Swarm manager nodes (all 3) | Swarm manager nodes (all 3) | TCP `2377`, TCP/UDP `7946`, UDP `4789` | Swarm control-plane, gossip, and overlay networking | Docker Swarm over Tailscale mesh; nodes are joined with Tailscale advertise addresses |
 | OCI workers + GCP witness | GlusterFS peers/bricks | TCP `24007` + GlusterFS brick ports | GlusterFS peer management and replicated storage traffic | GlusterFS daemon configuration over Tailscale private network |
@@ -82,7 +81,7 @@ All 3 nodes (2 OCI workers + 1 GCP witness) are connected via a [Tailscale](http
 | **Docker Swarm** | `swarm init` and `swarm join` use `--advertise-addr <tailscale_ip>` so all Raft and gossip traffic flows over encrypted tunnels |
 | **GlusterFS** | Brick endpoints use Tailscale IPv4 addresses — replication traffic is encrypted without needing separate TLS configuration |
 
-Initial Ansible connectivity to the GCP witness still uses its public IPv6 (`witness_ipv6`) because Tailscale is not available until after Phase 3 completes.
+The GCP witness bootstraps Tailscale at first boot via cloud-init (Terraform-injected startup script) before Ansible connects. Ansible Phase 3 is a no-op for the witness (Tailscale already running).
 
 ## Docker Swarm Topology
 
@@ -210,16 +209,12 @@ With the `replica 3 arbiter 1` configuration, the GCP witness node acts as a tie
 
 ### CI Runner Egress Requirements
 
-The `network-preflight-ssh` job in `reusable-orch-infra.yml` runs on a **self-hosted cloud runner** (`${{ inputs.runner_label }}`). It requires the following outbound connectivity:
-
-That runner is expected to conform to the `toolingDebian` contract, so the workflow does not install `jq`, `yq`, `nc`, `ansible`, or `infisical` at runtime.
+The `dagger-pipeline` job in `orchestrator.yml` runs on `ubuntu-latest` with the Tailscale action connected to the tailnet. The Dagger pipeline phases require the following outbound connectivity from the GHA runner:
 
 | Destination | Protocol/Port | Purpose |
 |-------------|---------------|---------|
 | `api.ipify.org` | HTTPS (443) | Detect runner public IPv4 for network policy validation |
-| `api64.ipify.org` | HTTPS (443) | Detect runner public IPv6 for network policy validation |
-| All inventory hosts (OCI workers) | TCP 22 | SSH reachability preflight |
-| GCP witness host | TCP 22 (IPv6) | SSH reachability preflight |
+| All inventory hosts (OCI workers + GCP witness via Tailscale MagicDNS) | TCP 22 | SSH reachability preflight |
 | `portainer-api.<BASE_DOMAIN>` | HTTPS (443) | Portainer API preflight (in portainer stage) |
 
 If the self-hosted runner has egress restrictions (firewall, security group, etc.), these destinations **must** be allow-listed. IP detection uses `curl --retry 3 --retry-delay 1 --max-time 10` and will fail the pipeline if the external APIs are unreachable.
@@ -267,16 +262,16 @@ Pi-hole instances use **host-mode** port 53 (UDP/TCP) to bypass Docker Swarm's i
 
 ## Network Policy Sync — Idempotent Mutation Contract
 
-The `network-policy-sync` job in `reusable-orch-preflight.yml` writes to two external systems before the main pipeline stages execute:
+The network-policy-sync stage in the `dagger-pipeline` preflight phase (`ci_pipeline/phases/preflight.py`) writes to two external systems before the main pipeline stages execute:
 
-1. **TFC variable sets** — the runner's current public IPv4/IPv6 are written to Terraform Cloud as `TF_VAR_network_access_policy`, which controls OCI NSG SSH rules and GCP firewall SSH rules.
+1. **TFC variable sets** — the runner's current public IPv4 is written to Terraform Cloud as `TF_VAR_network_access_policy`, which controls OCI NSG SSH rules.
 2. **Infisical allowlists** — the runner's CIDR is written to Infisical as `PORTAINER_AUTOMATION_ALLOWED_CIDRS`, which Traefik's `ipAllowList` middleware enforces for Portainer API traffic.
 
 ### Why mutations that persist through failure are safe here
 
 These writes are **idempotent** for two reasons:
 
-- **Derived from stable inputs**: the policy value is computed from the runner's current egress IP (fetched via `api.ipify.org` / `api64.ipify.org`) and the static network architecture. The same runner always produces the same value.
+- **Derived from stable inputs**: the policy value is computed from the runner's current egress IPv4 (fetched via `api.ipify.org`) and the static network architecture. The same runner always produces the same value.
 - **Re-sync on next run**: if downstream stages fail after the policy sync succeeds, the next pipeline run re-executes `network-policy-sync` and writes identical values — there is no drift.
 
 Because the policy describes *who is allowed to connect*, leaving a stale-but-correct value in place between runs has no adverse effect. The worst-case scenario (runner IP changes between runs) is resolved on the next sync, not by a rollback.
