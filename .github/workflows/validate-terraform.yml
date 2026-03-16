@@ -125,7 +125,7 @@ jobs:
           TF_API_TOKEN: ${{ secrets.TFC_TOKEN }}
         with:
           workspace: ${{ steps.preflight.outputs.workspace_name }}
-          directory: terraform/infra
+          directory: terraform
           speculative: true
 
       - name: Create speculative run
@@ -166,6 +166,15 @@ jobs:
 
       - name: Ensure unzip is available
         run: command -v unzip || sudo apt-get update -qq && sudo apt-get install -yqq unzip
+
+      - name: Ensure Infisical CLI is available
+        run: |
+          if ! command -v infisical >/dev/null 2>&1; then
+            curl -fsSL 'https://dl.cloudsmith.io/public/infisical/infisical-core/gpg.2BA6932366A755776.gpg' | sudo apt-key add -
+            echo 'deb https://dl.cloudsmith.io/public/infisical/infisical-core/deb/debian any-version main' | sudo tee /etc/apt/sources.list.d/infisical-core.list
+            sudo apt-get update -qq
+            sudo apt-get install -yqq infisical-core
+          fi
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3

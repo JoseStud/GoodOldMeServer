@@ -137,6 +137,12 @@ fetch_check_and_status() {
     page=$((page + 1))
   done
 
+  # Deduplicate by name, keeping the first (newest) run per check name.
+  # The GitHub API returns check-runs newest-first; unique_by preserves the
+  # first occurrence, so this selects the most recent result per check name.
+  # This prevents a re-run's older failed attempt from blocking trust.
+  check_runs_deduped="$(jq -c 'unique_by(.name)' <<<"${check_runs_all}")"
+
   check_runs_bad="$(jq -c '[
     .[]
     | select((.status != "completed") or (.conclusion != "success" and .conclusion != "neutral" and .conclusion != "skipped"))
@@ -145,13 +151,13 @@ fetch_check_and_status() {
         status: (.status // "unknown"),
         conclusion: (.conclusion // "none")
       }
-  ]' <<<"${check_runs_all}")"
+  ]' <<<"${check_runs_deduped}")"
   check_runs_bad_count="$(jq -r 'length' <<<"${check_runs_bad}")"
 
   check_runs_hard_fail_count="$(jq -r '[
     .[]
     | select(.status == "completed" and (.conclusion != "success" and .conclusion != "neutral" and .conclusion != "skipped"))
-  ] | length' <<<"${check_runs_all}")"
+  ] | length' <<<"${check_runs_deduped}")"
 
   combined_status_url="${GITHUB_API_URL%/}/repos/${STACKS_REPO_OWNER}/${STACKS_REPO_NAME}/commits/${STACKS_SHA}/status"
   if ! api_get_json "${combined_status_url}" "combined commit status"; then
