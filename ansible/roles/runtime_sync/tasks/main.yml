@@ -11,22 +11,10 @@
   become: false
   no_log: true
 
-- name: Add Infisical signing key
-  ansible.builtin.apt_key:
-    url: https://dl.cloudsmith.io/public/infisical/infisical-core/gpg.2BA6932366A755776.gpg
-    state: present
-
-- name: Add Infisical apt repository
-  ansible.builtin.apt_repository:
-    repo: "deb https://dl.cloudsmith.io/public/infisical/infisical-core/deb/debian any-version main"
-    state: present
-    filename: infisical-core
-
 - name: Install runtime sync packages
   ansible.builtin.apt:
     name:
       - curl
-      - infisical-core
       - rsync
     state: present
     update_cache: true

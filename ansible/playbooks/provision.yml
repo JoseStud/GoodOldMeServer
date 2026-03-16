@@ -28,6 +28,11 @@
       when: inventory_hostname in groups['oci_nodes']
       tags: [phase1_base]
 
+    - name: Run infisical_cli role
+      ansible.builtin.include_role:
+        name: infisical_cli
+      tags: [phase1_base]
+
     # === Phase 2: Docker Engine ===
     - name: Run docker role
       ansible.builtin.include_role:
