@@ -247,6 +247,10 @@ infisical_oidc_login() {
 
 setup_infisical() {
   require_command infisical
+  if [[ -n "${INFISICAL_TOKEN:-}" ]]; then
+    echo "INFISICAL_TOKEN is set; skipping OIDC login."
+    return
+  fi
   infisical_oidc_login
 }
 
