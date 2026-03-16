@@ -17,6 +17,22 @@ import dagger
 SOCKS5_PORT = 1055
 SERVICE_NAME = "tailscale-proxy"
 
+# Public internet domains that must bypass the Tailscale SOCKS5 proxy.
+# The proxy only routes Tailscale-internal destinations; routing public
+# traffic through it causes curl error 97 (connection to proxy closed).
+# curl matches a NO_PROXY entry against the hostname and all its subdomains.
+NO_PROXY_DOMAINS = ",".join([
+    "github.com",           # api.github.com, raw.githubusercontent.com, etc.
+    "githubusercontent.com",
+    "infisical.com",        # app.infisical.com
+    "docker.io",            # registry-1.docker.io
+    "docker.com",           # hub.docker.com, production.cloudflare.docker.com
+    "alpinelinux.org",      # dl-cdn.alpinelinux.org
+    "terraform.io",         # app.terraform.io, registry.terraform.io
+    "hashicorp.com",
+    "dagger.cloud",
+])
+
 
 class TailscaleProxy:
     """Wraps a Dagger Host Service for the Tailscale SOCKS5 proxy."""
@@ -49,6 +65,7 @@ class TailscaleProxy:
             .with_env_variable(
                 "ALL_PROXY", f"socks5://{SERVICE_NAME}:{SOCKS5_PORT}"
             )
+            .with_env_variable("NO_PROXY", NO_PROXY_DOMAINS)
             .with_env_variable("SSH_PROXY_HOST", SERVICE_NAME)
             .with_env_variable("SSH_PROXY_PORT", str(SOCKS5_PORT))
         )
