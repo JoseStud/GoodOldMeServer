@@ -154,14 +154,22 @@ jobs:
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:ci
 
+      - name: Enable Tailscale SOCKS5 proxy on localhost:1055
+        run: |
+          # tailscale/github-action@v3 connects the runner to Tailscale but
+          # does not start the SOCKS5 proxy. Enable it explicitly so Dagger
+          # containers can route Tailscale-internal traffic (Portainer API,
+          # webhook URLs) through the proxy service binding.
+          sudo tailscale set --socks5-server=localhost:1055
+          timeout 10 bash -c 'until nc -z 127.0.0.1 1055 2>/dev/null; do sleep 0.5; done'
+          echo "Tailscale SOCKS5 proxy listening on 127.0.0.1:1055"
+
       - name: Ensure localhost resolves to IPv4 for Dagger host service
         run: |
-          # Tailscale SOCKS5 proxy binds on 127.0.0.1:1055 (IPv4 only).
           # Dagger's host service tunnel dials via Go's net package, which on
-          # Ubuntu resolves "localhost" to ::1 first (from /etc/hosts). If IPv6
-          # is unavailable (e.g. bypassed via Tailscale), that dial fails with
-          # "connection refused". Removing the ::1 entry forces Go to use
-          # 127.0.0.1, where Tailscale is already listening.
+          # Ubuntu resolves "localhost" to ::1 first (from /etc/hosts). The
+          # Tailscale SOCKS5 proxy binds on 127.0.0.1 (IPv4 only). Removing
+          # the ::1 entry forces Go to use 127.0.0.1.
           sudo sed -i '/^::1[[:space:]]/d' /etc/hosts
           echo "localhost resolution after patch:"
           getent hosts localhost
