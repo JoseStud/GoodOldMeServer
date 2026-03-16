@@ -100,7 +100,7 @@ jobs:
           TF_API_TOKEN: ${{ secrets.TFC_TOKEN }}
         with:
           workspace: ${{ env.TFC_WORKSPACE_INFRA }}
-          directory: terraform/infra
+          directory: terraform
 
       - name: Create Terraform Cloud Infra Run
         id: tfc-run
