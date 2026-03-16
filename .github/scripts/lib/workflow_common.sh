@@ -223,7 +223,21 @@ exit_if_shadow_mode() {
 
 infisical_oidc_login() {
   : "${INFISICAL_MACHINE_IDENTITY_ID:?INFISICAL_MACHINE_IDENTITY_ID is required}"
-  infisical login --method=oidc-auth --machine-identity-id="${INFISICAL_MACHINE_IDENTITY_ID}" --domain="${INFISICAL_DOMAIN:-https://app.infisical.com}"
+  : "${ACTIONS_ID_TOKEN_REQUEST_URL:?ACTIONS_ID_TOKEN_REQUEST_URL is required (needs id-token: write permission)}"
+  : "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:?ACTIONS_ID_TOKEN_REQUEST_TOKEN is required}"
+
+  local oidc_jwt
+  oidc_jwt="$(curl -sSfL \
+    -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+    "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=infisical" \
+    | jq -r '.value')"
+
+  if [[ -z "${oidc_jwt}" || "${oidc_jwt}" == "null" ]]; then
+    echo "Failed to obtain GitHub OIDC JWT for Infisical login."
+    exit 1
+  fi
+
+  infisical login --method=oidc-auth --machine-identity-id="${INFISICAL_MACHINE_IDENTITY_ID}" --jwt="${oidc_jwt}" --domain="${INFISICAL_DOMAIN:-https://app.infisical.com}"
 }
 
 setup_infisical() {
