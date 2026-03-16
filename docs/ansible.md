@@ -90,8 +90,9 @@ ssh_args = -o CertificateFile=~/.ssh/id_ed25519-cert.pub -o IdentityFile=~/.ssh/
 
 **How it works:**
 1. Terraform's OCI module injects the SSH CA public key into each instance via cloud-init (`TrustedUserCAKeys /etc/ssh/trusted-user-ca-keys.pem`)
-2. The operator signs their ed25519 SSH public key with the CA private key to generate `~/.ssh/id_ed25519-cert.pub`
+2. In CI, `generate_ephemeral_ssh_certificate()` fetches the CA private key from Infisical (`/security/SSH_CA_PRIVATE_KEY`), generates a fresh ed25519 key pair, and signs it with `ssh-keygen -s` to produce `~/.ssh/id_ed25519-cert.pub` (valid for 1 hour). For local use, sign manually: `ssh-keygen -s <ca_key> -I <identity> -n <principals> -V +1h ~/.ssh/id_ed25519.pub`
 3. Ansible presents the certificate on connection — the remote sshd validates it against the trusted CA
+4. The CA private key is scrubbed from the CI runner immediately after signing
 
 This eliminates the need to distribute individual public keys to each node.
 

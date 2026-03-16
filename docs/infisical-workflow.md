@@ -27,7 +27,7 @@ flowchart LR
 | `/infrastructure` | Terraform, Ansible, Scripts | `BASE_DOMAIN`, `CLOUDFLARE_API_TOKEN`, `TAILSCALE_AUTH_KEY`, `TZ`, `ZONE_ID` |
 | `/management` | Terraform (Portainer provider), Operators | `PORTAINER_URL`, `PORTAINER_API_URL`, `PORTAINER_API_KEY`, `PORTAINER_LICENSE_KEY` |
 | `/deployments` | Terraform (auto-written), Stacks repo cloud static runner | `PORTAINER_WEBHOOK_URLS`, `WEBHOOK_URL_*` |
-| `/security` | Terraform (cloud-init), GitHub Actions (SSH) | `SSH_CA_PUBLIC_KEY`, `SSH_HOST_CA_PUBKEY` |
+| `/security` | Terraform (cloud-init), GitHub Actions (SSH) | `SSH_CA_PUBLIC_KEY`, `SSH_CA_PRIVATE_KEY`, `SSH_HOST_CA_PUBKEY` |
 | `/stacks/gateway` | Traefik | `ACME_EMAIL`, `DOCKER_SOCKET_PROXY_URL` |
 | `/stacks/identity` | Authelia SSO | `AUTHELIA_JWT_SECRET`, `AUTHELIA_SESSION_SECRET`, `POSTGRES_PASSWORD`, `AUTHELIA_NOTIFIER_SMTP_USERNAME`, `AUTHELIA_NOTIFIER_SMTP_PASSWORD`, `AUTHELIA_NOTIFIER_SMTP_SENDER`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_JWKS_0_KEY` |
 | `/stacks/management` | Homarr + Portainer | `HOMARR_SECRET_KEY`, `PORTAINER_ADMIN_PASSWORD`, `PORTAINER_ADMIN_PASSWORD_HASH`, `PORTAINER_AUTOMATION_ALLOWED_CIDRS` |
@@ -64,7 +64,7 @@ Use this as the source of truth for whether a value is operator-managed or autom
 | `/infrastructure` | `BASE_DOMAIN`, `TZ`, `CLOUDFLARE_API_TOKEN`, `ZONE_ID`, `TAILSCALE_AUTH_KEY` | Required | Operator | Baseline globals for stack rendering, DNS, and provisioning |
 | `/cloud-provider/oci` | `OCI_COMPARTMENT_OCID`, `OCI_IMAGE_OCID` | Required | Platform | Required for infra workspace apply |
 | `/cloud-provider/gcp` | `GCP_PROJECT_ID` | Required | Platform | Required for infra workspace apply |
-| `/security` | `SSH_CA_PUBLIC_KEY` (and host CA key if used) | Required | Security | Required for SSH certificate trust bootstrap |
+| `/security` | `SSH_CA_PUBLIC_KEY`, `SSH_CA_PRIVATE_KEY` (and host CA key if used) | Required | Security | `SSH_CA_PUBLIC_KEY` for cloud-init trust bootstrap; `SSH_CA_PRIVATE_KEY` for CI ephemeral cert signing |
 | `/stacks/management` | `HOMARR_SECRET_KEY`, `PORTAINER_ADMIN_PASSWORD` | Required | Operator | Needed before Phase 6 Portainer bootstrap |
 | `/stacks/gateway` | `ACME_EMAIL`, `DOCKER_SOCKET_PROXY_URL` | Required | Operator | Required for gateway stack certificate/Docker provider wiring |
 | `/stacks/identity` | `AUTHELIA_JWT_SECRET`, `AUTHELIA_SESSION_SECRET`, `POSTGRES_PASSWORD`, SMTP+OIDC secrets | Required | Security | Required for first auth deploy and SSO readiness |
@@ -209,7 +209,7 @@ The `dagger-pipeline` job injects both `INFISICAL_MACHINE_IDENTITY_ID` and `INFI
 |----------|-----------|---------|
 | `INFISICAL_MACHINE_IDENTITY_ID` | Infisical → Access Control → Machine Identities → OIDC Auth → Identity ID | Reusable orchestrator stages that log into Infisical via OIDC |
 | `INFISICAL_PROJECT_ID` | Infisical → Project Settings → Project ID | Terraform/Ansible workflows and webhook runner secret reads; exported alongside `INFISICAL_MACHINE_IDENTITY_ID` to reusable workflow shell steps |
-| `INFISICAL_SSH_CA_ID` | Infisical → SSH Management → SSH CA details | Reusable Ansible/config-sync stages that mint ephemeral SSH certs |
+| `SSH_CERT_PRINCIPALS` | Comma-separated list of allowed SSH principals (e.g. `ubuntu,debian`) | Ansible/config-sync stages that sign ephemeral SSH certs via `ssh-keygen -s` |
 | `TFC_ORGANIZATION` (or `TFC_ORG`) | Terraform Cloud organization slug | Infrastructure orchestrator + infrastructure validation Terraform Cloud API calls |
 | `CLOUD_STATIC_RUNNER_LABEL` | Label of your static-egress private runner conforming to the `toolingDebian` contract (`bash`, `jq`, `yq`, `openssh-client`, `python3`, `ansible`, `infisical`, `gcloud`, `oci`, `gomplate`, `nc` on `PATH`) | Infrastructure orchestrator jobs that require deterministic egress + private reachability |
 | `TFC_WORKSPACE_INFRA` | Terraform Cloud → Workspace name (`goodoldme-infra`) | Infra workspace apply (`terraform/infra`) |

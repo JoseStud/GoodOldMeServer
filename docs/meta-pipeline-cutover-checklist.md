@@ -23,7 +23,7 @@ These values are managed by automation after bootstrap and are not operator-owne
 |------|-------------|-------|-------|----------|
 | `INFISICAL_MACHINE_IDENTITY_ID` | Required | Security | OIDC machine identity used for Infisical login in workflows. | [ ] |
 | `INFISICAL_PROJECT_ID` | Required | Platform | Shared project ID for Terraform/Ansible/automation reads. | [ ] |
-| `INFISICAL_SSH_CA_ID` | Required | Security | SSH CA identifier for ephemeral cert signing in pipeline. | [ ] |
+| `SSH_CERT_PRINCIPALS` | Required | Platform | Comma-separated SSH principals for ephemeral cert signing (e.g. `ubuntu,debian`). | [ ] |
 | `TFC_ORGANIZATION` (or `TFC_ORG`) | Required | Platform | Terraform Cloud organization slug. | [ ] |
 | `CLOUD_STATIC_RUNNER_LABEL` | Required | Platform | Label for deterministic static-egress cloud runner. | [ ] |
 | `TFC_WORKSPACE_INFRA` | Optional | Platform | Defaults to `goodoldme-infra` when unset. | [ ] |

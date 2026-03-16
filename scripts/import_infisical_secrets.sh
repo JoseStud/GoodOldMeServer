@@ -35,6 +35,7 @@ echo "Skipping automation-managed /deployments webhook secrets"
 
 echo "Creating secrets for folder: /security"
 set_secret "/security" SSH_CA_PUBLIC_KEY="your_ssh_ca_public_key"
+set_secret "/security" SSH_CA_PRIVATE_KEY="your_ssh_ca_private_key"
 set_secret "/security" SSH_HOST_CA_PUBKEY="your_ssh_host_ca_pubkey"
 
 echo "Creating secrets for folder: /stacks/gateway"

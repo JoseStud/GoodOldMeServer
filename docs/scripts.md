@@ -29,7 +29,7 @@ For Infisical-backed wrappers, the calling phase module injects `INFISICAL_MACHI
 
 | Script | Invoked By | Responsibility |
 |-------|------------|----------------|
-| `.github/scripts/stages/ansible_run.sh` | `ci_pipeline/phases/ansible.py` (host subprocess on GHA runner) | Checks out the trusted `STACKS_SHA`, logs into Infisical, mints an ephemeral SSH certificate, and runs `ansible/playbooks/provision.yml` with optional tag scoping |
+| `.github/scripts/stages/ansible_run.sh` | `ci_pipeline/phases/ansible.py` (host subprocess on GHA runner) | Checks out the trusted `STACKS_SHA`, logs into Infisical, signs an ephemeral SSH certificate using the CA private key from Infisical `/security`, and runs `ansible/playbooks/provision.yml` with optional tag scoping |
 | `.github/scripts/stages/health_gated_redeploy.sh` | `ci_pipeline/phases/portainer.py` (inside Dagger container, `webhook` profile) | Checks out the trusted stacks ref, logs into Infisical, and triggers `trigger_webhooks_with_gates.sh` for the full Portainer-managed reconcile |
 | `.github/scripts/stages/infra_apply.sh` | `orchestrator.yml` `infra-apply` GHA job (direct step) | Wraps `wait_for_tfc_run.sh` with the orchestrator’s manual-confirm and terminal-status expectations |
 | `.github/scripts/stages/network_policy_sync.sh` | `ci_pipeline/phases/preflight.py` (inside Dagger container, `network` profile) | Builds the canonical access policy and syncs it to Terraform Cloud plus Infisical |

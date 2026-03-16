@@ -96,6 +96,10 @@ if [[ "${RUN_ANSIBLE}" == "true" ]]; then
   validate_value_secret /stacks/management PORTAINER_ADMIN_PASSWORD
 fi
 
+if [[ "${RUN_ANSIBLE}" == "true" || "${RUN_HOST_SYNC}" == "true" ]]; then
+  validate_value_secret /security SSH_CA_PRIVATE_KEY
+fi
+
 if [[ "${RUN_ANSIBLE}" == "true" || "${RUN_PORTAINER}" == "true" || "${RUN_HEALTH}" == "true" ]]; then
   validate_portainer_managed_stack_secrets
 fi
