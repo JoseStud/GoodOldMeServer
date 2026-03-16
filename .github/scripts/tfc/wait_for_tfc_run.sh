@@ -68,12 +68,18 @@ while (( SECONDS < deadline )); do
     last_status="${status}"
   fi
 
+  # Only enforce the no-auto-apply constraint when the run still needs human
+  # confirmation. Skip when the run already reached a terminal success state
+  # (e.g. planned_and_finished with no changes) — auto-apply is irrelevant
+  # in that case and failing would be a false negative.
   if [[ "${checked_auto_apply}" == "false" && "${FAIL_IF_AUTO_APPLY}" == "true" ]]; then
-    checked_auto_apply="true"
-    if [[ "${auto_apply}" == "true" ]]; then
-      echo "Terraform Cloud run is configured with auto-apply=true."
-      echo "Disable auto-apply for '${WORKSPACE_NAME}' to require manual confirmation."
-      exit 1
+    if ! csv_contains "${status}" "${SUCCESS_STATUSES}"; then
+      checked_auto_apply="true"
+      if [[ "${auto_apply}" == "true" ]]; then
+        echo "Terraform Cloud run is configured with auto-apply=true."
+        echo "Disable auto-apply for '${WORKSPACE_NAME}' to require manual confirmation."
+        exit 1
+      fi
     fi
   fi
 
