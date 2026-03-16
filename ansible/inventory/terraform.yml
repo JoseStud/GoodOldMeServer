@@ -9,5 +9,5 @@ groups:
   gcp_witness: "'google' in provider"
 compose:
   # OCI nodes use public IPv4
-  ansible_host: public_ip | default(witness_ipv6, true)
+  ansible_host: public_ip | default(witness_tailscale_hostname, true)
   ansible_user: "'ubuntu' if 'oci' in provider else 'debian'"

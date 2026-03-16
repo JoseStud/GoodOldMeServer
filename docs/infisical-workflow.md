@@ -35,7 +35,7 @@ flowchart LR
 | `/stacks/observability` | Grafana | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET`, `ALERTMANAGER_WEBHOOK_URL` |
 | `/stacks/ai-interface` | Open WebUI | `ARCH_PC_IP` |
 | `/cloud-provider/gcp` | Terraform (GCP provider) | `GCP_PROJECT_ID` |
-| `/cloud-provider/oci` | Terraform (OCI provider) | `OCI_COMPARTMENT_OCID`, `OCI_IMAGE_OCID` |
+| `/cloud-provider/oci` | Terraform (OCI provider) | `OCI_COMPARTMENT_OCID`, `OCI_IMAGE_OCID` *(read via Infisical data source)*; `OCI_TENANCY_OCID`, `OCI_USER_OCID`, `OCI_FINGERPRINT`, `OCI_PRIVATE_KEY` *(must be set as TFC workspace variables — cannot use data source in provider config)* |
 
 > **Global injection:** `BASE_DOMAIN` is used in almost every `.env.tmpl` via a `{{- with secret "/infrastructure" }}` block, as Traefik requires it for routing labels. Other variables like `TZ` or `CLOUDFLARE_API_TOKEN` are only pulled into the specific stacks that need them.
 
@@ -52,7 +52,7 @@ Use this as the source of truth for whether a value is operator-managed or autom
 | `/stacks/management/PORTAINER_ADMIN_PASSWORD_HASH` | Platform | Auto-generated/re-written by Ansible `portainer_bootstrap` on bootstrap runs. Do not set manually. |
 | `/management/PORTAINER_URL`, `/management/PORTAINER_API_URL`, `/management/PORTAINER_API_KEY` | Platform | Auto-written by Ansible `portainer_bootstrap` after bootstrap (API key may be rotated). Do not set manually. |
 | `/deployments/PORTAINER_WEBHOOK_URLS` + `/deployments/WEBHOOK_URL_*` | Platform | Auto-written by Terraform `portainer` module on Portainer workspace apply. Do not edit manually. |
-| `TF_VAR_network_access_policy` (Terraform Cloud env var) | Security | Auto-created/updated by `orchestrator.yml` preflight stage (`reusable-orch-preflight.yml` / `network-policy-sync`). Do not set manually outside policy sync flow. |
+| `TF_VAR_network_access_policy` (Terraform Cloud env var) | Security | Auto-created/updated by the `orchestrator.yml` `dagger-pipeline` preflight phase (`ci_pipeline/phases/preflight.py` / `network-policy-sync`). Do not set manually outside policy sync flow. |
 | `/stacks/management/PORTAINER_AUTOMATION_ALLOWED_CIDRS` | Security | Auto-synced by `orchestrator.yml` preflight stage from `network_access_policy.portainer_api.source_ranges`. Do not set manually outside break-glass recovery. |
 
 > For first-run setup and required GitHub/TFC inputs, see [Infrastructure Orchestrator Cutover Checklist](meta-pipeline-cutover-checklist.md).
@@ -175,10 +175,19 @@ The management stack (Portainer + Homarr) is deployed by Ansible, not Terraform,
 
 ### `/cloud-provider/oci` — OCI Terraform
 
-| Variable | How to Get | Used By |
-|----------|-----------|---------|
-| `OCI_COMPARTMENT_OCID` | Compartments → View Details → Copy OCID | Resources grouping |
-| `OCI_IMAGE_OCID` | Compute → Images → Custom/Canonical Image OCID | Terraform compute module |
+These variables fall into two categories:
+
+- **Read via Infisical data source** (`data "infisical_secrets" "oci"` in `terraform/infra/main.tf`) — used for resource configuration after provider init.
+- **Must be TFC workspace variables** (`TF_VAR_oci_*`) — used in `provider "oci"` configuration, which cannot read data sources. Store in Infisical and sync to TFC workspace as sensitive variables.
+
+| Variable | How to Get | TFC injection | Used By |
+|----------|-----------|---------------|---------|
+| `OCI_COMPARTMENT_OCID` | OCI Console → Identity → Compartments → View Details → Copy OCID | Infisical data source | Resource grouping |
+| `OCI_IMAGE_OCID` | OCI Console → Compute → Images → Custom/Canonical Image OCID | Infisical data source | Terraform compute module (`oci_image_ocid`) |
+| `OCI_TENANCY_OCID` | OCI Console → Profile → Tenancy → Copy OCID | TFC var `TF_VAR_oci_tenancy_ocid` | `provider "oci"` `tenancy_ocid` |
+| `OCI_USER_OCID` | OCI Console → Profile → User Settings → Copy OCID | TFC var `TF_VAR_oci_user_ocid` | `provider "oci"` `user_ocid` |
+| `OCI_FINGERPRINT` | OCI Console → User Settings → API Keys → fingerprint shown after upload | TFC var `TF_VAR_oci_fingerprint` | `provider "oci"` `fingerprint` |
+| `OCI_PRIVATE_KEY` | PEM content of the API key created in User Settings → API Keys (multi-line) | TFC var `TF_VAR_oci_private_key` (sensitive) | `provider "oci"` `private_key` |
 
 ### `/cloud-provider/gcp` — GCP Terraform
 
@@ -192,7 +201,7 @@ While Infisical manages infrastructure and application secrets, a few bootstrap 
 
 Most workflow stage scripts authenticate to Infisical via **OIDC**. The Terraform-based `terraform/portainer-root` apply path still needs `INFISICAL_TOKEN` because the Terraform provider reads Infisical directly during local/runner-side execution.
 
-The reusable orchestrator workflows export both `INFISICAL_MACHINE_IDENTITY_ID` and `INFISICAL_PROJECT_ID` into their shell environment. This is required because the stage wrapper scripts call `setup_infisical` themselves and then use `infisical run --projectId=...` or `fetch_infisical_secret`, so the runner must already provide the Infisical CLI and the stage wrappers still own the actual OIDC login flow.
+The `dagger-pipeline` job injects both `INFISICAL_MACHINE_IDENTITY_ID` and `INFISICAL_PROJECT_ID` into the container environment for each phase that needs them (`ci_pipeline/phases/preflight.py`, `portainer.py`). The Ansible phase receives them as host subprocess env vars. This is required because the stage wrapper scripts call `setup_infisical` themselves and then use `infisical run --projectId=...` or `fetch_infisical_secret`, so the caller must provide the Infisical CLI and the stage wrappers own the actual OIDC login flow.
 
 #### Variables (`vars.*`)
 
@@ -217,7 +226,7 @@ The reusable orchestrator workflows export both `INFISICAL_MACHINE_IDENTITY_ID` 
 
 | Variable | How to Get | Used By |
 |----------|-----------|---------|
-| `INFISICAL_TOKEN` (infra repo) | Infisical service token with project read/write scope for automation paths | Required by any local/runner-side `terraform/portainer-root` apply, including `.github/workflows/reusable-orch-portainer.yml` |
+| `INFISICAL_TOKEN` (infra repo) | Infisical service token with project read/write scope for automation paths | Required by any local/runner-side `terraform/portainer-root` apply, including the `orchestrator.yml` `dagger-pipeline` portainer-apply stage (`ci_pipeline/phases/portainer.py`) |
 | `STACKS_REPO_READ_TOKEN` (infra repo) | Fine-grained GitHub token on the stacks repo with `contents:read`, `checks:read`, and `statuses:read` | Trusted stacks SHA verification in `.github/scripts/stacks/verify_trusted_stacks_sha.sh` before preflight/network-policy/runtime-sync/Portainer stages consume `meta.stacks_sha` |
 | `INFRA_REPO_DISPATCH_TOKEN` (stacks repo) | Fine-grained GitHub token with `contents:write` + repository dispatch access on this infra repo | `stacks/.github/workflows/stacks-dispatch-redeploy.yml` dispatches `stacks-redeploy-intent-v5` to this repo |
 | `INFISICAL_AGENT_CLIENT_ID` (infra repo) | Universal Auth client id for the host-side Infisical Agent | Ansible `phase7_runtime_sync` and local Portainer webhook helper |
@@ -309,7 +318,7 @@ Flow:
 1. Push to `main` in stacks repo
 2. `stacks-ci.yml` completes successfully with repo-level validation
 3. The dispatch workflow emits exactly one `stacks-redeploy-intent-v5` event with the minimal `v5` payload
-4. Infra `orchestrator.yml` runs the fixed full-reconcile path through reusable stages: preflight -> infra -> ansible (`phase7_runtime_sync`) -> portainer (`sync-configs`, SHA-pinned Portainer apply, health-gated webhook redeploy).
+4. Infra `orchestrator.yml` runs the fixed full-reconcile path via `dagger-pipeline`: preflight (stacks-sha-trust, secret-validation, network-policy-sync) → inventory-handover → ansible host subprocess (`phase7_runtime_sync`) → portainer phase (`sync-configs` config-sync, SHA-pinned Portainer apply, health-gated webhook redeploy).
 
 ### Workflow timeout variables
 

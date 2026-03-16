@@ -41,7 +41,6 @@ If you are bootstrapping or validating CI/CD for the first time, read these firs
 1. [Infisical Workflow](infisical-workflow.md#variable-ownership--mutability)
 2. [Infrastructure Orchestrator Cutover Checklist](meta-pipeline-cutover-checklist.md#0-auto-managed-values-do-not-set-manually)
 3. [Network Architecture](network-architecture.md#port-and-protocol-matrix)
-4. [OCI Terraform Cloud OIDC Setup](oci-tfc-oidc-setup.md)
 
 ## High-Level Architecture
 
@@ -111,7 +110,7 @@ flowchart TD
 - [**Network Architecture**](network-architecture.md) — Tailscale mesh, 3-manager Swarm topology, GlusterFS replication, overlay networks, DNS & ingress flow. Last reviewed: `2026-03-07`.
 - [**Infisical Secrets Workflow**](infisical-workflow.md) — Agent config, `.env.tmpl` templating, secret injection pipeline. Last reviewed: `2026-03-07`.
 - [**CI Orchestrator Execution Rules**](ci-orchestrator-execution-rules.md) — Push and dispatch planning rules for the active infrastructure workflows. Last reviewed: `2026-03-07`.
-- [**CI Plan Contract**](ci-plan-contract.md) — Canonical `plan_json` schema and direct workflow-consumption rules. Last reviewed: `2026-03-07`.
+- [**CI Plan Contract**](ci-plan-contract.md) — Canonical execution-context contract and workflow-consumption rules. Last reviewed: `2026-03-13`.
 - [**GitHub Actions Workflows**](github-actions-workflows.md) — Public workflow entry points plus reusable stage workflow inputs, outputs, and artifacts. Last reviewed: `2026-03-07`.
 - [**Workflow Lifecycle**](workflow-lifecycle.md) — Current workflow entry points and reusable stage workflows. Last reviewed: `2026-03-07`.
 - [**Infrastructure Orchestrator Cutover Checklist**](meta-pipeline-cutover-checklist.md) — Minimal first-run checklist (GitHub vars/secrets + Terraform workspace vars). Last reviewed: `2026-03-07`.
@@ -120,4 +119,5 @@ flowchart TD
 
 ### Guides & External Setups
 
-- [OCI Terraform Cloud OIDC Setup](oci-tfc-oidc-setup.md) — Federated identity setup and fallback pattern. Last reviewed: `2026-03-05`.
+- [OCI Terraform Authentication](oci-tfc-oidc-setup.md) — Decision record: why OIDC/Workload Identity is not viable (provider limitation) and the API key auth setup used instead. Last reviewed: `2026-03-15`.
+- [GCP Workload Identity Federation for Terraform Cloud](gcp-wif-tfc-setup.md) — Bootstrap guide for replacing `GOOGLE_CREDENTIALS` with TFC dynamic credentials via GCP WIF OIDC. Last reviewed: `2026-03-15`.

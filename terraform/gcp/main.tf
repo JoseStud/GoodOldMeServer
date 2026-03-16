@@ -7,6 +7,12 @@ variable "gcp_project" {
   type        = string
 }
 
+variable "tailscale_auth_key" {
+  description = "Tailscale reusable auth key for witness node self-registration at first boot"
+  type        = string
+  sensitive   = true
+}
+
 variable "gcp_region" {
   description = "GCP region for the subnet and resources"
   type        = string
@@ -22,12 +28,13 @@ variable "gcp_zone" {
 variable "ssh_enabled" {
   description = "Whether SSH ingress should be managed for the witness instance"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "ssh_allowed_cidrs" {
   description = "List of IPv6 CIDR blocks allowed to SSH into the witness instance"
   type        = list(string)
+  default     = []
 
   validation {
     condition = (
@@ -129,13 +136,22 @@ resource "google_compute_instance" "witness" {
       network_tier = "PREMIUM"
     }
   }
+
+  metadata = {
+    "user-data" = <<-EOT
+      #cloud-config
+      runcmd:
+        - curl -fsSL https://tailscale.com/install.sh | sh
+        - tailscale up --authkey='${var.tailscale_auth_key}' --ssh --hostname=swarm-witness
+    EOT
+  }
 }
 
 # ──────────────────────────────────────────────────
 # Outputs
 # ──────────────────────────────────────────────────
 
-output "witness_ipv6" {
-  description = "External IPv6 address of the Swarm witness instance"
-  value       = google_compute_instance.witness.network_interface[0].ipv6_access_config[0].external_ipv6
+output "witness_tailscale_hostname" {
+  description = "Tailscale MagicDNS hostname of the Swarm witness instance"
+  value       = google_compute_instance.witness.name
 }

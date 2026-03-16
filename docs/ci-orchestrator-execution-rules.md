@@ -3,80 +3,67 @@
 This document is the single source of truth for:
 
 - validation entry points in `.github/workflows/validate-planner-contracts.yml`, `.github/workflows/validate-terraform.yml`, and `.github/workflows/validate-ansible.yml`
-- infra-repo push execution in `.github/workflows/orchestrator.yml`
-- canonical planning in `.github/workflows/reusable-resolve-plan.yml`
+- infra-repo push and dispatch execution in `.github/workflows/orchestrator.yml`
 
 ## Validation Behavior
 
-Validation is split by concern instead of being bundled into a single workflow:
+Validation is split by concern:
 
-- `validate-planner-contracts.yml` runs planner contract tests (pytest for the `ci_plan` Python package), workflow contract checks, stage exhaustiveness checks, bootstrap-query-tools smoke, and trusted stacks SHA verification for the current `HEAD:stacks` gitlink
-- `validate-terraform.yml` runs `terraform fmt`, `terraform validate` for `terraform/infra`, `terraform/oci`, `terraform/gcp`, `terraform/portainer-root`, and `terraform/portainer`, plus the fixed Terraform Cloud speculative plan for `terraform/infra`
-- `validate-ansible.yml` runs ansible lint + syntax checks
+- `validate-planner-contracts.yml`: bootstrap-query-tools smoke and trusted stacks SHA verification for current `HEAD:stacks`
+- `validate-terraform.yml`: `terraform fmt`, multi-root `terraform validate`, fixed Terraform Cloud speculative run for `terraform/infra`, and shadow Portainer plan checks
+- `validate-ansible.yml`: ansible lint + syntax checks
 
-Each validation workflow runs on both `pull_request` and path-filtered `push`, including pushes to `main`.
-None of the active validation workflows do path-derived project selection inside the workflow body. Each workflow is triggered only by the path set relevant to its concern.
-Submodule pointer updates are treated as first-class infra changes: the active validation workflows and orchestrator trigger on `stacks` and `.gitmodules`.
-Post-merge validation for deployment shell changes under `.github/scripts/**` is provided by these validation workflows, not by expanding the production orchestrator push paths.
+All validation workflows run on `pull_request` and path-filtered `push`, including pushes to `main`.
 
-## Orchestrator Push Behavior
+## Orchestrator Event Behavior
 
-A single `.github/workflows/orchestrator.yml` handles all push paths. The Python
-resolver (`ci_plan` package) classifies each push automatically:
+`orchestrator.yml` computes execution toggles in a single inline job: `compute-context`.
 
-**Full reconcile** (infra apply + ansible + portainer) — triggered by changes to:
+### `push`
 
-- `terraform/**`
-- `stacks`
-- `.gitmodules`
+- `stacks_sha` is resolved from `HEAD:stacks`
+- Default path: infra + ansible + portainer
+- If every changed file is under `ansible/**` or equals `.ansible-lint`, skip infra apply
+- Optional ansible phase tags are derived from changed role paths
 
-**Ansible-only reconcile** (skips infra apply) — triggered by changes to:
+### `workflow_dispatch`
 
-- `ansible/**`
-- `.ansible-lint`
+- Runs infra + ansible + portainer
+- If `ansible_only=true`, infra apply is skipped
 
-The resolver detects ansible-only mode when every changed file matches
-`ansible/**` or `.ansible-lint` exactly. Mixed pushes (any terraform or stacks
-file alongside ansible files) fall back to the full reconcile path.
+### `repository_dispatch` (`stacks-redeploy-intent-v5`)
 
-Both trigger paths share the `infra-orchestrator` concurrency group so a full
-infra run and an ansible-only run cannot execute simultaneously.
+- Runs portainer + host sync + config sync + health-gated redeploy
+- Dispatch payload is validated inline (`schema_version=v5`, strict key set, SHA/reason/source field checks)
 
-Once triggered, the infra-path planner always emits the same push toggles:
+## Runtime Job Chain
 
-- `run_infra_apply=true`
-- `run_ansible_bootstrap=true`
-- `run_portainer_apply=true`
-- `run_host_sync=false`
-- `run_config_sync=false`
-- `run_health_redeploy=false`
-- `stacks_sha=$(git rev-parse HEAD:stacks)`
-- `reason=infra-repo-push`
+Top-level GHA jobs:
 
-The top-level orchestrator remains thin and stable:
+- `compute-context` — outputs execution toggles (runs on `ubuntu-latest`)
+- `infra-apply` — TFC API apply via HashiCorp marketplace actions; gated on `run_infra_apply == 'true'` (runs on `ubuntu-latest`)
+- `dagger-pipeline` — Tailscale-connected Dagger containerized pipeline; runs when `has_work == 'true'` and `infra-apply` succeeded or was skipped (runs on `ubuntu-latest`)
 
-- `resolve-context` emits canonical `plan_json`
-- `preflight` runs cloud-runner-guard, stacks SHA trust, secret validation, and network policy sync
-- `infra` runs infra apply, inventory handover, and SSH network preflight
-- `ansible` runs bootstrap and/or host runtime sync
-- `portainer` runs post-bootstrap checks, Portainer API preflight, optional config sync, Portainer apply, and optional health-gated redeploy
-- Any job running on `runner_label` assumes the `toolingDebian` runner contract and does not bootstrap deployment tooling inside the workflow
+Within `dagger-pipeline`, phases execute in this order:
+
+1. **Preflight** (parallel): stacks-sha-trust + secret-validation; inventory-handover (if needed)
+2. **Network policy sync**: depends on preflight completing
+3. **Ansible** (host subprocess): bootstrap and/or host-sync, using Tailscale SSH; depends on inventory-handover + network-policy-sync
+4. **Portainer**: post-bootstrap-secret-check, portainer-api-preflight, portainer-apply, health-gated-redeploy; depends on network-policy-sync
+
+Execution is gated by Python conditionals in `ci_pipeline/__main__.py` based on the toggle env vars from `compute-context`.
 
 ## Trusted `stacks_sha` Boundary
 
-The stacks SHA trust gate is an architectural boundary between the public stacks repo CI surface and the private infra execution surface.
+The `dagger-pipeline` preflight phase (`ci_pipeline/phases/preflight.py`) verifies trusted stacks SHA before any downstream stack-consuming stage mutates infrastructure.
 
-- `validate-planner-contracts.yml` verifies the current `HEAD:stacks` gitlink, and `reusable-orch-preflight.yml` verifies any dispatch or push `meta.stacks_sha` before later stages are allowed to consume it.
-- Trust has two parts: the SHA must still be on the stacks repo `main` lineage, and every observed GitHub CI signal on that commit must be green.
-- The observed CI signals are the GitHub Checks API (`check-runs`) and the legacy commit-status API (`combined status`). Either channel may be absent; if a channel exists it must be ready, and at least one channel must exist.
-- `network-policy-sync` must wait for this trust gate before mutating Terraform Cloud or Infisical allowlists.
-- `phase7_runtime_sync`, `sync-configs`, `terraform/portainer-root` SHA pinning, and the health-gated Portainer webhook redeploy all inherit this boundary because they consume the verified `meta.stacks_sha`.
+This trust boundary applies to:
 
-## Dispatch Notes
+- runtime sync
+- config sync
+- Portainer apply SHA pinning
+- health-gated webhook redeploy
 
-- `repository_dispatch` accepts only `stacks-redeploy-intent-v5` with `schema_version`, `stacks_sha`, `source_sha`, `source_repo`, `source_run_id`, and `reason=full-reconcile`. Payload validation is performed inline by the Python `ci_plan` resolver (controlled by `VALIDATE_DISPATCH_CONTRACT` env var).
-- `repository_dispatch` payload `stacks_sha` remains authoritative for the stacks reconcile path; `push` resolves `stacks_sha` from `HEAD:stacks`.
-- Every valid stacks dispatch runs the same stacks path: trusted `stacks_sha` -> `phase7_runtime_sync` -> `sync-configs` -> SHA-pinned Portainer apply -> full Portainer-managed redeploy from that applied Git ref.
-- Network policy sync must wait for `stacks-sha-trust` before mutating Terraform Cloud or Infisical allowlists.
-- `orchestrator.yml` accepts `push`, `repository_dispatch`, and `workflow_dispatch`. Manual dispatch (`workflow_dispatch`) resolves `stacks_sha` from `HEAD:stacks` and runs the full infra-side reconcile path (`reason=manual-dispatch`). An optional boolean input `ansible_only` skips TFC infra-apply; internally this maps to the `dispatch_ansible_only` event name, which the resolver treats identically to an ansible-only push. The orchestrator does not expose a reusable `workflow_call` entry point.
-- `has_work=true` when any execution toggle is true.
+## Concurrency
+
+All orchestrator event paths share one concurrency group (`infra-orchestrator-*`), so full infra runs and ansible-only runs do not execute concurrently on the same branch/default branch lane.
