@@ -187,7 +187,7 @@ resource "oci_core_network_security_group_security_rule" "gateway_https" {
 }
 
 resource "oci_core_network_security_group_security_rule" "ssh" {
-  for_each                  = toset(var.ssh_enabled ? var.ssh_allowed_cidrs : [])
+  for_each                  = toset(nonsensitive(var.ssh_enabled) ? nonsensitive(var.ssh_allowed_cidrs) : [])
   network_security_group_id = oci_core_network_security_group.gateway_nsg.id
   direction                 = "INGRESS"
   protocol                  = "6" # TCP
