@@ -195,4 +195,5 @@ jobs:
           TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
           INFISICAL_TOKEN: ${{ secrets.INFISICAL_TOKEN }}
           INFISICAL_AGENT_CLIENT_ID: ${{ secrets.INFISICAL_AGENT_CLIENT_ID }}
+          INFISICAL_AGENT_CLIENT_SECRET: ${{ secrets.INFISICAL_AGENT_CLIENT_SECRET }}
         run: dagger run python -m ci_pipeline
