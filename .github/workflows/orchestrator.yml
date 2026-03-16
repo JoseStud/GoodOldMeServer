@@ -154,15 +154,17 @@ jobs:
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:ci
 
-      - name: Enable Tailscale SOCKS5 proxy on localhost:1055
+      - name: Start SOCKS5 proxy on localhost:1055 for Dagger containers
         run: |
           # tailscale/github-action@v3 connects the runner to Tailscale but
-          # does not start the SOCKS5 proxy. Enable it explicitly so Dagger
-          # containers can route Tailscale-internal traffic (Portainer API,
-          # webhook URLs) through the proxy service binding.
-          sudo tailscale set --socks5-server=localhost:1055
+          # the --socks5-server flag was removed from tailscaled in recent
+          # versions. Run pproxy (Python async proxy) as a SOCKS5 server
+          # instead. Because pproxy runs on the host (which is on Tailscale),
+          # containers routing through it can reach any Tailscale node.
+          pip3 install -q pproxy
+          pproxy -l socks5://127.0.0.1:1055 &
           timeout 10 bash -c 'until nc -z 127.0.0.1 1055 2>/dev/null; do sleep 0.5; done'
-          echo "Tailscale SOCKS5 proxy listening on 127.0.0.1:1055"
+          echo "SOCKS5 proxy listening on 127.0.0.1:1055"
 
       - name: Ensure localhost resolves to IPv4 for Dagger host service
         run: |
