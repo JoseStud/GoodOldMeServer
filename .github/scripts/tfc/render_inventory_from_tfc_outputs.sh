@@ -36,6 +36,11 @@ if [[ -z "${outputs_url}" ]]; then
   exit 1
 fi
 
+# TFC returns relative URLs in links.related — prepend the host.
+if [[ "${outputs_url}" == /* ]]; then
+  outputs_url="${TFC_API_URL%%/api/*}${outputs_url}"
+fi
+
 outputs_json="$(api_get "${outputs_url}")"
 
 oci_ips_json="$(jq -c '.data[] | select(.attributes.name == "oci_public_ips") | .attributes.value // empty' <<<"${outputs_json}")"
