@@ -153,6 +153,12 @@ async def portainer_apply(
             "TF_VAR_infisical_project_id", tf_var_infisical_project_id
         )
 
+    tf_var_machine_identity_id = os.environ.get("INFISICAL_MACHINE_IDENTITY_ID", "")
+    if tf_var_machine_identity_id:
+        ctr = ctr.with_env_variable(
+            "TF_VAR_infisical_machine_identity_id", tf_var_machine_identity_id
+        )
+
     for var in ("TFC_TOKEN", "INFISICAL_TOKEN"):
         val = os.environ.get(var, "")
         if val:
@@ -160,6 +166,8 @@ async def portainer_apply(
             ctr = ctr.with_secret_variable(var, secret)
             if var == "TFC_TOKEN":
                 ctr = ctr.with_secret_variable("TF_TOKEN_app_terraform_io", secret)
+
+    ctr = _wire_infisical(ctr, client)
 
     if proxy:
         ctr = proxy.bind(ctr)

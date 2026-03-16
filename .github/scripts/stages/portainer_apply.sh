@@ -4,7 +4,10 @@ set -euo pipefail
 
 source .github/scripts/lib/workflow_common.sh
 
-: "${INFISICAL_TOKEN:?INFISICAL_TOKEN is required}"
+if [[ -z "${INFISICAL_TOKEN:-}" && -z "${INFISICAL_MACHINE_IDENTITY_ID:-}" ]]; then
+  echo "Either INFISICAL_TOKEN or INFISICAL_MACHINE_IDENTITY_ID (OIDC) is required" >&2
+  exit 1
+fi
 : "${TFC_WORKSPACE_PORTAINER:?TFC_WORKSPACE_PORTAINER is required}"
 : "${TFC_ORGANIZATION:?TFC_ORGANIZATION is required}"
 

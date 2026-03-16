@@ -70,7 +70,10 @@ validate_existing_portainer_credentials() {
 }
 
 if [[ "${RUN_PORTAINER}" == "true" ]]; then
-  require_nonempty_env "INFISICAL_TOKEN" "${INFISICAL_TOKEN:-}"
+  if [[ -z "${INFISICAL_TOKEN:-}" && -z "${INFISICAL_MACHINE_IDENTITY_ID:-}" ]]; then
+    echo "Missing required auth: either INFISICAL_TOKEN or INFISICAL_MACHINE_IDENTITY_ID (OIDC) must be set"
+    exit 1
+  fi
 fi
 
 if [[ "${RUN_ANSIBLE}" == "true" || "${RUN_HOST_SYNC}" == "true" ]]; then
