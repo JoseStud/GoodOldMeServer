@@ -87,7 +87,7 @@ def network_container(
     else:
         ctr = ctr.with_exec(["apk", "add", "--no-cache", "yq"])
 
-    return ctr
+    return _install_infisical(ctr)
 
 
 # ---------------------------------------------------------------------------
