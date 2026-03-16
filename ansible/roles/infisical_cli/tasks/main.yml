@@ -1,17 +1,33 @@
 ---
-- name: Download Infisical repository setup script
-  ansible.builtin.get_url:
-    url: "https://dl.cloudsmith.io/public/infisical/infisical-core/setup.deb.sh"
-    dest: /tmp/infisical-setup.sh
-    mode: "0755"
+- name: Check if Infisical CLI is installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/infisical
+  register: infisical_binary
 
-- name: Add Infisical apt repository via setup script
-  ansible.builtin.command:
-    cmd: bash /tmp/infisical-setup.sh
-    creates: /etc/apt/sources.list.d/infisical-core.list
+- name: Get latest Infisical release version
+  ansible.builtin.uri:
+    url: https://api.github.com/repos/Infisical/infisical/releases/latest
+    return_content: true
+    body_format: json
+  register: infisical_release
+  when: not infisical_binary.stat.exists
 
-- name: Install Infisical CLI
-  ansible.builtin.apt:
-    name: infisical-core
-    state: present
-    update_cache: true
+- name: Download and install Infisical CLI
+  vars:
+    infisical_version: "{{ infisical_release.json.tag_name | regex_replace('^infisical-cli/v', '') }}"
+    infisical_arch: "{{ 'arm64' if ansible_architecture in ['aarch64', 'arm64'] else 'amd64' }}"
+  when: not infisical_binary.stat.exists
+  block:
+    - name: Download Infisical CLI archive
+      ansible.builtin.get_url:
+        url: "https://github.com/Infisical/infisical/releases/download/infisical-cli%2Fv{{ infisical_version }}/infisical_{{ infisical_version }}_linux_{{ infisical_arch }}.tar.gz"
+        dest: "/tmp/infisical_linux_{{ infisical_arch }}.tar.gz"
+        mode: "0644"
+
+    - name: Install Infisical CLI binary
+      ansible.builtin.unarchive:
+        src: "/tmp/infisical_linux_{{ infisical_arch }}.tar.gz"
+        dest: /usr/local/bin
+        remote_src: true
+        include:
+          - infisical
