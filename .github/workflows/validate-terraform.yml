@@ -71,6 +71,7 @@ jobs:
         run: terraform -chdir=${{ matrix.root }} validate
 
   cloud-runner-guard:
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     outputs:
       runner_label: ${{ steps.guard.outputs.runner_label }}
@@ -85,6 +86,7 @@ jobs:
           echo "runner_label=${CLOUD_STATIC_RUNNER_LABEL}" >> "${GITHUB_OUTPUT}"
 
   tfc-speculative-plan:
+    if: github.actor != 'dependabot[bot]'
     needs: terraform-validate
     runs-on: ubuntu-latest
     env:

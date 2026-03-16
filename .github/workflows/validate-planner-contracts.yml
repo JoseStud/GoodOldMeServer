@@ -67,6 +67,7 @@ jobs:
   # the PR discipline gate.  See test_workflow_contracts.sh for the contract
   # assertion.
   stacks-sha-trust:
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
 
     steps:

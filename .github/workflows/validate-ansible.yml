@@ -57,7 +57,7 @@ jobs:
           sudo apt-get install -y pipx
           echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
           source .github/ci/tool-versions.lock
-          pipx install "ansible-core==${ANSIBLE_CORE_VERSION}"
+          pipx install --force "ansible-core==${ANSIBLE_CORE_VERSION}"
           pipx install "ansible-lint==${ANSIBLE_LINT_VERSION}"
           ansible-playbook --version | head -n1 | grep -F "core ${ANSIBLE_CORE_VERSION}"
           ansible-lint --version | head -n1 | grep -F "ansible-lint ${ANSIBLE_LINT_VERSION}"
