@@ -365,9 +365,14 @@ checkout_stacks_sha() {
 
 generate_ephemeral_ssh_certificate() {
   : "${INFISICAL_SSH_CA_ID:?INFISICAL_SSH_CA_ID is required}"
+  : "${SSH_CERT_PRINCIPALS:?SSH_CERT_PRINCIPALS is required (comma-separated, e.g. ubuntu,debian)}"
   require_command ssh-keygen
   require_command infisical
   mkdir -p ~/.ssh
   ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ""
-  infisical ssh sign --public-key=~/.ssh/id_ed25519.pub --ca-id="${INFISICAL_SSH_CA_ID}" > ~/.ssh/id_ed25519-cert.pub
+  infisical ssh sign-key \
+    --publicKeyFilePath ~/.ssh/id_ed25519.pub \
+    --certificateTemplateId "${INFISICAL_SSH_CA_ID}" \
+    --principals "${SSH_CERT_PRINCIPALS}" \
+    --outFilePath ~/.ssh/id_ed25519-cert.pub
 }
