@@ -223,7 +223,7 @@ exit_if_shadow_mode() {
 
 infisical_oidc_login() {
   : "${INFISICAL_MACHINE_IDENTITY_ID:?INFISICAL_MACHINE_IDENTITY_ID is required}"
-  infisical login --method=oidc --oidc-client-id="${INFISICAL_MACHINE_IDENTITY_ID}" --domain="${INFISICAL_DOMAIN:-https://app.infisical.com}"
+  infisical login --method=oidc-auth --machine-identity-id="${INFISICAL_MACHINE_IDENTITY_ID}" --domain="${INFISICAL_DOMAIN:-https://app.infisical.com}"
 }
 
 setup_infisical() {
