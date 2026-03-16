@@ -89,6 +89,7 @@ jobs:
     if: github.actor != 'dependabot[bot]'
     needs: terraform-validate
     runs-on: ubuntu-latest
+    environment: Jux
     env:
       TFC_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
       TF_CLOUD_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
@@ -150,6 +151,7 @@ jobs:
   portainer-live-plan:
     needs: [terraform-validate, cloud-runner-guard]
     runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
+    environment: Jux
     env:
       INFISICAL_MACHINE_IDENTITY_ID: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
       INFISICAL_PROJECT_ID: ${{ vars.INFISICAL_PROJECT_ID }}

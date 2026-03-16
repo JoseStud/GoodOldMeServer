@@ -73,6 +73,7 @@ jobs:
     if: ${{ needs['compute-context'].outputs.run_infra_apply == 'true' }}
     needs: [compute-context]
     runs-on: ubuntu-latest
+    environment: Jux
     timeout-minutes: 150
     env:
       SHADOW_MODE: ${{ vars.SHADOW_MODE || 'false' }}
@@ -125,6 +126,7 @@ jobs:
     if: ${{ !cancelled() && needs['compute-context'].outputs.has_work == 'true' && needs['compute-context'].result == 'success' && (needs['infra-apply'].result == 'success' || needs['infra-apply'].result == 'skipped') }}
     needs: [compute-context, infra-apply]
     runs-on: ubuntu-latest
+    environment: Jux
     timeout-minutes: 120
     env:
       SHADOW_MODE: ${{ vars.SHADOW_MODE || 'false' }}
