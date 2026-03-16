@@ -23,6 +23,7 @@ def _wire_infisical(
     for var in (
         "INFISICAL_PROJECT_ID",
         "INFISICAL_MACHINE_IDENTITY_ID",
+        "INFISICAL_OIDC_AUDIENCE",
     ):
         val = os.environ.get(var, "")
         if val:
