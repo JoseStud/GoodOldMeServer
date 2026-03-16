@@ -10,7 +10,7 @@ fi
 detect_public_ip() {
   local family="$1"
   local url="$2"
-  curl "--${family}" -fsS --retry 3 --retry-delay 1 --max-time 10 "${url}"
+  curl "-${family}" -fsS --retry 3 --retry-delay 1 --max-time 10 "${url}"
 }
 
 validate_policy_shape() {

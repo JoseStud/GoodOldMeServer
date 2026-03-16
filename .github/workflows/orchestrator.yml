@@ -154,6 +154,9 @@ jobs:
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:ci
 
+      - name: Bridge Tailscale SOCKS5 proxy to IPv6 loopback for Dagger
+        run: socat TCP6-LISTEN:1055,bind=[::1],ipv6only=1,reuseaddr,fork TCP4:127.0.0.1:1055 &
+
       - name: Install Dagger
         uses: dagger/dagger-for-github@v7
         with:
