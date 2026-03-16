@@ -201,9 +201,9 @@ def _install_yq(ctr: dagger.Container, version: str, sha256: str) -> dagger.Cont
 def _install_infisical(ctr: dagger.Container) -> dagger.Container:
     """Install the Infisical CLI via official install script."""
     return ctr.with_exec([
-        "sh", "-c",
+        "bash", "-c",
         "curl -1sLf 'https://dl.cloudsmith.io/public/infisical/infisical-cli/setup.alpine.sh'"
-        " | sh && apk add --no-cache infisical",
+        " | bash && apk add --no-cache infisical",
     ])
 
 

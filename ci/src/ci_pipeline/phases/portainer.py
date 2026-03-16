@@ -32,6 +32,9 @@ def _wire_infisical(
     for var in (
         "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
         "ACTIONS_ID_TOKEN_REQUEST_URL",
+        "INFISICAL_TOKEN",
+        "INFISICAL_AGENT_CLIENT_ID",
+        "INFISICAL_AGENT_CLIENT_SECRET",
     ):
         val = os.environ.get(var, "")
         if val:

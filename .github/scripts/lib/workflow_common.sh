@@ -284,13 +284,37 @@ infisical_oidc_login() {
   infisical login --method=oidc-auth --machine-identity-id="${INFISICAL_MACHINE_IDENTITY_ID}" --jwt="${oidc_jwt}" --domain="${INFISICAL_DOMAIN:-https://app.infisical.com}"
 }
 
+get_infisical_universal_auth_token() {
+  : "${INFISICAL_AGENT_CLIENT_ID:?INFISICAL_AGENT_CLIENT_ID is required}"
+  : "${INFISICAL_AGENT_CLIENT_SECRET:?INFISICAL_AGENT_CLIENT_SECRET is required}"
+
+  local access_token
+  access_token="$(curl -sSf \
+    "${INFISICAL_DOMAIN:-https://app.infisical.com}/api/v1/auth/universal-auth/login" \
+    -H "Content-Type: application/json" \
+    -d "{\"clientId\":\"${INFISICAL_AGENT_CLIENT_ID}\",\"clientSecret\":\"${INFISICAL_AGENT_CLIENT_SECRET}\"}" \
+    | jq -r '.accessToken')"
+
+  if [[ -z "${access_token}" || "${access_token}" == "null" ]]; then
+    echo "Failed to obtain Infisical access token via Universal Auth." >&2
+    return 1
+  fi
+
+  printf '%s' "${access_token}"
+}
+
 setup_infisical() {
   require_command infisical
   if [[ -n "${INFISICAL_TOKEN:-}" ]]; then
     echo "INFISICAL_TOKEN is set; skipping OIDC login."
     return
   fi
-  INFISICAL_TOKEN="$(get_infisical_oidc_token)"
+  
+  if [[ -n "${INFISICAL_AGENT_CLIENT_ID:-}" && -n "${INFISICAL_AGENT_CLIENT_SECRET:-}" ]]; then
+    INFISICAL_TOKEN="$(get_infisical_universal_auth_token)"
+  else
+    INFISICAL_TOKEN="$(get_infisical_oidc_token)"
+  fi
   export INFISICAL_TOKEN
 }
 

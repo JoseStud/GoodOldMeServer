@@ -175,7 +175,12 @@ async def network_policy_sync(
         if val:
             ctr = ctr.with_env_variable(var, val)
 
-    for var in ("TFC_TOKEN",):
+    for var in (
+        "TFC_TOKEN",
+        "INFISICAL_TOKEN",
+        "INFISICAL_AGENT_CLIENT_ID",
+        "INFISICAL_AGENT_CLIENT_SECRET",
+    ):
         val = os.environ.get(var, "")
         if val:
             ctr = ctr.with_secret_variable(var, client.set_secret(var, val))
