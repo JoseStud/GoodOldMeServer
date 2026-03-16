@@ -73,6 +73,7 @@ jobs:
   cloud-runner-guard:
     if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
+    environment: Jux
     outputs:
       runner_label: ${{ steps.guard.outputs.runner_label }}
 
