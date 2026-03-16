@@ -53,7 +53,7 @@ async def run_pipeline() -> None:
 
     print(f"pipeline: reason={reason} stacks_sha={stacks_sha[:12]}...")
 
-    async with dagger.connect() as client:
+    async with dagger.Connection() as client:
         source_dir = client.host().directory(
             ".",
             exclude=[".git", "ci/.venv", "ci/.pytest_cache", "__pycache__"],
