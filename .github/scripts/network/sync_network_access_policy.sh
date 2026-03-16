@@ -59,13 +59,8 @@ vars_json="$(api_get "${TFC_API_URL%/}/workspaces/${workspace_id}/vars?page[size
 existing_var_id="$(jq -r --arg key "${TFC_POLICY_VAR_KEY}" '.data[] | select(.attributes.key == $key and .attributes.category == "terraform") | .id' <<<"${vars_json}" | head -n1)"
 # If not found as terraform-category, check legacy env-category (TF_VAR_network_access_policy).
 legacy_env_var_id="$(jq -r '.data[] | select(.attributes.key == "TF_VAR_network_access_policy" and .attributes.category == "env") | .id' <<<"${vars_json}" | head -n1)"
-# Check if the existing variable is sensitive (TFC does not allow un-sensitizing via PATCH).
-existing_var_sensitive="$(jq -r --arg key "${TFC_POLICY_VAR_KEY}" \
-  '.data[] | select(.attributes.key == $key and .attributes.category == "terraform") | .attributes.sensitive | tostring' \
-  <<<"${vars_json}" | head -n1)"
-existing_var_sensitive="${existing_var_sensitive:-false}"
 
-patch_payload="$(
+payload="$(
   jq -cn \
     --arg key "${TFC_POLICY_VAR_KEY}" \
     --arg value "${policy_json}" \
@@ -82,39 +77,15 @@ patch_payload="$(
           sensitive: false
         }
       }
-    } | .data.id = $existing_id'
-)"
-
-create_payload="$(
-  jq -cn \
-    --arg key "${TFC_POLICY_VAR_KEY}" \
-    --arg value "${policy_json}" \
-    '{
-      data: {
-        type: "vars",
-        attributes: {
-          key: $key,
-          value: $value,
-          description: "Managed by infrastructure orchestrator network policy sync",
-          category: "terraform",
-          hcl: true,
-          sensitive: false
-        }
-      }
-    }'
+    } | if $existing_id != "" then .data.id = $existing_id else . end'
 )"
 
 echo "Syncing network access policy to TFC variable '${TFC_POLICY_VAR_KEY}' (terraform/hcl)..."
-if [[ -n "${existing_var_id}" && "${existing_var_sensitive}" != "true" ]]; then
-  api_write "PATCH" "${TFC_API_URL%/}/vars/${existing_var_id}" "${patch_payload}" >/dev/null \
+if [[ -n "${existing_var_id}" ]]; then
+  api_write "PATCH" "${TFC_API_URL%/}/vars/${existing_var_id}" "${payload}" >/dev/null \
     || { echo "Failed to PATCH TFC variable (id=${existing_var_id})."; exit 1; }
 else
-  if [[ -n "${existing_var_id}" ]]; then
-    echo "Existing variable is sensitive (id=${existing_var_id}); deleting before recreating as non-sensitive..."
-    api_write "DELETE" "${TFC_API_URL%/}/vars/${existing_var_id}" "" >/dev/null \
-      || { echo "Failed to DELETE sensitive TFC variable (id=${existing_var_id})."; exit 1; }
-  fi
-  api_write "POST" "${TFC_API_URL%/}/workspaces/${workspace_id}/vars" "${create_payload}" >/dev/null \
+  api_write "POST" "${TFC_API_URL%/}/workspaces/${workspace_id}/vars" "${payload}" >/dev/null \
     || { echo "Failed to create TFC variable '${TFC_POLICY_VAR_KEY}'."; exit 1; }
 fi
 
