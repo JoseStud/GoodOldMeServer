@@ -13,6 +13,8 @@ checkout_stacks_sha "${STACKS_SHA:-}"
 setup_infisical
 generate_ephemeral_ssh_certificate
 
+ansible-galaxy collection install -r ansible/requirements.yml
+
 exit_if_shadow_mode "SHADOW_MODE=true: skipping Ansible mutation run."
 
 ansible_args=(-i "${INVENTORY_FILE}" ansible/playbooks/provision.yml)
