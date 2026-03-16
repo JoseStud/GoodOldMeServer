@@ -60,7 +60,7 @@ while (( SECONDS < deadline )); do
 
   status="$(jq -r '.data.attributes.status // "unknown"' <<<"${run_json}")"
   is_confirmable="$(jq -r '.data.attributes.actions["is-confirmable"] // false' <<<"${run_json}")"
-  has_changes="$(jq -r '.data.attributes["has-changes"] // "unknown"' <<<"${run_json}")"
+  has_changes="$(jq -r '.data.attributes["has-changes"] | if . == null then "unknown" else tostring end' <<<"${run_json}")"
   auto_apply="$(jq -r '.data.attributes["auto-apply"] // false' <<<"${run_json}")"
 
   if [[ "${status}" != "${last_status}" ]]; then
