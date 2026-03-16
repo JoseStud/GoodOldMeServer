@@ -12,13 +12,6 @@ terraform {
 # Providers
 provider "infisical" {
   host = "https://app.infisical.com"
-
-  dynamic "oidc_auth" {
-    for_each = var.infisical_machine_identity_id != null ? [1] : []
-    content {
-      identity_id = var.infisical_machine_identity_id
-    }
-  }
 }
 
 provider "portainer" {
@@ -42,12 +35,6 @@ locals {
 }
 
 # Variables
-variable "infisical_machine_identity_id" {
-  description = "Infisical machine identity ID for OIDC authentication (optional; INFISICAL_TOKEN takes precedence)"
-  type        = string
-  default     = null
-}
-
 variable "infisical_project_id" {
   description = "Infisical workspace/project ID for secret retrieval"
   type        = string

@@ -159,7 +159,6 @@ jobs:
       TFC_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
       TFC_WORKSPACE_PORTAINER: ${{ vars.TFC_WORKSPACE_PORTAINER || 'goodoldme-portainer' }}
       TF_VAR_infisical_project_id: ${{ vars.INFISICAL_PROJECT_ID }}
-      TF_VAR_infisical_machine_identity_id: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
 
     steps:
       - name: Checkout

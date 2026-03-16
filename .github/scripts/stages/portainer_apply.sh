@@ -8,6 +8,11 @@ if [[ -z "${INFISICAL_TOKEN:-}" && -z "${INFISICAL_MACHINE_IDENTITY_ID:-}" ]]; t
   echo "Either INFISICAL_TOKEN or INFISICAL_MACHINE_IDENTITY_ID (OIDC) is required" >&2
   exit 1
 fi
+
+if [[ -z "${INFISICAL_TOKEN:-}" ]]; then
+  INFISICAL_TOKEN="$(get_infisical_oidc_token)"
+  export INFISICAL_TOKEN
+fi
 : "${TFC_WORKSPACE_PORTAINER:?TFC_WORKSPACE_PORTAINER is required}"
 : "${TFC_ORGANIZATION:?TFC_ORGANIZATION is required}"
 

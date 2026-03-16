@@ -221,6 +221,45 @@ exit_if_shadow_mode() {
   fi
 }
 
+get_infisical_oidc_token() {
+  # Exchange a GitHub OIDC JWT for an Infisical access token (stdout).
+  # Requires: INFISICAL_MACHINE_IDENTITY_ID, ACTIONS_ID_TOKEN_REQUEST_URL,
+  #           ACTIONS_ID_TOKEN_REQUEST_TOKEN
+  : "${INFISICAL_MACHINE_IDENTITY_ID:?INFISICAL_MACHINE_IDENTITY_ID is required}"
+  : "${ACTIONS_ID_TOKEN_REQUEST_URL:?ACTIONS_ID_TOKEN_REQUEST_URL is required (needs id-token: write permission)}"
+  : "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:?ACTIONS_ID_TOKEN_REQUEST_TOKEN is required}"
+
+  local oidc_url="${ACTIONS_ID_TOKEN_REQUEST_URL}"
+  if [[ -n "${INFISICAL_OIDC_AUDIENCE:-}" ]]; then
+    oidc_url="${oidc_url}&audience=${INFISICAL_OIDC_AUDIENCE}"
+  fi
+
+  local oidc_jwt
+  oidc_jwt="$(curl -sSfL \
+    -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+    "${oidc_url}" \
+    | jq -r '.value')"
+
+  if [[ -z "${oidc_jwt}" || "${oidc_jwt}" == "null" ]]; then
+    echo "Failed to obtain GitHub OIDC JWT for Infisical login." >&2
+    return 1
+  fi
+
+  local access_token
+  access_token="$(curl -sSf \
+    "${INFISICAL_DOMAIN:-https://app.infisical.com}/api/v1/auth/oidc-auth/login" \
+    -H "Content-Type: application/json" \
+    -d "{\"identityId\":\"${INFISICAL_MACHINE_IDENTITY_ID}\",\"jwt\":\"${oidc_jwt}\"}" \
+    | jq -r '.accessToken')"
+
+  if [[ -z "${access_token}" || "${access_token}" == "null" ]]; then
+    echo "Failed to obtain Infisical access token via OIDC." >&2
+    return 1
+  fi
+
+  printf '%s' "${access_token}"
+}
+
 infisical_oidc_login() {
   : "${INFISICAL_MACHINE_IDENTITY_ID:?INFISICAL_MACHINE_IDENTITY_ID is required}"
   : "${ACTIONS_ID_TOKEN_REQUEST_URL:?ACTIONS_ID_TOKEN_REQUEST_URL is required (needs id-token: write permission)}"
