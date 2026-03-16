@@ -14,7 +14,7 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 TFC_API_URL="${TFC_API_URL:-https://app.terraform.io/api/v2}"
-TFC_POLICY_VAR_KEY="${TFC_POLICY_VAR_KEY:-TF_VAR_network_access_policy}"
+TFC_POLICY_VAR_KEY="${TFC_POLICY_VAR_KEY:-network_access_policy}"
 
 api_get() {
   local url="$1"
@@ -47,7 +47,10 @@ if [[ -z "${workspace_id}" ]]; then
 fi
 
 vars_json="$(api_get "${TFC_API_URL%/}/workspaces/${workspace_id}/vars?page[size]=200")"
-existing_var_id="$(jq -r --arg key "${TFC_POLICY_VAR_KEY}" '.data[] | select(.attributes.key == $key and .attributes.category == "env") | .id' <<<"${vars_json}" | head -n1)"
+# Look for existing variable in terraform category (canonical) or legacy env category.
+existing_var_id="$(jq -r --arg key "${TFC_POLICY_VAR_KEY}" '.data[] | select(.attributes.key == $key and .attributes.category == "terraform") | .id' <<<"${vars_json}" | head -n1)"
+# If not found as terraform-category, check legacy env-category (TF_VAR_network_access_policy).
+legacy_env_var_id="$(jq -r '.data[] | select(.attributes.key == "TF_VAR_network_access_policy" and .attributes.category == "env") | .id' <<<"${vars_json}" | head -n1)"
 
 payload="$(
   jq -cn \
@@ -60,15 +63,15 @@ payload="$(
           key: $key,
           value: $value,
           description: "Managed by infrastructure orchestrator network policy sync",
-          category: "env",
-          hcl: false,
+          category: "terraform",
+          hcl: true,
           sensitive: false
         }
       }
     }'
 )"
 
-echo "Syncing network access policy to TFC variable '${TFC_POLICY_VAR_KEY}'..."
+echo "Syncing network access policy to TFC variable '${TFC_POLICY_VAR_KEY}' (terraform/hcl)..."
 if [[ -n "${existing_var_id}" ]]; then
   api_write "PATCH" "${TFC_API_URL%/}/vars/${existing_var_id}" "${payload}" >/dev/null \
     || { echo "Failed to PATCH TFC variable (id=${existing_var_id})."; exit 1; }
@@ -77,8 +80,15 @@ else
     || { echo "Failed to create TFC variable '${TFC_POLICY_VAR_KEY}'."; exit 1; }
 fi
 
+# Remove legacy env-category TF_VAR_network_access_policy if it still exists.
+if [[ -n "${legacy_env_var_id}" ]]; then
+  echo "Removing legacy env-category TF_VAR_network_access_policy (id=${legacy_env_var_id})..."
+  api_write "DELETE" "${TFC_API_URL%/}/vars/${legacy_env_var_id}" "" >/dev/null \
+    || { echo "Warning: failed to delete legacy TFC variable (id=${legacy_env_var_id}). Continuing."; }
+fi
+
 vars_after_json="$(api_get "${TFC_API_URL%/}/workspaces/${workspace_id}/vars?page[size]=200")"
-tfc_policy_raw="$(jq -r --arg key "${TFC_POLICY_VAR_KEY}" '.data[] | select(.attributes.key == $key and .attributes.category == "env") | .attributes.value // empty' <<<"${vars_after_json}" | head -n1)"
+tfc_policy_raw="$(jq -r --arg key "${TFC_POLICY_VAR_KEY}" '.data[] | select(.attributes.key == $key and .attributes.category == "terraform") | .attributes.value // empty' <<<"${vars_after_json}" | head -n1)"
 if [[ -z "${tfc_policy_raw}" ]]; then
   echo "Failed to read back ${TFC_POLICY_VAR_KEY} from Terraform Cloud."
   exit 1

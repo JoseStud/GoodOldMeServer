@@ -1,14 +1,8 @@
 ---
-- name: Add Infisical signing key
-  ansible.builtin.apt_key:
-    url: https://dl.cloudsmith.io/public/infisical/infisical-core/gpg.2BA6932366A755776.gpg
-    state: present
-
-- name: Add Infisical apt repository
-  ansible.builtin.apt_repository:
-    repo: "deb https://dl.cloudsmith.io/public/infisical/infisical-core/deb/debian any-version main"
-    state: present
-    filename: infisical-core
+- name: Add Infisical apt repository via setup script
+  ansible.builtin.shell:
+    cmd: "curl -fsSL 'https://dl.cloudsmith.io/public/infisical/infisical-core/setup.deb.sh' | bash"
+    creates: /etc/apt/sources.list.d/infisical-core.list
 
 - name: Install Infisical CLI
   ansible.builtin.apt:
