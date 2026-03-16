@@ -4,17 +4,19 @@
     path: /usr/local/bin/infisical
   register: infisical_binary
 
-- name: Get latest Infisical release version
+# Infisical is a monorepo; releases/latest may return a non-CLI release.
+# List recent releases and pick the first infisical-cli tag.
+- name: Get Infisical CLI releases
   ansible.builtin.uri:
-    url: https://api.github.com/repos/Infisical/infisical/releases/latest
+    url: "https://api.github.com/repos/Infisical/infisical/releases?per_page=50"
     return_content: true
     body_format: json
-  register: infisical_release
+  register: infisical_releases
   when: not infisical_binary.stat.exists
 
 - name: Download and install Infisical CLI
   vars:
-    infisical_version: "{{ infisical_release.json.tag_name | regex_replace('^infisical-cli/v', '') }}"
+    infisical_version: "{{ (infisical_releases.json | selectattr('tag_name', 'match', '^infisical-cli/v') | first).tag_name | regex_replace('^infisical-cli/v', '') }}"
     infisical_arch: "{{ 'arm64' if ansible_architecture in ['aarch64', 'arm64'] else 'amd64' }}"
   when: not infisical_binary.stat.exists
   block:

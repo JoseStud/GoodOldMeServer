@@ -172,8 +172,12 @@ jobs:
           if ! command -v infisical >/dev/null 2>&1; then
             ARCH="$(dpkg --print-architecture 2>/dev/null || echo "amd64")"
             case "${ARCH}" in arm64|aarch64) INFISICAL_ARCH="arm64" ;; *) INFISICAL_ARCH="amd64" ;; esac
-            VERSION="$(curl -fsSL https://api.github.com/repos/Infisical/infisical/releases/latest \
-              | grep '"tag_name"' | sed 's/.*"infisical-cli\/v\([^"]*\)".*/\1/')"
+            # Infisical is a monorepo; releases/latest may return a non-CLI release.
+            # List recent releases and pick the first infisical-cli tag.
+            VERSION="$(curl -fsSL 'https://api.github.com/repos/Infisical/infisical/releases?per_page=50' \
+              | grep '"tag_name"' | grep 'infisical-cli/v' | head -1 \
+              | sed 's/.*infisical-cli\/v//;s/".*//')"
+            if [[ -z "${VERSION}" ]]; then echo "Failed to resolve Infisical CLI version"; exit 1; fi
             curl -fsSL "https://github.com/Infisical/infisical/releases/download/infisical-cli%2Fv${VERSION}/infisical_${VERSION}_linux_${INFISICAL_ARCH}.tar.gz" \
               | sudo tar -xz -C /usr/local/bin infisical
           fi
