@@ -140,6 +140,7 @@ jobs:
       INFISICAL_MACHINE_IDENTITY_ID: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
       INFISICAL_OIDC_AUDIENCE: ${{ vars.INFISICAL_OIDC_AUDIENCE }}
       INFISICAL_SSH_CA_ID: ${{ vars.INFISICAL_SSH_CA_ID }}
+      SSH_CERT_PRINCIPALS: ${{ vars.SSH_CERT_PRINCIPALS }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
