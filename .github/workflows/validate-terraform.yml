@@ -164,6 +164,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Ensure unzip is available
+        run: command -v unzip || sudo apt-get update -qq && sudo apt-get install -yqq unzip
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 

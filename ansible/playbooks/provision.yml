@@ -43,6 +43,8 @@
       tags: [phase3_tailscale]
 
     - name: Install Tailscale via official APT repo
+      when: tailscale_status.rc != 0 or 'BackendState' not in (tailscale_status.stdout | default(''))
+      tags: [phase3_tailscale]
       block:
         - name: Add Tailscale signing key
           ansible.builtin.apt_key:
@@ -60,8 +62,6 @@
             name: tailscale
             state: present
             update_cache: true
-      when: tailscale_status.rc != 0 or 'BackendState' not in (tailscale_status.stdout | default(''))
-      tags: [phase3_tailscale]
 
     - name: Authenticate Tailscale (Requires TAILSCALE_AUTH_KEY env)
       ansible.builtin.command: tailscale up --authkey={{ lookup('env', 'TAILSCALE_AUTH_KEY') }} --ssh

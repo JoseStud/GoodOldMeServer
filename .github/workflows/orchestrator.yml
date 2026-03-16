@@ -78,6 +78,7 @@ jobs:
     env:
       SHADOW_MODE: ${{ vars.SHADOW_MODE || 'false' }}
       TFC_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
+      TF_CLOUD_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
       TFC_WORKSPACE_INFRA: ${{ vars.TFC_WORKSPACE_INFRA || 'goodoldme-infra' }}
     steps:
       - name: Checkout
