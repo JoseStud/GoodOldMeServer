@@ -31,6 +31,7 @@ NO_PROXY_DOMAINS = ",".join([
     "terraform.io",         # app.terraform.io, registry.terraform.io
     "hashicorp.com",
     "dagger.cloud",
+    "ipify.org",            # api.ipify.org
 ])
 
 
