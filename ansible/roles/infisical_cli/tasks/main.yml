@@ -4,32 +4,27 @@
     path: /usr/local/bin/infisical
   register: infisical_binary
 
-# Infisical is a monorepo; releases/latest may return a non-CLI release.
-# List recent releases and pick the first infisical-cli tag.
-- name: Get Infisical CLI releases
+# CLI lives in Infisical/cli (separate repo from the main Infisical/infisical).
+- name: Get latest Infisical CLI release version
   ansible.builtin.uri:
-    url: "https://api.github.com/repos/Infisical/infisical/releases?per_page=50"
+    url: https://api.github.com/repos/Infisical/cli/releases/latest
     return_content: true
     body_format: json
-  register: infisical_releases
+  register: infisical_release
   when: not infisical_binary.stat.exists
 
 - name: Download and install Infisical CLI
   vars:
-    infisical_version: "{{ (infisical_releases.json | selectattr('tag_name', 'match', '^infisical-cli/v') | first).tag_name | regex_replace('^infisical-cli/v', '') }}"
+    infisical_version: "{{ infisical_release.json.tag_name | regex_replace('^v', '') }}"
     infisical_arch: "{{ 'arm64' if ansible_architecture in ['aarch64', 'arm64'] else 'amd64' }}"
   when: not infisical_binary.stat.exists
   block:
-    - name: Download Infisical CLI archive
+    - name: Download Infisical CLI deb package
       ansible.builtin.get_url:
-        url: "https://github.com/Infisical/infisical/releases/download/infisical-cli%2Fv{{ infisical_version }}/infisical_{{ infisical_version }}_linux_{{ infisical_arch }}.tar.gz"
-        dest: "/tmp/infisical_linux_{{ infisical_arch }}.tar.gz"
+        url: "https://github.com/Infisical/cli/releases/download/v{{ infisical_version }}/infisical_{{ infisical_version }}_linux_{{ infisical_arch }}.deb"
+        dest: "/tmp/infisical_{{ infisical_version }}_linux_{{ infisical_arch }}.deb"
         mode: "0644"
 
-    - name: Install Infisical CLI binary
-      ansible.builtin.unarchive:
-        src: "/tmp/infisical_linux_{{ infisical_arch }}.tar.gz"
-        dest: /usr/local/bin
-        remote_src: true
-        include:
-          - infisical
+    - name: Install Infisical CLI deb package
+      ansible.builtin.apt:
+        deb: "/tmp/infisical_{{ infisical_version }}_linux_{{ infisical_arch }}.deb"

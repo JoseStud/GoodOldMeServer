@@ -174,16 +174,14 @@ jobs:
           if ! command -v infisical >/dev/null 2>&1; then
             ARCH="$(dpkg --print-architecture 2>/dev/null || echo "amd64")"
             case "${ARCH}" in arm64|aarch64) INFISICAL_ARCH="arm64" ;; *) INFISICAL_ARCH="amd64" ;; esac
-            # Infisical is a monorepo; releases/latest may return a non-CLI release.
-            # Authenticate to avoid GitHub API rate limits on the self-hosted runner.
+            # CLI lives in Infisical/cli (separate repo from the main Infisical/infisical).
             VERSION="$(curl -fsSL -H "Authorization: Bearer ${GH_API_TOKEN}" \
-              'https://api.github.com/repos/Infisical/infisical/releases?per_page=50' \
-              | grep '"tag_name"' | grep 'infisical-cli/v' | head -1 \
-              | sed 's/.*infisical-cli\/v//;s/".*//')"
+              'https://api.github.com/repos/Infisical/cli/releases/latest' \
+              | grep '"tag_name"' | head -1 | sed 's/.*"v//;s/".*//')"
             if [[ -z "${VERSION}" ]]; then echo "Failed to resolve Infisical CLI version"; exit 1; fi
             echo "Installing Infisical CLI v${VERSION} for ${INFISICAL_ARCH}"
-            curl -fsSL "https://github.com/Infisical/infisical/releases/download/infisical-cli%2Fv${VERSION}/infisical_${VERSION}_linux_${INFISICAL_ARCH}.tar.gz" \
-              | sudo tar -xz -C /usr/local/bin infisical
+            curl -fsSL "https://github.com/Infisical/cli/releases/download/v${VERSION}/infisical_${VERSION}_linux_${INFISICAL_ARCH}.deb" \
+              -o /tmp/infisical.deb && sudo dpkg -i /tmp/infisical.deb
           fi
 
       - name: Setup Terraform
