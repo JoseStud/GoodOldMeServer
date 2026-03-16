@@ -202,7 +202,7 @@ def _install_infisical(ctr: dagger.Container) -> dagger.Container:
     """Install the Infisical CLI via official install script."""
     return ctr.with_exec([
         "bash", "-c",
-        "curl -1sLf 'https://dl.cloudsmith.io/public/infisical/infisical-cli/setup.alpine.sh'"
+        "curl -1sLf 'https://artifacts-cli.infisical.com/setup.apk.sh'"
         " | bash && apk add --no-cache infisical",
     ])
 
