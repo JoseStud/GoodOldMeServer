@@ -290,7 +290,8 @@ setup_infisical() {
     echo "INFISICAL_TOKEN is set; skipping OIDC login."
     return
   fi
-  infisical_oidc_login
+  INFISICAL_TOKEN="$(get_infisical_oidc_token)"
+  export INFISICAL_TOKEN
 }
 
 fetch_infisical_secret() {
