@@ -18,7 +18,7 @@ TFC_POLICY_VAR_KEY="${TFC_POLICY_VAR_KEY:-network_access_policy}"
 
 api_get() {
   local url="$1"
-  curl -sSfL \
+  curl -sSfL -g \
     -H "Authorization: Bearer ${TFC_TOKEN}" \
     -H "Content-Type: application/vnd.api+json" \
     "${url}"
@@ -28,7 +28,7 @@ api_write() {
   local method="$1"
   local url="$2"
   local payload="$3"
-  curl -sSfL \
+  curl -sSfL -g \
     -X "${method}" \
     -H "Authorization: Bearer ${TFC_TOKEN}" \
     -H "Content-Type: application/vnd.api+json" \
