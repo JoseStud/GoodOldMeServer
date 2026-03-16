@@ -155,7 +155,16 @@ jobs:
           tags: tag:ci
 
       - name: Bridge Tailscale SOCKS5 proxy to IPv6 loopback for Dagger
-        run: socat 'TCP6-LISTEN:1055,bind=[::1],ipv6only=1,reuseaddr,fork' TCP4:127.0.0.1:1055 &
+        run: |
+          socat 'TCP6-LISTEN:1055,bind=[::1],ipv6only=1,reuseaddr,fork' TCP4:127.0.0.1:1055 &
+          SOCAT_PID=$!
+          sleep 0.3
+          if ! kill -0 "$SOCAT_PID" 2>/dev/null; then
+            echo "socat failed to start — checking IPv6 loopback availability:" >&2
+            ip -6 addr show lo >&2
+            exit 1
+          fi
+          echo "socat bridge running on [::1]:1055 (PID $SOCAT_PID)"
 
       - name: Install Dagger
         uses: dagger/dagger-for-github@v7

@@ -76,7 +76,7 @@ async def run_pipeline() -> None:
                 client,
                 stacks_sha=stacks_sha,
                 source_dir=source_dir,
-                proxy=proxy,
+                proxy=None,  # GitHub API is public internet; Tailscale proxy rejects it
             ),
             preflight.secret_validation(
                 client,
