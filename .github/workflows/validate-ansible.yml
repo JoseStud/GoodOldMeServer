@@ -55,6 +55,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y pipx
+          export PIPX_HOME="${HOME}/.local/share/pipx"
+          export PIPX_BIN_DIR="${HOME}/.local/bin"
+          export PATH="${HOME}/.local/bin:${PATH}"
           echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
           source .github/ci/tool-versions.lock
           pipx install --force "ansible-core==${ANSIBLE_CORE_VERSION}"
