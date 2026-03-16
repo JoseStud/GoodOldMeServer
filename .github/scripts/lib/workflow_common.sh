@@ -226,10 +226,15 @@ infisical_oidc_login() {
   : "${ACTIONS_ID_TOKEN_REQUEST_URL:?ACTIONS_ID_TOKEN_REQUEST_URL is required (needs id-token: write permission)}"
   : "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:?ACTIONS_ID_TOKEN_REQUEST_TOKEN is required}"
 
+  local oidc_url="${ACTIONS_ID_TOKEN_REQUEST_URL}"
+  if [[ -n "${INFISICAL_OIDC_AUDIENCE:-}" ]]; then
+    oidc_url="${oidc_url}&audience=${INFISICAL_OIDC_AUDIENCE}"
+  fi
+
   local oidc_jwt
   oidc_jwt="$(curl -sSfL \
     -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
-    "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=infisical" \
+    "${oidc_url}" \
     | jq -r '.value')"
 
   if [[ -z "${oidc_jwt}" || "${oidc_jwt}" == "null" ]]; then
