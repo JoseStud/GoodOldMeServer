@@ -28,12 +28,20 @@ api_write() {
   local method="$1"
   local url="$2"
   local payload="$3"
-  curl -sSfL -g \
+  local out
+  out=$(curl -sSL -g \
     -X "${method}" \
     -H "Authorization: Bearer ${TFC_TOKEN}" \
     -H "Content-Type: application/vnd.api+json" \
     -d "${payload}" \
-    "${url}"
+    "${url}")
+  local code=$?
+  echo "$out"
+  # Let's fail if error inside output
+  if echo "$out" | grep -q '"errors"'; then
+    return 1
+  fi
+  return $code
 }
 
 policy_json="$(jq -cS '.' <<<"${NETWORK_ACCESS_POLICY_JSON}")"
@@ -56,6 +64,7 @@ payload="$(
   jq -cn \
     --arg key "${TFC_POLICY_VAR_KEY}" \
     --arg value "${policy_json}" \
+    --arg existing_id "${existing_var_id:-}" \
     '{
       data: {
         type: "vars",
@@ -68,7 +77,7 @@ payload="$(
           sensitive: false
         }
       }
-    }'
+    } | if $existing_id != "" then .data.id = $existing_id else . end'
 )"
 
 echo "Syncing network access policy to TFC variable '${TFC_POLICY_VAR_KEY}' (terraform/hcl)..."
