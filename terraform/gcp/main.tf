@@ -138,11 +138,14 @@ resource "google_compute_instance" "witness" {
   }
 
   metadata = {
-    "user-data" = <<-EOT
-      #cloud-config
-      runcmd:
-        - curl -fsSL https://tailscale.com/install.sh | sh
-        - tailscale up --authkey='${var.tailscale_auth_key}' --ssh --hostname=swarm-witness
+    "startup-script" = <<-EOT
+      #!/bin/bash
+      if ! command -v tailscale &>/dev/null; then
+        curl -fsSL --ipv6 https://tailscale.com/install.sh | sh
+      fi
+      systemctl enable --now tailscaled
+      timeout 30 bash -c 'until tailscale status &>/dev/null; do sleep 1; done'
+      tailscale up --authkey='${var.tailscale_auth_key}' --ssh --hostname=swarm-witness --timeout=30s
     EOT
   }
 }
