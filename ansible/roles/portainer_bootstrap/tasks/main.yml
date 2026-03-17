@@ -116,6 +116,48 @@
 # Wait for Portainer API to become ready
 # ──────────────────────────────────────────────
 
+- name: Debug - show management service task states
+  ansible.builtin.command: >
+    docker service ps management_portainer-server
+    --no-trunc
+    --format "node={{ '{{' }}.Node{{ '}}' }} state={{ '{{' }}.CurrentState{{ '}}' }} error={{ '{{' }}.Error{{ '}}' }}"
+  register: portainer_svc_ps
+  changed_when: false
+  failed_when: false
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Debug - show portainer service task states
+  ansible.builtin.debug:
+    msg: "{{ portainer_svc_ps.stdout_lines }}"
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Debug - show portainer service logs (last 30 lines)
+  ansible.builtin.command: docker service logs management_portainer-server --tail 30 --no-task-ids
+  register: portainer_svc_logs
+  changed_when: false
+  failed_when: false
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Debug - print portainer service logs
+  ansible.builtin.debug:
+    msg: "{{ (portainer_svc_logs.stdout_lines + portainer_svc_logs.stderr_lines) }}"
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Debug - check port 9000 connectivity from host
+  ansible.builtin.shell: |
+    echo "--- curl http://localhost:9000/api/system/status ---"
+    curl -sv --max-time 5 http://localhost:9000/api/system/status 2>&1 || true
+    echo "--- ss -tlnp | grep 9000 ---"
+    ss -tlnp | grep 9000 || echo "port 9000 not bound"
+  register: port_debug
+  changed_when: false
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Debug - print port 9000 connectivity
+  ansible.builtin.debug:
+    msg: "{{ port_debug.stdout_lines }}"
+  when: inventory_hostname == groups['oci_nodes'][0]
+
 - name: Wait for Portainer API to be reachable
   ansible.builtin.uri:
     url: "{{ portainer_api_url }}/system/status"
