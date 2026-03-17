@@ -113,3 +113,4 @@
     attachable: yes
     state: present
   run_once: true
+  when: swarm_state.stdout == 'active'
