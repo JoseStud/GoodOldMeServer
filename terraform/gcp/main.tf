@@ -145,7 +145,7 @@ resource "google_compute_instance" "witness" {
       fi
       systemctl enable --now tailscaled
       timeout 30 bash -c 'until tailscale status &>/dev/null; do sleep 1; done'
-      tailscale up --authkey='${var.tailscale_auth_key}' --ssh --hostname=swarm-witness --timeout=30s
+      tailscale up --authkey='${var.tailscale_auth_key}' --ssh --hostname=swarm-witness --advertise-tags=tag:server --timeout=30s
     EOT
   }
 }
