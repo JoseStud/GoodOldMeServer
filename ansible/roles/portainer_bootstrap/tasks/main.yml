@@ -116,16 +116,29 @@
 # Wait for Portainer API to become ready
 # ──────────────────────────────────────────────
 
+# portainer-server has no published ports in the compose file (it's routed
+# via Traefik), so localhost:9000 is unreachable from the host.  The service
+# can also be scheduled on any Swarm manager, not necessarily oci-node-1.
+# Publishing via routing mesh makes localhost:9000 on every manager proxy to
+# the container regardless of where it actually runs.  docker stack deploy on
+# the next CI run will reset the ports back to the compose definition.
+- name: Publish portainer port via routing mesh for bootstrap API access
+  ansible.builtin.command: >
+    docker service update management_portainer-server
+    --publish-add target=9000,published=9000,protocol=tcp
+  changed_when: true
+  when: inventory_hostname == groups['oci_nodes'][0]
+
 - name: Wait for Portainer API to be reachable
-  ansible.builtin.shell: |
-    cid=$(docker ps -q --filter "name=management_portainer-server" --filter "status=running" 2>/dev/null | head -1)
-    [ -n "$cid" ] || exit 1
-    docker exec "$cid" curl -sf http://localhost:9000/api/system/status
-  register: portainer_health
-  until: portainer_health.rc == 0
+  ansible.builtin.uri:
+    url: "{{ portainer_api_url }}/system/status"
+    method: GET
+    status_code: 200
+    validate_certs: false
+  register: portainer_status
+  until: portainer_status.status == 200
   retries: "{{ (portainer_health_timeout / 5) | int }}"
   delay: 5
-  changed_when: false
   when: inventory_hostname == groups['oci_nodes'][0]
 
 # ──────────────────────────────────────────────
