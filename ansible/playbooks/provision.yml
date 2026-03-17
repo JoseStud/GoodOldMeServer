@@ -8,7 +8,7 @@
     - name: Wait for ssh connection to become available
       ansible.builtin.wait_for_connection:
         delay: 10
-        timeout: 300
+        timeout: 600
     
     - name: Gather facts
       ansible.builtin.setup:
@@ -69,12 +69,17 @@
             update_cache: true
 
     - name: Authenticate Tailscale (Requires TAILSCALE_AUTH_KEY env)
-      ansible.builtin.command: tailscale up --authkey={{ lookup('env', 'TAILSCALE_AUTH_KEY') }} --ssh
+      ansible.builtin.command: >
+        tailscale up
+        --authkey={{ lookup('env', 'TAILSCALE_AUTH_KEY') | mandatory('TAILSCALE_AUTH_KEY env var must not be empty') }}
+        --ssh
       register: tailscale_result
       when: >
         tailscale_status.rc != 0 or
         (tailscale_status.stdout | from_json).BackendState | default('') != 'Running'
       changed_when: tailscale_result.rc == 0
+      async: 90
+      poll: 5
       tags: [phase3_tailscale]
 
     - name: Verify Tailscale mesh connectivity
