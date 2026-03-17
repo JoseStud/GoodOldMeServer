@@ -69,7 +69,7 @@ checkout_stacks_sha "${STACKS_SHA:-}"
 setup_infisical
 generate_ephemeral_ssh_certificate
 
-ansible-galaxy collection install -r ansible/requirements.yml
+ansible-galaxy collection install --clear-response-cache -r ansible/requirements.yml
 
 exit_if_shadow_mode "SHADOW_MODE=true: skipping Ansible mutation run."
 
