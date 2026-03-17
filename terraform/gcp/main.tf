@@ -138,6 +138,11 @@ resource "google_compute_instance" "witness" {
   }
 
   metadata = {
+    # Disable OS Login so the image-default 'debian' user is preserved.
+    # With OS Login enabled GCP does not create the debian user, causing
+    # Tailscale SSH to fail with "failed to look up local user debian".
+    enable-oslogin = "FALSE"
+
     "startup-script" = <<-EOT
       #!/bin/bash
       if ! command -v tailscale &>/dev/null; then
