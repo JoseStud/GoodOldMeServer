@@ -78,6 +78,7 @@
       register: tailscale_result
       when: >
         tailscale_status.rc != 0 or
+        tailscale_status.stdout | length == 0 or
         (tailscale_status.stdout | from_json).BackendState | default('') != 'Running'
       changed_when: tailscale_result.rc == 0
       async: 90

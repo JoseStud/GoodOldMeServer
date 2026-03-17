@@ -51,6 +51,7 @@
   when:
     - inventory_hostname == groups['oci_nodes'][1]
     - swarm_state.stdout != 'active'
+    - hostvars[groups['oci_nodes'][0]].swarm_manager_token is defined
 
 - name: Join GCP witness as manager
   ansible.builtin.command: >
@@ -61,6 +62,7 @@
   when:
     - inventory_hostname in groups['gcp_witness']
     - swarm_state.stdout != 'active'
+    - hostvars[groups['oci_nodes'][0]].swarm_manager_token is defined
 
 # --- Assign node labels (run from first manager) ---
 

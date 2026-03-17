@@ -1,12 +1,11 @@
 ---
 - name: Check if Docker is already installed
-  ansible.builtin.command: docker --version
+  ansible.builtin.stat:
+    path: /usr/bin/docker
   register: docker_check
-  ignore_errors: true
-  changed_when: false
 
 - name: Install Docker Engine via official APT repository
-  when: docker_check.rc != 0
+  when: not docker_check.stat.exists
   block:
     - name: Install prerequisites for Docker APT repo
       ansible.builtin.apt:
@@ -32,7 +31,7 @@
     - name: Add Docker APT repository
       ansible.builtin.apt_repository:
         repo: >-
-          deb [arch={{ ansible_architecture | replace('x86_64', 'amd64') | replace('aarch64', 'arm64') }}
+          deb [arch={{ ansible_facts['architecture'] | replace('x86_64', 'amd64') | replace('aarch64', 'arm64') }}
           signed-by=/etc/apt/keyrings/docker.gpg]
           https://download.docker.com/linux/{{ ansible_distribution | lower }}
           {{ ansible_distribution_release }} stable
