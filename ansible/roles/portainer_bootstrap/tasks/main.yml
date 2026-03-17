@@ -184,8 +184,8 @@
     msg: "{{ portainer_svc_ps.stdout_lines }}"
   when: inventory_hostname == groups['oci_nodes'][0]
 
-- name: Debug - show portainer service logs (last 30 lines)
-  ansible.builtin.command: docker service logs management_portainer-server --tail 30 --no-task-ids
+- name: Debug - show portainer service logs (last 60 lines)
+  ansible.builtin.command: docker service logs management_portainer-server --tail 60 --no-task-ids
   register: portainer_svc_logs
   changed_when: false
   failed_when: false
