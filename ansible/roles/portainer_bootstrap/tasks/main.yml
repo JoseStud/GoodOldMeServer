@@ -164,10 +164,9 @@
 # ──────────────────────────────────────────────
 # Wait for Portainer API to become ready
 # ──────────────────────────────────────────────
-# portainer-server and portainer-agent start simultaneously. On first start,
-# server may hit "connection refused" on port 9001 before the agent is ready
-# (endpoint_setup.go:38). Swarm's restart policy recovers this automatically
-# (~5 s backoff). The health loop below (24 × 5 s = 120 s) is the safety net.
+# portainer-server starts WITHOUT the -H flag so it no longer depends on
+# portainer-agent being reachable at boot. The agent endpoint is configured
+# via API after both services are running (see tasks after authentication).
 
 - name: Debug - show management service task states
   ansible.builtin.command: >
@@ -254,6 +253,47 @@
     portainer_jwt: "{{ portainer_auth.json.jwt }}"
   when: inventory_hostname == groups['oci_nodes'][0]
   no_log: true
+
+# ──────────────────────────────────────────────
+# Configure agent endpoint (decoupled from startup)
+# ──────────────────────────────────────────────
+# The -H CLI flag was removed from portainer-server to eliminate the FTL
+# crash that occurs when portainer-agent isn't reachable on the overlay
+# network at first boot. Instead we create the endpoint via API after
+# both services are running.
+
+- name: Check for existing Portainer endpoints
+  ansible.builtin.uri:
+    url: "{{ portainer_api_url }}/endpoints"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ portainer_jwt }}"
+    status_code: 200
+    validate_certs: false
+  register: existing_endpoints
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Create agent endpoint in Portainer
+  ansible.builtin.uri:
+    url: "{{ portainer_api_url }}/endpoints"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ portainer_jwt }}"
+    body_format: json
+    body:
+      Name: primary
+      EndpointCreationType: 2
+      URL: "tcp://tasks.portainer-agent:9001"
+      TLSSkipVerify: true
+    status_code: [200, 201]
+    validate_certs: false
+  register: endpoint_create_result
+  until: endpoint_create_result.status | default(0) in [200, 201]
+  retries: 12
+  delay: 5
+  when:
+    - inventory_hostname == groups['oci_nodes'][0]
+    - existing_endpoints.json | length == 0
 
 - name: Check for existing Terraform API key
   ansible.builtin.uri:
