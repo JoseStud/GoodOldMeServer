@@ -81,6 +81,7 @@
       changed_when: tailscale_result.rc == 0
       async: 90
       poll: 5
+      no_log: true
       tags: [phase3_tailscale]
 
     - name: Verify Tailscale mesh connectivity

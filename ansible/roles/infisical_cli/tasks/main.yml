@@ -1,30 +1,21 @@
 ---
-- name: Check if Infisical CLI is installed
-  ansible.builtin.stat:
-    path: /usr/local/bin/infisical
-  register: infisical_binary
+# Install Infisical CLI via the official APT repository.
+# Matches the method used in CI (artifacts-cli.infisical.com/setup.deb.sh).
+# Avoids a GitHub API call to resolve the latest version, which fails on
+# IPv6-only hosts (e.g. the GCP witness) that have no IPv4 internet gateway.
+- name: Download Infisical CLI APT repository setup script
+  ansible.builtin.get_url:
+    url: https://artifacts-cli.infisical.com/setup.deb.sh
+    dest: /tmp/infisical-setup.sh
+    mode: '0755'
 
-# CLI lives in Infisical/cli (separate repo from the main Infisical/infisical).
-- name: Get latest Infisical CLI release version
-  ansible.builtin.uri:
-    url: https://api.github.com/repos/Infisical/cli/releases/latest
-    return_content: true
-    body_format: json
-  register: infisical_release
-  when: not infisical_binary.stat.exists
+- name: Configure Infisical CLI APT repository
+  ansible.builtin.command:
+    cmd: bash /tmp/infisical-setup.sh
+    creates: /etc/apt/sources.list.d/infisical-cli.list
 
-- name: Download and install Infisical CLI
-  vars:
-    infisical_version: "{{ infisical_release.json.tag_name | regex_replace('^v', '') }}"
-    infisical_arch: "{{ 'arm64' if ansible_architecture in ['aarch64', 'arm64'] else 'amd64' }}"
-  when: not infisical_binary.stat.exists
-  block:
-    - name: Download Infisical CLI deb package
-      ansible.builtin.get_url:
-        url: "https://github.com/Infisical/cli/releases/download/v{{ infisical_version }}/infisical_{{ infisical_version }}_linux_{{ infisical_arch }}.deb"
-        dest: "/tmp/infisical_{{ infisical_version }}_linux_{{ infisical_arch }}.deb"
-        mode: "0644"
-
-    - name: Install Infisical CLI deb package
-      ansible.builtin.apt:
-        deb: "/tmp/infisical_{{ infisical_version }}_linux_{{ infisical_arch }}.deb"
+- name: Install Infisical CLI
+  ansible.builtin.apt:
+    name: infisical
+    state: present
+    update_cache: true
