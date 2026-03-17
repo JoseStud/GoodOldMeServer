@@ -145,6 +145,14 @@ resource "google_compute_instance" "witness" {
 
     "startup-script" = <<-EOT
       #!/bin/bash
+      # Ensure the 'debian' user exists for Tailscale SSH / Ansible.
+      # GCP Debian images do not pre-create this user without SSH key metadata.
+      if ! id debian &>/dev/null; then
+        useradd -m -s /bin/bash debian
+        usermod -aG sudo debian
+        echo 'debian ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/debian
+        chmod 440 /etc/sudoers.d/debian
+      fi
       if ! command -v tailscale &>/dev/null; then
         curl -fsSL --ipv6 https://tailscale.com/install.sh | sh
       fi
