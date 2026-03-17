@@ -72,7 +72,7 @@
 - name: Wait for all GlusterFS peers to be fully connected
   ansible.builtin.command: gluster peer status
   register: peer_status
-  until: peer_status.stdout | regex_findall('State: Peer in Cluster') | length >= 2
+  until: "peer_status.stdout | regex_findall('State: Peer in Cluster') | length >= 2"
   retries: 12
   delay: 5
   changed_when: false
