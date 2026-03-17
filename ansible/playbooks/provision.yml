@@ -85,7 +85,6 @@
         tailscale up
         --authkey={{ lookup('env', 'TAILSCALE_AUTH_KEY') }}
         --ssh
-        --advertise-tags=tag:server
         --accept-dns=false
       when: >
         tailscale_status.rc != 0 or
@@ -104,6 +103,23 @@
         tailscale_status.rc != 0 or
         tailscale_status.stdout | length == 0 or
         (tailscale_status.stdout | from_json).BackendState | default('') != 'Running'
+      tags: [phase3_tailscale]
+
+    - name: Capture Tailscale daemon log (auth diagnostics)
+      ansible.builtin.command: journalctl -u tailscaled --since "3 minutes ago" --no-pager --output=cat
+      register: tailscale_daemon_log
+      changed_when: false
+      failed_when: false
+      when: >
+        tailscale_status.rc != 0 or
+        tailscale_status.stdout | length == 0 or
+        (tailscale_status.stdout | from_json).BackendState | default('') != 'Running'
+      tags: [phase3_tailscale]
+
+    - name: Show Tailscale daemon auth errors
+      ansible.builtin.debug:
+        msg: "{{ tailscale_daemon_log.stdout_lines }}"
+      when: tailscale_daemon_log is defined and tailscale_daemon_log.stdout_lines | default([]) | length > 0
       tags: [phase3_tailscale]
 
     - name: Verify Tailscale mesh connectivity
