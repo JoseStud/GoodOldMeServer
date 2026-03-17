@@ -80,8 +80,14 @@ if [[ -n "${ANSIBLE_TAGS}" ]]; then
   ansible_args+=(--tags "${ANSIBLE_TAGS}")
 fi
 
+# Load Infisical secrets from paths needed by the playbook:
+#   /infrastructure     → TAILSCALE_AUTH_KEY, BASE_DOMAIN, TZ, etc.
+#   /stacks/management  → PORTAINER_ADMIN_PASSWORD, PORTAINER_API_KEY, HOMARR_SECRET_KEY
+# infisical run only supports a single --path, so nest two invocations;
+# inner process inherits the outer env.
 ANSIBLE_TIMEOUT="${ANSIBLE_TIMEOUT:-30}" \
 ANSIBLE_ROLES_PATH=ansible/roles \
 ANSIBLE_SSH_ARGS='-o StrictHostKeyChecking=accept-new -o CertificateFile=~/.ssh/id_ed25519-cert.pub -i ~/.ssh/id_ed25519' \
-  infisical run --projectId="${INFISICAL_PROJECT_ID}" --env=prod --recursive -- \
+  infisical run --projectId="${INFISICAL_PROJECT_ID}" --env=prod --path=/infrastructure -- \
+  infisical run --projectId="${INFISICAL_PROJECT_ID}" --env=prod --path=/stacks/management -- \
   ansible-playbook "${ansible_args[@]}"

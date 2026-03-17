@@ -73,6 +73,7 @@
         tailscale up
         --authkey={{ lookup('env', 'TAILSCALE_AUTH_KEY') | mandatory('TAILSCALE_AUTH_KEY env var must not be empty') }}
         --ssh
+        --advertise-tags=tag:server
       register: tailscale_result
       when: >
         tailscale_status.rc != 0 or
