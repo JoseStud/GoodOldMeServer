@@ -83,5 +83,5 @@ fi
 ANSIBLE_TIMEOUT="${ANSIBLE_TIMEOUT:-30}" \
 ANSIBLE_ROLES_PATH=ansible/roles \
 ANSIBLE_SSH_ARGS='-o StrictHostKeyChecking=accept-new -o CertificateFile=~/.ssh/id_ed25519-cert.pub -i ~/.ssh/id_ed25519' \
-  infisical run --projectId="${INFISICAL_PROJECT_ID}" --env=prod -- \
+  infisical run --projectId="${INFISICAL_PROJECT_ID}" --env=prod --recursive -- \
   ansible-playbook "${ansible_args[@]}"
