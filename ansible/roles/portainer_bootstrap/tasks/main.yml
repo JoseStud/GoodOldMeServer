@@ -162,41 +162,12 @@
   when: inventory_hostname == groups['oci_nodes'][0]
 
 # ──────────────────────────────────────────────
-# Guarantee agent is up before server gets its definitive start
-# ──────────────────────────────────────────────
-# docker stack deploy starts portainer-server and portainer-agent at the same
-# time. portainer-server immediately calls _ping on the agent at startup
-# (endpoint_setup.go:38). If the agent hasn't bound port 9001 yet, server logs
-# "connection refused" and crashes. The Swarm scheduler will restart it ~5 s
-# later at which point the agent is usually ready, so the service recovers, but
-# it burns one restart and adds ~30 s to the bootstrap.
-#
-# Fix: poll until the portainer-agent container is running on this node, then
-# force-restart portainer-server so it gets a guaranteed-clean start with the
-# agent already listening. We restart the SERVER (not the agent) so we don't
-# introduce a new race in the other direction.
-
-- name: Wait for portainer-agent container to be running on this node
-  ansible.builtin.command: >
-    docker ps
-    --filter name=management_portainer-agent
-    --filter status=running
-    --format "{{ '{{' }}.Names{{ '}}' }}"
-  register: agent_running_check
-  until: agent_running_check.stdout | trim != ''
-  retries: 24
-  delay: 5
-  changed_when: false
-  when: inventory_hostname == groups['oci_nodes'][0]
-
-- name: Force restart portainer-server once agent is confirmed running
-  ansible.builtin.command: docker service update --force management_portainer-server
-  changed_when: true
-  when: inventory_hostname == groups['oci_nodes'][0]
-
-# ──────────────────────────────────────────────
 # Wait for Portainer API to become ready
 # ──────────────────────────────────────────────
+# portainer-server and portainer-agent start simultaneously. On first start,
+# server may hit "connection refused" on port 9001 before the agent is ready
+# (endpoint_setup.go:38). Swarm's restart policy recovers this automatically
+# (~5 s backoff). The health loop below (24 × 5 s = 120 s) is the safety net.
 
 - name: Debug - show management service task states
   ansible.builtin.command: >
