@@ -99,8 +99,8 @@
 - name: Start GlusterFS volume
   ansible.builtin.command: gluster volume start swarm_data
   register: gluster_start
-  changed_when: "'already started' not in gluster_start.stdout"
-  failed_when: gluster_start.rc != 0 and 'already started' not in gluster_start.stdout
+  changed_when: "'already started' not in gluster_start.stdout and 'already started' not in gluster_start.stderr"
+  failed_when: gluster_start.rc != 0 and 'already started' not in gluster_start.stdout and 'already started' not in gluster_start.stderr
   when: inventory_hostname == groups['oci_nodes'][0]
 
 - name: Install GlusterFS client (for mount)
