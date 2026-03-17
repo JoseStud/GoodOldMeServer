@@ -162,11 +162,35 @@
   when: inventory_hostname == groups['oci_nodes'][0]
 
 # ──────────────────────────────────────────────
-# Wait for Portainer API to become ready
+# Wait for agent, then force-restart server
 # ──────────────────────────────────────────────
-# portainer-server starts WITHOUT the -H flag so it no longer depends on
-# portainer-agent being reachable at boot. The agent endpoint is configured
-# via API after both services are running (see tasks after authentication).
+# On first deploy the -H flag causes FTL because portainer-agent isn't
+# reachable yet on the overlay network. Swarm's restart policy recovers
+# this, but the endpoint is never created (init is skipped on subsequent
+# boots once the admin user exists). We wait for the agent, force-restart
+# the server for a clean JWT signing state, then create the endpoint via
+# API after authentication.
+
+- name: Wait for portainer-agent to have a Running task
+  ansible.builtin.shell:
+    cmd: >
+      docker service ps management_portainer-agent
+      --filter desired-state=Running
+      --format '{{ '{{' }}.CurrentState{{ '}}' }}'
+      | grep -q '^Running'
+    executable: /bin/bash
+  register: agent_running
+  until: agent_running.rc == 0
+  retries: 24
+  delay: 5
+  changed_when: false
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Force-restart portainer-server for clean boot with agent available
+  ansible.builtin.command: docker service update --force management_portainer-server
+  register: server_force_restart
+  changed_when: server_force_restart.rc == 0
+  when: inventory_hostname == groups['oci_nodes'][0]
 
 - name: Debug - show management service task states
   ansible.builtin.command: >
@@ -257,43 +281,59 @@
 # ──────────────────────────────────────────────
 # Configure agent endpoint (decoupled from startup)
 # ──────────────────────────────────────────────
-# The -H CLI flag was removed from portainer-server to eliminate the FTL
-# crash that occurs when portainer-agent isn't reachable on the overlay
-# network at first boot. Instead we create the endpoint via API after
-# both services are running.
+# The -H flag creates the endpoint only during first-boot init, which
+# fails (FTL) before the agent is reachable. On subsequent boots init
+# is skipped, so the endpoint is never persisted. We create it via API
+# with a fresh JWT on each retry to tolerate any intermediate restarts.
 
-- name: Check for existing Portainer endpoints
-  ansible.builtin.uri:
-    url: "{{ portainer_api_url }}/endpoints"
-    method: GET
-    headers:
-      Authorization: "Bearer {{ portainer_jwt }}"
-    status_code: 200
-    validate_certs: false
-  register: existing_endpoints
-  when: inventory_hostname == groups['oci_nodes'][0]
+- name: Ensure agent endpoint exists in Portainer
+  ansible.builtin.shell:
+    cmd: |
+      python3 << 'PYEOF'
+      import json, os, sys, urllib.request
 
-- name: Create agent endpoint in Portainer
-  ansible.builtin.uri:
-    url: "{{ portainer_api_url }}/endpoints"
-    method: POST
-    headers:
-      Authorization: "Bearer {{ portainer_jwt }}"
-    body_format: json
-    body:
-      Name: primary
-      EndpointCreationType: 2
-      URL: "tcp://tasks.portainer-agent:9001"
-      TLSSkipVerify: true
-    status_code: [200, 201]
-    validate_certs: false
-  register: endpoint_create_result
-  until: endpoint_create_result.status | default(0) in [200, 201]
+      api = os.environ["P_API"]
+      creds = json.dumps({"Username": os.environ["P_USER"],
+                           "Password": os.environ["P_PASS"]}).encode()
+
+      # Authenticate (fresh JWT each retry — survives server restarts)
+      jwt = json.loads(urllib.request.urlopen(urllib.request.Request(
+          f"{api}/auth", data=creds,
+          headers={"Content-Type": "application/json"}, method="POST"
+      )).read())["jwt"]
+
+      hdr = {"Authorization": f"Bearer {jwt}"}
+
+      # Skip creation when an endpoint already exists
+      eps = json.loads(urllib.request.urlopen(
+          urllib.request.Request(f"{api}/endpoints", headers=hdr)
+      ).read())
+      if eps:
+          print("UNCHANGED")
+          sys.exit(0)
+
+      # Create agent endpoint
+      body = json.dumps({"Name": "primary", "EndpointCreationType": 2,
+                          "URL": "tcp://tasks.portainer-agent:9001",
+                          "TLSSkipVerify": True}).encode()
+      urllib.request.urlopen(urllib.request.Request(
+          f"{api}/endpoints", data=body,
+          headers={**hdr, "Content-Type": "application/json"}, method="POST"
+      ))
+      print("CHANGED")
+      PYEOF
+    executable: /bin/bash
+  environment:
+    P_API: "{{ portainer_api_url }}"
+    P_USER: "{{ portainer_admin_user }}"
+    P_PASS: "{{ portainer_admin_password }}"
+  register: endpoint_ensure
+  until: endpoint_ensure.rc == 0
   retries: 12
   delay: 5
-  when:
-    - inventory_hostname == groups['oci_nodes'][0]
-    - existing_endpoints.json | length == 0
+  changed_when: "'CHANGED' in endpoint_ensure.stdout"
+  when: inventory_hostname == groups['oci_nodes'][0]
+  no_log: true
 
 - name: Check for existing Terraform API key
   ansible.builtin.uri:
