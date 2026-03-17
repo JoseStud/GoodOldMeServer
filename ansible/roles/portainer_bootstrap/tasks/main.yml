@@ -96,6 +96,55 @@
     - inventory_hostname == groups['oci_nodes'][0]
     - cidr_lookup is not defined or cidr_lookup.rc | default(1) != 0 or cidr_lookup.stdout | default('') | trim | length == 0
 
+# ──────────────────────────────────────────────
+# Pre-deploy cleanup: remove stale stack + volume when Portainer is unhealthy
+# ──────────────────────────────────────────────
+# If a prior CI run left the management stack deployed but Portainer crashed
+# (e.g. corrupt DB from a partially-migrated environment 1 record), the local
+# portainer_db volume persists across redeploys and causes the same crash loop.
+# Detect this and clean up before deploying so Portainer gets a fresh DB.
+
+- name: Check if Portainer API is currently healthy (pre-deploy)
+  ansible.builtin.uri:
+    url: "{{ portainer_api_url }}/system/status"
+    method: GET
+    status_code: [200]
+    validate_certs: false
+  register: portainer_pre_health
+  failed_when: false
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Remove unhealthy management stack before clean redeploy
+  ansible.builtin.command: docker stack rm management
+  register: stack_rm_result
+  changed_when: stack_rm_result.rc == 0
+  failed_when: false
+  when:
+    - inventory_hostname == groups['oci_nodes'][0]
+    - management_stack_check.rc | default(1) == 0
+    - portainer_pre_health.status | default(0) != 200
+
+- name: Wait for management stack services to fully stop
+  ansible.builtin.command: >
+    docker service ls --filter label=com.docker.stack.namespace=management -q
+  register: management_services_remaining
+  until: management_services_remaining.stdout | trim == ''
+  retries: 24
+  delay: 5
+  changed_when: false
+  when:
+    - inventory_hostname == groups['oci_nodes'][0]
+    - stack_rm_result is not skipped
+    - stack_rm_result.rc | default(1) == 0
+
+- name: Remove stale Portainer data volume for clean redeploy
+  ansible.builtin.command: docker volume rm management_portainer_db
+  failed_when: false
+  changed_when: true
+  when:
+    - inventory_hostname == groups['oci_nodes'][0]
+    - portainer_pre_health.status | default(0) != 200
+
 - name: Deploy management stack (Portainer + Homarr)
   ansible.builtin.command: >
     docker stack deploy
