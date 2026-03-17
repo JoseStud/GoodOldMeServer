@@ -134,6 +134,7 @@
     - name: Run glusterfs role
       ansible.builtin.include_role:
         name: glusterfs
+        public: true
       tags: [phase4_glusterfs]
 
     # === Phase 4b: Sync config files to GlusterFS ===
