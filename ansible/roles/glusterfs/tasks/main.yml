@@ -69,6 +69,15 @@
   failed_when: peer_probe_reverse.rc != 0 and 'already in peer list' not in peer_probe_reverse.stdout
   when: inventory_hostname == groups['oci_nodes'][1]
 
+- name: Wait for all GlusterFS peers to be fully connected
+  ansible.builtin.command: gluster peer status
+  register: peer_status
+  until: peer_status.stdout | regex_findall('State: Peer in Cluster') | length >= 2
+  retries: 12
+  delay: 5
+  changed_when: false
+  when: inventory_hostname == groups['oci_nodes'][0]
+
 - name: Check if GlusterFS volume already exists
   ansible.builtin.command: gluster volume info swarm_data
   register: gluster_vol_check
