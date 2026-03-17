@@ -116,6 +116,18 @@
 # Wait for Portainer API to become ready
 # ──────────────────────────────────────────────
 
+# Force-restart the portainer-agent so it clears any stale in-memory
+# pairing state from prior failed deployments.  Without this, the agent
+# may reject the server's request signature when Portainer's data volume
+# has been recreated and its Chisel key pair differs from what the agent
+# last negotiated.
+- name: Force restart portainer-agent to clear stale pairing state
+  ansible.builtin.command: docker service update --force management_portainer-agent
+  register: agent_force_update
+  changed_when: "'management_portainer-agent' in agent_force_update.stdout"
+  failed_when: false
+  when: inventory_hostname == groups['oci_nodes'][0]
+
 - name: Debug - show management service task states
   ansible.builtin.command: >
     docker service ps management_portainer-server
