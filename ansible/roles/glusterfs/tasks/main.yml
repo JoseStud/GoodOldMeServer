@@ -116,6 +116,12 @@
   failed_when: false
   when: inventory_hostname in groups['oci_nodes']
 
+- name: Check if GlusterFS mount point directory exists
+  ansible.builtin.stat:
+    path: /mnt/swarm-shared
+  register: swarm_mount_dir_stat
+  when: inventory_hostname in groups['oci_nodes']
+
 - name: Create GlusterFS mount point
   ansible.builtin.file:
     path: /mnt/swarm-shared
@@ -126,6 +132,7 @@
   when:
     - inventory_hostname in groups['oci_nodes']
     - swarm_mountpoint_check.rc != 0
+    - not (swarm_mount_dir_stat.stat.exists | default(false))
 
 - name: Mount GlusterFS volume
   ansible.posix.mount:

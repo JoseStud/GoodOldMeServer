@@ -84,24 +84,30 @@
   register: node_hostname
   changed_when: false
 
+- name: Set node hostname fact
+  ansible.builtin.set_fact:
+    swarm_node_hostname: "{{ node_hostname.stdout | trim }}"
+
 - name: Label OCI nodes with location=cloud
   ansible.builtin.command: >
-    docker node update --label-add location=cloud {{ swarm_node_map[hostvars[item].node_hostname.stdout | trim] }}
+    docker node update --label-add location=cloud {{ swarm_node_map[hostvars[item]['swarm_node_hostname']] }}
   loop: "{{ groups['oci_nodes'] }}"
   when:
     - inventory_hostname == groups['oci_nodes'][0]
     - swarm_node_map is defined
-    - hostvars[item].node_hostname.stdout | trim in swarm_node_map
+    - "'swarm_node_hostname' in hostvars[item]"
+    - hostvars[item]['swarm_node_hostname'] in swarm_node_map
   changed_when: false
 
 - name: Label GCP witness with role=witness
   ansible.builtin.command: >
-    docker node update --label-add role=witness {{ swarm_node_map[hostvars[item].node_hostname.stdout | trim] }}
+    docker node update --label-add role=witness {{ swarm_node_map[hostvars[item]['swarm_node_hostname']] }}
   loop: "{{ groups['gcp_witness'] }}"
   when:
     - inventory_hostname == groups['oci_nodes'][0]
     - swarm_node_map is defined
-    - hostvars[item].node_hostname.stdout | trim in swarm_node_map
+    - "'swarm_node_hostname' in hostvars[item]"
+    - hostvars[item]['swarm_node_hostname'] in swarm_node_map
   changed_when: false
 
 # --- Create overlay network (requires active Swarm) ---
