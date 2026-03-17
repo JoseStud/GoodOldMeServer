@@ -162,14 +162,14 @@
   when: inventory_hostname == groups['oci_nodes'][0]
 
 # ──────────────────────────────────────────────
-# Wait for agent, then force-restart server
+# Wait for Portainer API to become ready
 # ──────────────────────────────────────────────
 # On first deploy the -H flag causes FTL because portainer-agent isn't
 # reachable yet on the overlay network. Swarm's restart policy recovers
-# this, but the endpoint is never created (init is skipped on subsequent
-# boots once the admin user exists). We wait for the agent, force-restart
-# the server for a clean JWT signing state, then create the endpoint via
-# API after authentication.
+# this automatically. The endpoint is never created by -H (init is
+# skipped once the admin user exists), so we create it via API after
+# authentication using an atomic re-auth shell task that tolerates
+# any intermediate server restarts.
 
 - name: Wait for portainer-agent to have a Running task
   ansible.builtin.shell:
@@ -184,12 +184,6 @@
   retries: 24
   delay: 5
   changed_when: false
-  when: inventory_hostname == groups['oci_nodes'][0]
-
-- name: Force-restart portainer-server for clean boot with agent available
-  ansible.builtin.command: docker service update --force management_portainer-server
-  register: server_force_restart
-  changed_when: server_force_restart.rc == 0
   when: inventory_hostname == groups['oci_nodes'][0]
 
 - name: Debug - show management service task states
