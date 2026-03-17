@@ -86,6 +86,7 @@
         --authkey={{ lookup('env', 'TAILSCALE_AUTH_KEY') }}
         --ssh
         --accept-dns=false
+        --reset
       when: >
         tailscale_status.rc != 0 or
         tailscale_status.stdout | length == 0 or
