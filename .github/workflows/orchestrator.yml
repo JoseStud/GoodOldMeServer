@@ -189,7 +189,7 @@ jobs:
       - name: Install pipeline and Ansible dependencies
         run: |
           pip install ./ci
-          pip install ansible-core==${{ vars.ANSIBLE_CORE_VERSION || '2.20.2' }}
+          pip install ansible-core==${{ vars.ANSIBLE_CORE_VERSION || '2.20.2' }} passlib[bcrypt]
 
       - name: Run Dagger pipeline
         env:
