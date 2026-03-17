@@ -68,10 +68,22 @@
             state: present
             update_cache: true
 
+    - name: Assert TAILSCALE_AUTH_KEY is available
+      ansible.builtin.assert:
+        that: lookup('env', 'TAILSCALE_AUTH_KEY') | length > 0
+        fail_msg: >-
+          TAILSCALE_AUTH_KEY is not set or empty.
+          Ensure the secret exists in Infisical at /infrastructure with this exact name.
+      when: >
+        tailscale_status.rc != 0 or
+        tailscale_status.stdout | length == 0 or
+        (tailscale_status.stdout | from_json).BackendState | default('') != 'Running'
+      tags: [phase3_tailscale]
+
     - name: Authenticate Tailscale (Requires TAILSCALE_AUTH_KEY env)
       ansible.builtin.command: >
         tailscale up
-        --authkey={{ lookup('env', 'TAILSCALE_AUTH_KEY') | mandatory('TAILSCALE_AUTH_KEY env var must not be empty') }}
+        --authkey={{ lookup('env', 'TAILSCALE_AUTH_KEY') }}
         --ssh
         --advertise-tags=tag:server
         --accept-dns=false
