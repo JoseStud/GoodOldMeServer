@@ -4,10 +4,20 @@ set -euo pipefail
 
 source .github/scripts/lib/workflow_common.sh
 
+: "${INFISICAL_PROJECT_ID:?INFISICAL_PROJECT_ID is required}"
 : "${TFC_TOKEN:?TFC_TOKEN is required}"
 : "${TFC_ORGANIZATION:?TFC_ORGANIZATION is required}"
 : "${TFC_WORKSPACE_PORTAINER:?TFC_WORKSPACE_PORTAINER is required}"
-: "${INFISICAL_PROJECT_ID:?INFISICAL_PROJECT_ID is required}"
+
+if [[ -z "${INFISICAL_TOKEN:-}" && -z "${INFISICAL_MACHINE_IDENTITY_ID:-}" ]]; then
+  echo "Either INFISICAL_TOKEN or INFISICAL_MACHINE_IDENTITY_ID (OIDC) is required" >&2
+  exit 1
+fi
+
+if [[ -z "${INFISICAL_TOKEN:-}" ]]; then
+  INFISICAL_TOKEN="$(get_infisical_oidc_token)"
+  export INFISICAL_TOKEN
+fi
 
 workspace_url="https://app.terraform.io/api/v2/organizations/${TFC_ORGANIZATION}/workspaces/${TFC_WORKSPACE_PORTAINER}"
 
