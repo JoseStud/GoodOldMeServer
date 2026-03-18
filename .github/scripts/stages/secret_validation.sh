@@ -40,6 +40,7 @@ validate_portainer_managed_stack_secrets() {
   validate_value_secret /infrastructure BASE_DOMAIN
   validate_value_secret /infrastructure TZ
   validate_value_secret /infrastructure CLOUDFLARE_API_TOKEN
+  validate_value_secret /infrastructure ZONE_ID
 
   validate_value_secret /stacks/gateway ACME_EMAIL
   validate_value_secret /stacks/gateway DOCKER_SOCKET_PROXY_URL

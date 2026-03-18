@@ -32,6 +32,7 @@ NO_PROXY_DOMAINS = ",".join([
     "hashicorp.com",
     "dagger.cloud",
     "ipify.org",            # api.ipify.org
+    "goodold.me",           # portainer-api.goodold.me — public endpoint behind OCI IP allowlist
 ])
 
 

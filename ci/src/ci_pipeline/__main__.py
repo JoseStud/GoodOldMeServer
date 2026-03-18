@@ -25,7 +25,7 @@ import sys
 
 import dagger
 
-from ci_pipeline.phases import ansible, infra, portainer, preflight
+from ci_pipeline.phases import ansible, dns, infra, portainer, preflight
 from ci_pipeline.proxy import TailscaleProxy
 
 
@@ -103,14 +103,23 @@ async def run_pipeline() -> None:
 
         await asyncio.gather(*preflight_tasks)
 
-        # ── Layer 2: Network policy sync ──────────────────────────
+        # ── Layer 2: Network policy sync + Cloudflare DNS sync ────
         # Depends on: stacks-sha-trust + secret-validation (both done)
+        # DNS sync runs parallel to network policy sync; Cloudflare API is
+        # public internet so proxy=None is passed explicitly.
 
         network_access_policy_json = ""
-        policy_json, _ = await preflight.network_policy_sync(
-            client,
-            source_dir=source_dir,
-            proxy=proxy,
+        (policy_json, _), _ = await asyncio.gather(
+            preflight.network_policy_sync(
+                client,
+                source_dir=source_dir,
+                proxy=proxy,
+            ),
+            dns.cloudflare_dns_sync(
+                client,
+                source_dir=source_dir,
+                proxy=None,
+            ),
         )
         network_access_policy_json = policy_json
 
