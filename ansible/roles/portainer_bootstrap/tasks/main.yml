@@ -283,78 +283,44 @@
 - name: Debug - diagnose endpoint creation (single attempt, visible output)
   ansible.builtin.shell:
     cmd: |
-      python3 << 'PYEOF'
-      import json, os, sys, urllib.request, urllib.error, traceback
+      set -euo pipefail
 
-      api = os.environ["P_API"]
-      creds = json.dumps({"Username": os.environ["P_USER"],
-                           "Password": os.environ["P_PASS"]}).encode()
+      echo "=== Step 1: Authenticate ==="
+      JWT=$(python3 -c "
+      import json, os, urllib.request
+      api, u, p = os.environ['P_API'], os.environ['P_USER'], os.environ['P_PASS']
+      r = urllib.request.urlopen(urllib.request.Request(
+          f'{api}/auth', data=json.dumps({'Username': u, 'Password': p}).encode(),
+          headers={'Content-Type': 'application/json'}, method='POST'))
+      print(json.loads(r.read())['jwt'])
+      " 2>&1) || { echo "Auth FAILED: $JWT"; exit 1; }
+      echo "Auth OK (JWT length=${#JWT})"
 
-      # Step 1: Authenticate
-      print(f"=== Step 1: POST {api}/auth ===")
-      try:
-          resp = urllib.request.urlopen(urllib.request.Request(
-              f"{api}/auth", data=creds,
-              headers={"Content-Type": "application/json"}, method="POST"
-          ))
-          jwt = json.loads(resp.read())["jwt"]
-          print(f"Auth OK (JWT length={len(jwt)})")
-      except urllib.error.HTTPError as e:
-          body = e.read().decode(errors="replace")
-          print(f"Auth FAILED: HTTP {e.code} — {body}")
-          sys.exit(1)
-      except Exception as e:
-          print(f"Auth FAILED: {e}")
-          traceback.print_exc()
-          sys.exit(1)
+      echo ""
+      echo "=== Step 2: List endpoints ==="
+      EP_JSON=$(curl -sf "$P_API/endpoints" -H "Authorization: Bearer $JWT") \
+        || { echo "List FAILED (curl rc=$?)"; exit 1; }
+      echo "$EP_JSON" | python3 -c "
+      import sys, json
+      eps = json.load(sys.stdin)
+      print(f'Endpoints count={len(eps)}')
+      for e in eps:
+          print(f'  id={e.get(\"Id\")} name={e.get(\"Name\")} type={e.get(\"Type\")} url={e.get(\"URL\")}')
+      "
+      EP_COUNT=$(echo "$EP_JSON" | python3 -c 'import sys,json;print(len(json.load(sys.stdin)))')
+      if [ "$EP_COUNT" -gt 0 ]; then
+        echo "Endpoint already exists — nothing to create"
+        exit 0
+      fi
 
-      hdr = {"Authorization": f"Bearer {jwt}"}
-
-      # Step 2: List endpoints
-      print(f"\n=== Step 2: GET {api}/endpoints ===")
-      try:
-          resp = urllib.request.urlopen(
-              urllib.request.Request(f"{api}/endpoints", headers=hdr))
-          eps = json.loads(resp.read())
-          print(f"Endpoints count={len(eps)}")
-          for ep in eps:
-              print(f"  id={ep.get('Id')} name={ep.get('Name')} type={ep.get('Type')} url={ep.get('URL')}")
-      except urllib.error.HTTPError as e:
-          body = e.read().decode(errors="replace")
-          print(f"List FAILED: HTTP {e.code} — {body}")
-          sys.exit(1)
-      except Exception as e:
-          print(f"List FAILED: {e}")
-          traceback.print_exc()
-          sys.exit(1)
-
-      if eps:
-          print("\nEndpoint already exists — nothing to create")
-          sys.exit(0)
-
-      # Step 3: Create endpoint
-      ep_body = json.dumps({"Name": "primary", "EndpointCreationType": 2,
-                             "URL": "tcp://tasks.portainer-agent:9001",
-                             "TLSSkipVerify": True})
-      print(f"\n=== Step 3: POST {api}/endpoints ===")
-      print(f"Request body: {ep_body}")
-      try:
-          resp = urllib.request.urlopen(urllib.request.Request(
-              f"{api}/endpoints", data=ep_body.encode(),
-              headers={**hdr, "Content-Type": "application/json"}, method="POST"
-          ))
-          result = resp.read().decode(errors="replace")
-          print(f"Create OK: HTTP {resp.status} — {result[:500]}")
-      except urllib.error.HTTPError as e:
-          body = e.read().decode(errors="replace")
-          print(f"Create FAILED: HTTP {e.code} — {body}")
-          print(f"Response headers: {dict(e.headers)}")
-          sys.exit(1)
-      except Exception as e:
-          print(f"Create FAILED: {e}")
-          traceback.print_exc()
-          sys.exit(1)
-      PYEOF
+      echo ""
+      echo "=== Step 3: Create endpoint (multipart form) ==="
+      curl -sv -X POST "$P_API/endpoints" \
+        -H "Authorization: Bearer $JWT" \
+        -F "Name=primary" \
+        -F "EndpointCreationType=2" \
+        -F "URL=tcp://tasks.portainer-agent:9001" \
+        -F "TLSSkipVerify=true" 2>&1 || true
     executable: /bin/bash
   environment:
     P_API: "{{ portainer_api_url }}"
@@ -374,39 +340,37 @@
 - name: Ensure agent endpoint exists in Portainer
   ansible.builtin.shell:
     cmd: |
-      python3 << 'PYEOF'
-      import json, os, sys, urllib.request
-
-      api = os.environ["P_API"]
-      creds = json.dumps({"Username": os.environ["P_USER"],
-                           "Password": os.environ["P_PASS"]}).encode()
+      set -euo pipefail
 
       # Authenticate (fresh JWT each retry — survives server restarts)
-      jwt = json.loads(urllib.request.urlopen(urllib.request.Request(
-          f"{api}/auth", data=creds,
-          headers={"Content-Type": "application/json"}, method="POST"
-      )).read())["jwt"]
-
-      hdr = {"Authorization": f"Bearer {jwt}"}
+      JWT=$(python3 -c "
+      import json, os, urllib.request
+      api, u, p = os.environ['P_API'], os.environ['P_USER'], os.environ['P_PASS']
+      r = urllib.request.urlopen(urllib.request.Request(
+          f'{api}/auth', data=json.dumps({'Username': u, 'Password': p}).encode(),
+          headers={'Content-Type': 'application/json'}, method='POST'))
+      print(json.loads(r.read())['jwt'])
+      ")
 
       # Skip creation when an endpoint already exists
-      eps = json.loads(urllib.request.urlopen(
-          urllib.request.Request(f"{api}/endpoints", headers=hdr)
-      ).read())
-      if eps:
-          print("UNCHANGED")
-          sys.exit(0)
+      EP_COUNT=$(curl -sf "$P_API/endpoints" \
+        -H "Authorization: Bearer $JWT" \
+        | python3 -c 'import sys,json;print(len(json.load(sys.stdin)))')
 
-      # Create agent endpoint
-      body = json.dumps({"Name": "primary", "EndpointCreationType": 2,
-                          "URL": "tcp://tasks.portainer-agent:9001",
-                          "TLSSkipVerify": True}).encode()
-      urllib.request.urlopen(urllib.request.Request(
-          f"{api}/endpoints", data=body,
-          headers={**hdr, "Content-Type": "application/json"}, method="POST"
-      ))
-      print("CHANGED")
-      PYEOF
+      if [ "$EP_COUNT" -gt 0 ]; then
+        echo 'UNCHANGED'
+        exit 0
+      fi
+
+      # Create agent endpoint (multipart form — required by Portainer API)
+      curl -sf -X POST "$P_API/endpoints" \
+        -H "Authorization: Bearer $JWT" \
+        -F "Name=primary" \
+        -F "EndpointCreationType=2" \
+        -F "URL=tcp://tasks.portainer-agent:9001" \
+        -F "TLSSkipVerify=true" > /dev/null
+
+      echo 'CHANGED'
     executable: /bin/bash
   environment:
     P_API: "{{ portainer_api_url }}"
