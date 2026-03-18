@@ -66,7 +66,7 @@ DELETED=0
 for ip in "${DESIRED_IPS[@]}"; do
     if [ -n "${EXISTING_MAP[$ip]+_}" ]; then
         echo "  kept    ${RECORD_NAME} -> ${ip} (ID: ${EXISTING_MAP[$ip]})"
-        ((KEPT++))
+        KEPT=$((KEPT + 1))
     else
         echo "  creating ${RECORD_NAME} -> ${ip}..."
         PAYLOAD=$(jq -n \
@@ -83,7 +83,7 @@ for ip in "${DESIRED_IPS[@]}"; do
             -d "$PAYLOAD")
         if [ "$(echo "$RESPONSE" | jq -r '.success')" = "true" ]; then
             echo "  created ${RECORD_NAME} -> ${ip}"
-            ((CREATED++))
+            CREATED=$((CREATED + 1))
         else
             echo "Error: Failed to create record for ${ip}."
             echo "$RESPONSE" | jq .
@@ -108,10 +108,9 @@ for existing_ip in "${!EXISTING_MAP[@]}"; do
             "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records/${record_id}" \
             -H "Authorization: Bearer ${API_TOKEN}" \
             -H "Content-Type: application/json")
-        if [ "$(echo "$RESPONSE" | jq -r '.result.id // .success')" != "null" ] && \
-           [ "$(echo "$RESPONSE" | jq -r '.success')" = "true" ]; then
+        if [ "$(echo "$RESPONSE" | jq -r '.success')" = "true" ]; then
             echo "  deleted ${RECORD_NAME} -> ${existing_ip}"
-            ((DELETED++))
+            DELETED=$((DELETED + 1))
         else
             echo "Error: Failed to delete stale record for ${existing_ip}."
             echo "$RESPONSE" | jq .

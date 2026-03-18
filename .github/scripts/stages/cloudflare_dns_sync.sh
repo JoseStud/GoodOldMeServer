@@ -87,7 +87,7 @@ for stack in "${STACKS[@]}"; do
     echo "--- ${stack} ---"
     if ! bash scripts/cloudflare-dns.sh "${stack}" "${OCI_IPS[@]}"; then
         echo "Error: DNS sync failed for stack '${stack}'." >&2
-        ((FAILED++))
+        FAILED=$((FAILED + 1))
     fi
 done
 
