@@ -221,7 +221,7 @@ All directories are owned by `media-srv:media-srv` (UID/GID 1500) with mode `075
 
 | Role | What It Does |
 |------|-------------|
-| `portainer_bootstrap` | Deploys the management stack (Portainer server + agent + Homarr) via `docker stack deploy`, waits for the Portainer API to be healthy, generates a bcrypt hash of the admin password, writes `PORTAINER_ADMIN_PASSWORD_HASH` to Infisical `/stacks/management`, repairs/rotates the Terraform API key if needed, and writes `PORTAINER_URL` + `PORTAINER_API_URL` + `PORTAINER_API_KEY` to Infisical `/management` |
+| `portainer_bootstrap` | Deploys the management stack (Portainer server + agent + Homarr) via `docker stack deploy`, waits for the Portainer API to be healthy, generates a bcrypt hash of the admin password, writes `PORTAINER_ADMIN_PASSWORD_HASH` to Infisical `/stacks/management`, repairs/rotates the Portainer API key if needed, and writes `PORTAINER_URL` + `PORTAINER_API_URL` + `PORTAINER_API_KEY` to Infisical `/management` |
 
 **Detailed flow:**
 1. Generate a bcrypt hash of `PORTAINER_ADMIN_PASSWORD` (Ansible `password_hash('bcrypt')` filter)
@@ -235,7 +235,7 @@ All directories are owned by `media-srv:media-srv` (UID/GID 1500) with mode `075
 9. Write `PORTAINER_URL`, `PORTAINER_API_URL`, and `PORTAINER_API_KEY` to Infisical `/management` via the Infisical CLI
 10. Verify the API key works against the Portainer status endpoint
 
-> Ownership note: `PORTAINER_ADMIN_PASSWORD_HASH`, `PORTAINER_URL`, `PORTAINER_API_URL`, and `PORTAINER_API_KEY` become automation-managed after bootstrap. See [Infisical Workflow](infisical-workflow.md#variable-ownership--mutability).
+> Ownership note: `PORTAINER_ADMIN_PASSWORD_HASH`, `PORTAINER_URL`, `PORTAINER_API_URL`, and `PORTAINER_API_KEY` become automation-managed after bootstrap. Terraform now authenticates to Portainer with `PORTAINER_ADMIN_PASSWORD` from `/stacks/management`, while the API key remains automation-managed for other API-based workflows. See [Infisical Workflow](infisical-workflow.md#variable-ownership--mutability).
 
 **Why Ansible and not Terraform?** Portainer is the control plane that Terraform's Portainer provider talks to. Terraform cannot create the thing it depends on to authenticate. Ansible bootstraps Portainer as infrastructure, then Terraform manages the application stacks through it.
 

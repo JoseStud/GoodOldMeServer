@@ -100,10 +100,10 @@ Use this as the source of truth for whether a value is operator-managed or autom
 |----------|-----------|--------|
 | `PORTAINER_URL` | Auto-written by Ansible `portainer_bootstrap` role (or manually set) | Human-facing Portainer URL (`https://portainer.<domain>`) behind Authelia |
 | `PORTAINER_API_URL` | Auto-written by Ansible `portainer_bootstrap` role (or manually set) | Terraform Portainer provider `endpoint` — Tailscale IP (`http://<ts_ip>:9000/api`); accessed via Dagger pipeline SOCKS5 proxy over the WireGuard mesh |
-| `PORTAINER_API_KEY` | Auto-written by Ansible `portainer_bootstrap` role (or manually via Portainer → Access Tokens) | Terraform Portainer provider `api_key` |
+| `PORTAINER_API_KEY` | Auto-written by Ansible `portainer_bootstrap` role (or manually via Portainer → Access Tokens) | Automation/API use outside Terraform; validated and repaired during bootstrap/post-bootstrap checks |
 | `PORTAINER_LICENSE_KEY` | Portainer BE license key (optional — leave unset for CE). Obtain from [Portainer pricing](https://www.portainer.io/pricing) or your account portal | Terraform `portainer_licenses` resource |
 
-> **Note:** These credentials are written automatically by the Ansible `portainer_bootstrap` role during Phase 6 provisioning. Terraform reads `PORTAINER_API_URL` + `PORTAINER_API_KEY` to authenticate against the Portainer API. The resulting webhook URLs are written automatically to `/deployments` by Terraform.
+> **Note:** These credentials are written automatically by the Ansible `portainer_bootstrap` role during Phase 6 provisioning. Terraform reads `PORTAINER_API_URL` from `/management` and `PORTAINER_ADMIN_PASSWORD` from `/stacks/management`, then lets the Portainer provider mint and use a JWT internally. The resulting webhook URLs are written automatically to `/deployments` by Terraform.
 
 ### `/deployments` — Webhook URLs *(Terraform-managed)*
 
@@ -147,7 +147,7 @@ The management stack (Portainer + Homarr) is deployed by Ansible, not Terraform,
 | Variable | How to Get | Used By |
 |----------|-----------|--------|
 | `HOMARR_SECRET_KEY` | Generate: `openssl rand -hex 32` | Homarr `SECRET_ENCRYPTION_KEY` |
-| `PORTAINER_ADMIN_PASSWORD` | Choose a strong password or generate: `openssl rand -base64 24` | Ansible `portainer_bootstrap` role — hashed to bcrypt at deploy time and passed to Portainer via `--admin-password`; plaintext used only for JWT auth to create API key |
+| `PORTAINER_ADMIN_PASSWORD` | Choose a strong password or generate: `openssl rand -base64 24` | Ansible `portainer_bootstrap` role — hashed to bcrypt at deploy time and passed to Portainer via `--admin-password`; plaintext used for bootstrap/post-bootstrap Portainer auth and by the Terraform Portainer provider as `api_password` |
 | `PORTAINER_ADMIN_PASSWORD_HASH` | **Auto-generated and rewritten by Ansible on every bootstrap run** (`password_hash('bcrypt')`) and written to Infisical `/stacks/management` for Infisical Agent renders — do not set manually | Portainer `--admin-password` CLI flag (set in `docker-compose.yml`) |
 | ~~`PORTAINER_AUTOMATION_ALLOWED_CIDRS`~~ | Removed — portainer-api Traefik route deleted; CI uses Tailscale IP. | N/A |
 

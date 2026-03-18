@@ -16,7 +16,11 @@ provider "infisical" {
 
 provider "portainer" {
   endpoint = local.secrets.portainer_api_url
-  api_key  = local.secrets.portainer_api_key
+
+  # Use username/password auth here so the provider exchanges it for a JWT
+  # internally; stack create currently fails on swarm lookups with API-key auth.
+  api_user     = "admin"
+  api_password = local.secrets.portainer_admin_password
 }
 
 # Secrets from Infisical
@@ -26,11 +30,17 @@ data "infisical_secrets" "management" {
   folder_path  = "/management"
 }
 
+data "infisical_secrets" "management_stack" {
+  env_slug     = "prod"
+  workspace_id = var.infisical_project_id
+  folder_path  = "/stacks/management"
+}
+
 locals {
   secrets = {
-    portainer_api_url     = data.infisical_secrets.management.secrets["PORTAINER_API_URL"].value
-    portainer_api_key     = data.infisical_secrets.management.secrets["PORTAINER_API_KEY"].value
-    portainer_license_key = try(data.infisical_secrets.management.secrets["PORTAINER_LICENSE_KEY"].value, "")
+    portainer_api_url        = data.infisical_secrets.management.secrets["PORTAINER_API_URL"].value
+    portainer_admin_password = data.infisical_secrets.management_stack.secrets["PORTAINER_ADMIN_PASSWORD"].value
+    portainer_license_key    = try(data.infisical_secrets.management.secrets["PORTAINER_LICENSE_KEY"].value, "")
   }
 }
 
