@@ -7,6 +7,7 @@ source .github/scripts/lib/workflow_common.sh
 : "${TFC_TOKEN:?TFC_TOKEN is required}"
 : "${TFC_ORGANIZATION:?TFC_ORGANIZATION is required}"
 : "${TFC_WORKSPACE_PORTAINER:?TFC_WORKSPACE_PORTAINER is required}"
+: "${INFISICAL_PROJECT_ID:?INFISICAL_PROJECT_ID is required}"
 
 workspace_url="https://app.terraform.io/api/v2/organizations/${TFC_ORGANIZATION}/workspaces/${TFC_WORKSPACE_PORTAINER}"
 
@@ -37,3 +38,25 @@ jq '{
   vcs_repo_identifier: (.data.attributes["vcs-repo"].identifier // null),
   working_directory: .data.attributes["working-directory"]
 }' <<<"${workspace_json}"
+
+portainer_api_url="$(fetch_infisical_secret /management PORTAINER_API_URL)"
+portainer_admin_user="${PORTAINER_ADMIN_USER:-admin}"
+portainer_admin_password="$(fetch_infisical_secret /stacks/management PORTAINER_ADMIN_PASSWORD)"
+portainer_jwt="$(get_portainer_jwt "${portainer_api_url}" "${portainer_admin_user}" "${portainer_admin_password}")"
+
+if [[ -z "${portainer_jwt}" ]]; then
+  echo "Portainer endpoint debug: authentication failed while resolving environments."
+  exit 1
+fi
+
+endpoints_json="$(
+  curl -sSf \
+    -H "Authorization: Bearer ${portainer_jwt}" \
+    "${portainer_api_url%/}/endpoints"
+)"
+
+echo "Portainer environments:"
+jq '[.[] | {id: .Id, name: .Name, type: .Type, url: .URL}]' <<<"${endpoints_json}"
+
+resolved_endpoint_id="$(resolve_portainer_endpoint_id "${portainer_api_url}" "${portainer_jwt}")"
+echo "Resolved Portainer environment ID: ${resolved_endpoint_id}"

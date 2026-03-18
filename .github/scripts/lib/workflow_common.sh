@@ -347,6 +347,63 @@ fetch_infisical_secret() {
       bash -lc 'printf %s "${!SECRET_NAME:-}"'
 }
 
+get_portainer_jwt() {
+  local portainer_api_url="$1"
+  local portainer_admin_user="$2"
+  local portainer_admin_password="$3"
+
+  local auth_payload
+  auth_payload="$(jq -nc \
+    --arg username "${portainer_admin_user}" \
+    --arg password "${portainer_admin_password}" \
+    '{Username: $username, Password: $password}')"
+
+  curl -sSf \
+    -H "Content-Type: application/json" \
+    -d "${auth_payload}" \
+    "${portainer_api_url%/}/auth" \
+    | jq -r '.jwt // empty'
+}
+
+resolve_portainer_endpoint_id() {
+  local portainer_api_url="$1"
+  local jwt="$2"
+
+  local endpoints_json
+  endpoints_json="$(
+    curl -sSf \
+      -H "Authorization: Bearer ${jwt}" \
+      "${portainer_api_url%/}/endpoints"
+  )"
+
+  local endpoint_count
+  endpoint_count="$(jq 'length' <<<"${endpoints_json}")"
+  if [[ "${endpoint_count}" == "0" ]]; then
+    echo "Portainer returned no environments; bootstrap may not have created the agent endpoint yet." >&2
+    return 1
+  fi
+
+  local endpoint_id
+  endpoint_id="$(jq -r '
+    map(select(.Name == "primary")) as $primary
+    | if ($primary | length) == 1 then
+        $primary[0].Id
+      elif length == 1 then
+        .[0].Id
+      else
+        empty
+      end
+  ' <<<"${endpoints_json}")"
+
+  if [[ -z "${endpoint_id}" || "${endpoint_id}" == "null" ]]; then
+    echo "Unable to resolve a unique Portainer endpoint ID. Visible endpoints:" >&2
+    jq -r '.[] | "  id=\(.Id) name=\(.Name // "<unnamed>") type=\(.Type // "<unknown>") url=\(.URL // "<none>")"' <<<"${endpoints_json}" >&2
+    return 1
+  fi
+
+  printf '%s' "${endpoint_id}"
+}
+
 validate_infisical_secret() {
   local path="$1"
   local secret_name="$2"
