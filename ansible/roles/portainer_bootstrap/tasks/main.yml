@@ -321,7 +321,8 @@
         -F "EndpointCreationType=2" \
         -F "URL=tcp://tasks.portainer-agent:9001" \
         -F "TLS=true" \
-        -F "TLSSkipVerify=true" 2>&1 || true
+        -F "TLSSkipVerify=true" \
+        -F "TLSSkipClientVerify=true" 2>&1 || true
     executable: /bin/bash
   environment:
     P_API: "{{ portainer_api_url }}"
@@ -370,7 +371,8 @@
         -F "EndpointCreationType=2" \
         -F "URL=tcp://tasks.portainer-agent:9001" \
         -F "TLS=true" \
-        -F "TLSSkipVerify=true" > /dev/null
+        -F "TLSSkipVerify=true" \
+        -F "TLSSkipClientVerify=true" > /dev/null
 
       echo 'CHANGED'
     executable: /bin/bash
