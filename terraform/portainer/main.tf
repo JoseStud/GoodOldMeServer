@@ -186,13 +186,6 @@ resource "portainer_licenses" "be" {
 # Infisical — Webhook URLs → /deployments
 # ──────────────────────────────────────────────
 
-resource "infisical_secret_folder" "deployments" {
-  name             = "deployments"
-  environment_slug = "prod"
-  project_id       = var.infisical_project_id
-  folder_path      = "/"
-}
-
 # Individual webhook URL per stack (e.g. WEBHOOK_URL_GATEWAY, WEBHOOK_URL_AUTH)
 resource "infisical_secret" "webhook_url" {
   for_each = portainer_stack.swarm
@@ -202,8 +195,6 @@ resource "infisical_secret" "webhook_url" {
   env_slug     = "prod"
   workspace_id = var.infisical_project_id
   folder_path  = "/deployments"
-
-  depends_on = [infisical_secret_folder.deployments]
 }
 
 # Combined comma-separated list for portainer-webhook.sh compatibility
@@ -213,8 +204,6 @@ resource "infisical_secret" "webhook_urls_combined" {
   env_slug     = "prod"
   workspace_id = var.infisical_project_id
   folder_path  = "/deployments"
-
-  depends_on = [infisical_secret_folder.deployments]
 }
 
 # ──────────────────────────────────────────────
