@@ -26,9 +26,19 @@ if [[ -n "${STACKS_SHA:-}" ]]; then
   terraform_args+=("TF_VAR_stacks_sha=${STACKS_SHA}")
 fi
 
-env "${terraform_args[@]}" terraform -chdir=terraform/portainer-root init -input=false \
-  -backend-config="organization=${TFC_ORGANIZATION}" \
-  -backend-config="workspaces.name=${TFC_WORKSPACE_PORTAINER}"
+backend_config_file="$(mktemp)"
+trap 'rm -f "${backend_config_file}"' EXIT
+
+cat >"${backend_config_file}" <<EOF
+organization = "${TFC_ORGANIZATION}"
+
+workspaces {
+  name = "${TFC_WORKSPACE_PORTAINER}"
+}
+EOF
+
+env "${terraform_args[@]}" terraform -chdir=terraform/portainer-root init -input=false -reconfigure \
+  -backend-config="${backend_config_file}"
 
 env "${terraform_args[@]}" terraform -chdir=terraform/portainer-root plan -input=false -out=portainer.tfplan
 
