@@ -66,7 +66,13 @@ validate_portainer_managed_stack_secrets() {
 }
 
 validate_existing_portainer_credentials() {
-  validate_https_secret /management PORTAINER_API_URL
+  # HTTP is intentional: Portainer is accessed over the Tailscale mesh (WireGuard
+  # provides transport encryption), so plain HTTP on port 9000 is safe internally.
+  # TODO(Option A): migrate to https + tailscale cert + socks5h proxy so TLS is
+  # verified end-to-end without -k. Requires: `tailscale cert` on each OCI node,
+  # Portainer configured with the ts.net cert, and ALL_PROXY changed from
+  # socks5:// to socks5h:// in proxy.py so Dagger containers resolve MagicDNS.
+  validate_value_secret /management PORTAINER_API_URL
   validate_value_secret /management PORTAINER_API_KEY
 }
 
@@ -111,12 +117,16 @@ fi
 
 if [[ "${RUN_HEALTH}" == "true" ]]; then
   if [[ "${RUN_PORTAINER}" != "true" ]]; then
-    validate_https_secret /deployments WEBHOOK_URL_GATEWAY
-    validate_https_secret /deployments WEBHOOK_URL_AUTH
-    validate_https_secret /deployments WEBHOOK_URL_NETWORK
-    validate_https_secret /deployments WEBHOOK_URL_OBSERVABILITY
-    validate_https_secret /deployments WEBHOOK_URL_AI_INTERFACE
-    validate_https_secret /deployments WEBHOOK_URL_UPTIME
-    validate_https_secret /deployments WEBHOOK_URL_CLOUD
+    # Webhook URLs are Portainer-generated from its base URL. Using http:// over
+    # Tailscale is intentional (see PORTAINER_API_URL comment above).
+    # TODO(Option A): revert to validate_https_secret once Portainer serves a
+    # valid ts.net TLS cert and ALL_PROXY is upgraded to socks5h://.
+    validate_value_secret /deployments WEBHOOK_URL_GATEWAY
+    validate_value_secret /deployments WEBHOOK_URL_AUTH
+    validate_value_secret /deployments WEBHOOK_URL_NETWORK
+    validate_value_secret /deployments WEBHOOK_URL_OBSERVABILITY
+    validate_value_secret /deployments WEBHOOK_URL_AI_INTERFACE
+    validate_value_secret /deployments WEBHOOK_URL_UPTIME
+    validate_value_secret /deployments WEBHOOK_URL_CLOUD
   fi
 fi

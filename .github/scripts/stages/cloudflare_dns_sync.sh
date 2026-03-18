@@ -79,38 +79,14 @@ if [[ ${#STACKS[@]} -eq 0 ]]; then
     exit 1
 fi
 
-# Infrastructure subdomains that are not portainer-managed stacks but still
-# need round-robin A records pointing to the OCI workers.
-INFRASTRUCTURE_SUBDOMAINS=(
-    "portainer-api"   # management stack Portainer endpoint (Ansible-managed)
-)
+echo "cloudflare-dns-sync: stacks = ${STACKS[*]}"
 
-ALL_SUBDOMAINS=("${INFRASTRUCTURE_SUBDOMAINS[@]}" "${STACKS[@]}")
-echo "cloudflare-dns-sync: subdomains = ${ALL_SUBDOMAINS[*]}"
-
-# ── Reconcile DNS for each subdomain ──────────────────────────────────────────
-# Infrastructure subdomains use PROXIED=false (DNS-only) so connections arrive
-# from the CI runner's IP directly, satisfying the OCI IP allowlist. Portainer-
-# managed stacks use the default PROXIED=true (Cloudflare CDN/proxy).
-
-is_infrastructure_subdomain() {
-    local name="$1"
-    for infra in "${INFRASTRUCTURE_SUBDOMAINS[@]}"; do
-        [[ "$name" == "$infra" ]] && return 0
-    done
-    return 1
-}
-
+# ── Reconcile DNS for each stack ──────────────────────────────────────────────
 FAILED=0
-for stack in "${ALL_SUBDOMAINS[@]}"; do
+for stack in "${STACKS[@]}"; do
     echo "--- ${stack} ---"
-    if is_infrastructure_subdomain "${stack}"; then
-        proxied_env="PROXIED=false"
-    else
-        proxied_env="PROXIED=true"
-    fi
-    if ! env "${proxied_env}" bash scripts/cloudflare-dns.sh "${stack}" "${OCI_IPS[@]}"; then
-        echo "Error: DNS sync failed for subdomain '${stack}'." >&2
+    if ! bash scripts/cloudflare-dns.sh "${stack}" "${OCI_IPS[@]}"; then
+        echo "Error: DNS sync failed for stack '${stack}'." >&2
         FAILED=$((FAILED + 1))
     fi
 done
