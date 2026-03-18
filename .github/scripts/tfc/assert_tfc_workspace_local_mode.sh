@@ -18,7 +18,8 @@ workspace_json="$(
     "https://app.terraform.io/api/v2/organizations/${TFC_ORGANIZATION}/workspaces/${TFC_WORKSPACE}"
 )"
 
-operations_flag="$(jq -r '.data.attributes.operations // true' <<<"${workspace_json}")"
+# jq's `//` treats `false` as "missing", so default only when the field is null.
+operations_flag="$(jq -r 'if .data.attributes.operations == null then "true" else (.data.attributes.operations | tostring) end' <<<"${workspace_json}")"
 execution_mode="$(jq -r '.data.attributes["execution-mode"] // "unknown"' <<<"${workspace_json}")"
 
 if [[ "${operations_flag}" != "false" ]]; then
