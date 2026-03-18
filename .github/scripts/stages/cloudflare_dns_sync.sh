@@ -79,11 +79,18 @@ if [[ ${#STACKS[@]} -eq 0 ]]; then
     exit 1
 fi
 
-echo "cloudflare-dns-sync: stacks = ${STACKS[*]}"
+# Infrastructure subdomains that are not portainer-managed stacks but still
+# need round-robin A records pointing to the OCI workers.
+INFRASTRUCTURE_SUBDOMAINS=(
+    "portainer-api"   # management stack Portainer endpoint (Ansible-managed)
+)
 
-# ── Reconcile DNS for each stack ──────────────────────────────────────────────
+ALL_SUBDOMAINS=("${INFRASTRUCTURE_SUBDOMAINS[@]}" "${STACKS[@]}")
+echo "cloudflare-dns-sync: subdomains = ${ALL_SUBDOMAINS[*]}"
+
+# ── Reconcile DNS for each subdomain ──────────────────────────────────────────
 FAILED=0
-for stack in "${STACKS[@]}"; do
+for stack in "${ALL_SUBDOMAINS[@]}"; do
     echo "--- ${stack} ---"
     if ! bash scripts/cloudflare-dns.sh "${stack}" "${OCI_IPS[@]}"; then
         echo "Error: DNS sync failed for stack '${stack}'." >&2
