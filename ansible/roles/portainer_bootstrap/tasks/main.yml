@@ -294,7 +294,7 @@
           headers={'Content-Type': 'application/json'}, method='POST'))
       print(json.loads(r.read())['jwt'])
       " 2>&1) || { echo "Auth FAILED: $JWT"; exit 1; }
-      echo "Auth OK (JWT length=${#JWT})"
+      echo "Auth OK (JWT length=$(printf '%s' "$JWT" | wc -c))"
 
       echo ""
       echo "=== Step 2: List endpoints ==="
