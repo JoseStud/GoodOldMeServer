@@ -22,11 +22,7 @@ fi
 if [[ "${SHADOW_MODE}" == "true" ]]; then
   echo "SHADOW_MODE=true: skipping sync_network_access_policy.sh mutation steps."
   if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
-    portainer_cidrs_csv="$(jq -r '.portainer_api.source_ranges | join(",")' <<<"${policy_json}")"
-    {
-      echo "network_access_policy_json=${policy_json}"
-      echo "portainer_automation_allowed_cidrs=${portainer_cidrs_csv}"
-    } >> "${GITHUB_OUTPUT}"
+    echo "network_access_policy_json=${policy_json}" >> "${GITHUB_OUTPUT}"
   fi
   exit 0
 fi

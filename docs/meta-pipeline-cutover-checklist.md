@@ -15,7 +15,7 @@ These values are managed by automation after bootstrap and are not operator-owne
 | `/management/PORTAINER_API_KEY` | Required | Platform | Repaired/rotated as needed during bootstrap. Do not set manually. | [ ] |
 | `/deployments/PORTAINER_WEBHOOK_URLS` + `/deployments/WEBHOOK_URL_*` | Required | Platform | Rewritten by Portainer Terraform apply. Do not edit manually. | [ ] |
 | `TF_VAR_network_access_policy` (TFC env var) | Required | Platform | Auto-updated by `.github/scripts/network/sync_network_access_policy.sh`. | [ ] |
-| `/stacks/management/PORTAINER_AUTOMATION_ALLOWED_CIDRS` | Required | Security | Auto-synced from `network_access_policy.portainer_api.source_ranges`. | [ ] |
+| ~~`/stacks/management/PORTAINER_AUTOMATION_ALLOWED_CIDRS`~~ | ~~Required~~ | ~~Security~~ | Removed — portainer-api Traefik route deleted; CI uses Tailscale IP, no IP allowlist. | N/A |
 
 ## 1) Infra Repo: GitHub Actions Variables (`vars.*`)
 
@@ -25,7 +25,7 @@ These values are managed by automation after bootstrap and are not operator-owne
 | `INFISICAL_PROJECT_ID` | Required | Platform | Shared project ID for Terraform/Ansible/automation reads. | [ ] |
 | `SSH_CERT_PRINCIPALS` | Required | Platform | Comma-separated SSH principals for ephemeral cert signing (e.g. `ubuntu,debian`). | [ ] |
 | `TFC_ORGANIZATION` (or `TFC_ORG`) | Required | Platform | Terraform Cloud organization slug. | [ ] |
-| `CLOUD_STATIC_RUNNER_LABEL` | Required | Platform | Label for deterministic static-egress cloud runner. | [ ] |
+| ~~`CLOUD_STATIC_RUNNER_LABEL`~~ | ~~Required~~ | ~~Platform~~ | Removed — `portainer-live-plan` job deleted; no workflow uses a cloud static runner. | N/A |
 | `TFC_WORKSPACE_INFRA` | Optional | Platform | Defaults to `goodoldme-infra` when unset. | [ ] |
 | `TFC_WORKSPACE_PORTAINER` | Optional | Platform | Defaults to `goodoldme-portainer` when unset. | [ ] |
 | `TFC_INFRA_APPLY_WAIT_TIMEOUT_SECONDS` | Optional | Operator | Defaults to `7200`. Manual confirm wait timeout. | [ ] |
@@ -76,7 +76,7 @@ Expected dispatch payload example:
 | Item | Requirement | Owner | Notes | Checkbox |
 |------|-------------|-------|-------|----------|
 | `infisical_project_id` (Terraform var) | Required | Platform | Must match GitHub `INFISICAL_PROJECT_ID`. | [ ] |
-| `TF_VAR_network_access_policy` (env var JSON) | Required | Security | `oci_ssh.source_ranges` IPv4 only, `gcp_ssh.source_ranges` IPv6 only, `portainer_api.source_ranges` dual-stack allowed. | [ ] |
+| `TF_VAR_network_access_policy` (env var JSON) | Required | Security | `oci_ssh.source_ranges` IPv4 only. `portainer_api` key removed — Portainer API uses Tailscale IP; no public allowlist. | [ ] |
 | Infisical provider auth variables | Required | Security | For example `INFISICAL_TOKEN` in attached variable set. | [ ] |
 | OCI provider auth (`auth = "SecurityToken"`) | Required | Security | Ensure workspace has valid OCI auth variables. | [ ] |
 | `TFC_GCP_PROVIDER_AUTH=true` (env var) | Required | Security | Enables TFC dynamic credentials for GCP. | [ ] |

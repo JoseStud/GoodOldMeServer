@@ -70,22 +70,16 @@ jobs:
       - name: Terraform validate
         run: terraform -chdir=${{ matrix.root }} validate
 
-  cloud-runner-guard:
-    if: github.actor != 'dependabot[bot]'
-    runs-on: ubuntu-latest
-    environment: Jux
-    outputs:
-      runner_label: ${{ steps.guard.outputs.runner_label }}
-
-    steps:
-      - name: Verify cloud runner guard
-        id: guard
-        env:
-          CLOUD_STATIC_RUNNER_LABEL: ${{ vars.CLOUD_STATIC_RUNNER_LABEL }}
-        run: |
-          : "${CLOUD_STATIC_RUNNER_LABEL:?Missing required variable: CLOUD_STATIC_RUNNER_LABEL}"
-          echo "runner_label=${CLOUD_STATIC_RUNNER_LABEL}" >> "${GITHUB_OUTPUT}"
-
+  # portainer-live-plan (and cloud-runner-guard) were removed. That job ran
+  # terraform/portainer-root plan in SHADOW_MODE on the cloud static runner to
+  # give PR-time feedback. Removed because: (1) it was the sole reason the cloud
+  # static runner existed, (2) terraform-validate already catches syntax/provider
+  # errors, and (3) the orchestrator portainer-apply stage catches real failures
+  # post-merge with full context. The cost of the allowlist-propagation wait
+  # (~7 min) and a dedicated static-egress runner outweighed the marginal benefit
+  # of a read-only plan. PORTAINER_API_URL now uses the Tailscale IP directly
+  # (accessed via the Dagger pipeline's SOCKS5 proxy), making a cloud runner
+  # with deterministic public-IP egress unnecessary.
   tfc-speculative-plan:
     if: github.actor != 'dependabot[bot]'
     needs: terraform-validate
@@ -149,77 +143,3 @@ jobs:
           TF_API_TOKEN: ${{ secrets.TFC_TOKEN }}
         run: .github/scripts/tfc/wait_for_tfc_run.sh "${RUN_ID}" "${WORKSPACE_NAME}"
 
-  portainer-live-plan:
-    needs: [terraform-validate, cloud-runner-guard]
-    runs-on: ${{ needs.cloud-runner-guard.outputs.runner_label }}
-    environment: Jux
-    env:
-      INFISICAL_MACHINE_IDENTITY_ID: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}
-      INFISICAL_OIDC_AUDIENCE: ${{ vars.INFISICAL_OIDC_AUDIENCE }}
-      INFISICAL_PROJECT_ID: ${{ vars.INFISICAL_PROJECT_ID }}
-      TFC_ORGANIZATION: ${{ vars.TFC_ORGANIZATION || vars.TFC_ORG }}
-      TFC_WORKSPACE_PORTAINER: ${{ vars.TFC_WORKSPACE_PORTAINER || 'goodoldme-portainer' }}
-      TF_VAR_infisical_project_id: ${{ vars.INFISICAL_PROJECT_ID }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Ensure unzip is available
-        run: command -v unzip || sudo apt-get update -qq && sudo apt-get install -yqq unzip
-
-      - name: Ensure Infisical CLI is available
-        env:
-          GH_API_TOKEN: ${{ github.token }}
-        run: |
-          if ! command -v infisical >/dev/null 2>&1; then
-            ARCH="$(dpkg --print-architecture 2>/dev/null || echo "amd64")"
-            case "${ARCH}" in arm64|aarch64) INFISICAL_ARCH="arm64" ;; *) INFISICAL_ARCH="amd64" ;; esac
-            # CLI lives in Infisical/cli (separate repo from the main Infisical/infisical).
-            VERSION="$(curl -fsSL -H "Authorization: Bearer ${GH_API_TOKEN}" \
-              'https://api.github.com/repos/Infisical/cli/releases/latest' \
-              | grep '"tag_name"' | head -1 | sed 's/.*"v//;s/".*//')"
-            if [[ -z "${VERSION}" ]]; then echo "Failed to resolve Infisical CLI version"; exit 1; fi
-            echo "Installing Infisical CLI v${VERSION} for ${INFISICAL_ARCH}"
-            curl -fsSL "https://github.com/Infisical/cli/releases/download/v${VERSION}/infisical_${VERSION}_linux_${INFISICAL_ARCH}.deb" \
-              -o /tmp/infisical.deb && sudo dpkg -i /tmp/infisical.deb
-          fi
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Resolve stacks SHA
-        id: stacks-sha
-        run: echo "stacks_sha=$(git rev-parse HEAD:stacks)" >> "${GITHUB_OUTPUT}"
-
-      - name: Validate required secret paths
-        env:
-          RUN_INFRA: "false"
-          RUN_ANSIBLE: "false"
-          RUN_PORTAINER: "true"
-          RUN_HOST_SYNC: "false"
-          RUN_HEALTH: "false"
-          INFISICAL_TOKEN: ${{ secrets.INFISICAL_TOKEN }}
-        run: .github/scripts/stages/secret_validation.sh
-
-      - name: Build network access policy
-        id: network-policy
-        run: .github/scripts/network/build_network_access_policy.sh
-
-      - name: Preflight egress + Portainer API reachability
-        env:
-          NETWORK_ACCESS_POLICY_JSON: ${{ steps.network-policy.outputs.network_access_policy_json }}
-          RUN_HEALTH: "false"
-          RUN_PORTAINER: "true"
-          PORTAINER_ALLOWLIST_PROPAGATION_TIMEOUT_SECONDS: ${{ vars.PORTAINER_ALLOWLIST_PROPAGATION_TIMEOUT_SECONDS || '420' }}
-          PORTAINER_ALLOWLIST_PROPAGATION_POLL_INTERVAL_SECONDS: ${{ vars.PORTAINER_ALLOWLIST_PROPAGATION_POLL_INTERVAL_SECONDS || '5' }}
-        run: .github/scripts/stages/portainer_api_preflight.sh
-
-      - name: Terraform Portainer plan (local operations mode)
-        env:
-          STACKS_SHA: ${{ steps.stacks-sha.outputs.stacks_sha }}
-          SHADOW_MODE: "true"
-          INFISICAL_TOKEN: ${{ secrets.INFISICAL_TOKEN }}
-          TFC_TOKEN: ${{ secrets.TFC_TOKEN }}
-          TF_TOKEN_app_terraform_io: ${{ secrets.TFC_TOKEN }}
-        run: .github/scripts/stages/portainer_apply.sh

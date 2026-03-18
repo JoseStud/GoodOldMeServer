@@ -98,13 +98,12 @@ variable "oci_private_key" {
 }
 
 variable "network_access_policy" {
-  description = "Canonical network access policy for OCI SSH (IPv4) and Portainer API allowlist"
+  # portainer_api removed: PORTAINER_API_URL now uses the Tailscale IP directly.
+  # The public portainer-api Traefik route and its IP allowlist no longer exist.
+  description = "Canonical network access policy for OCI SSH (IPv4)"
   type = object({
     oci_ssh = object({
       enabled       = bool
-      source_ranges = list(string)
-    })
-    portainer_api = object({
       source_ranges = list(string)
     })
   })
@@ -112,11 +111,9 @@ variable "network_access_policy" {
   validation {
     condition = (
       alltrue([for cidr in var.network_access_policy.oci_ssh.source_ranges : can(cidrhost(cidr, 0)) && !strcontains(cidr, ":")]) &&
-      alltrue([for cidr in var.network_access_policy.portainer_api.source_ranges : can(cidrhost(cidr, 0))]) &&
-      (!var.network_access_policy.oci_ssh.enabled || length(var.network_access_policy.oci_ssh.source_ranges) > 0) &&
-      length(var.network_access_policy.portainer_api.source_ranges) > 0
+      (!var.network_access_policy.oci_ssh.enabled || length(var.network_access_policy.oci_ssh.source_ranges) > 0)
     )
-    error_message = "network_access_policy is invalid: oci_ssh must use IPv4 CIDRs, portainer_api must include at least one valid CIDR."
+    error_message = "network_access_policy is invalid: oci_ssh.source_ranges must contain only valid IPv4 CIDRs."
   }
 }
 

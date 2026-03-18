@@ -81,11 +81,13 @@ if [[ "${should_check_ssh}" == "true" ]]; then
 fi
 
 runner_ipv4=""
-if [[ "${required_oci_ssh}" == "true" || "${should_check_portainer}" == "true" ]]; then
+if [[ "${required_oci_ssh}" == "true" ]]; then
   runner_ipv4="$(detect_public_ip 4 "https://api.ipify.org" "IPv4")"
 fi
 
-python3 - "${NETWORK_ACCESS_POLICY_JSON}" "${runner_ipv4}" "${required_oci_ssh}" "${should_check_portainer}" <<'PY'
+# portainer_api CIDR check removed: PORTAINER_API_URL now uses a Tailscale IP
+# accessed via the Dagger pipeline SOCKS5 proxy. No public IP allowlist applies.
+python3 - "${NETWORK_ACCESS_POLICY_JSON}" "${runner_ipv4}" "${required_oci_ssh}" <<'PY'
 import ipaddress
 import json
 import sys
@@ -93,7 +95,6 @@ import sys
 policy = json.loads(sys.argv[1])
 runner_v4 = ipaddress.ip_address(sys.argv[2]) if sys.argv[2] else None
 need_oci_ssh = sys.argv[3] == "true"
-need_portainer = sys.argv[4] == "true"
 
 def in_ranges(ip, ranges):
     return any(ip in ipaddress.ip_network(raw, strict=False) for raw in ranges)
@@ -105,12 +106,6 @@ if need_oci_ssh:
         raise SystemExit("Runner IPv4 egress could not be resolved for required OCI SSH preflight.")
     if not in_ranges(runner_v4, policy["oci_ssh"]["source_ranges"]):
         raise SystemExit("Runner IPv4 egress is not in network_access_policy.oci_ssh.source_ranges.")
-
-if need_portainer:
-    if runner_v4 is None:
-        raise SystemExit("Runner IPv4 egress could not be resolved for required Portainer API preflight.")
-    if not in_ranges(runner_v4, policy["portainer_api"]["source_ranges"]):
-        raise SystemExit("Runner IPv4 egress is not in network_access_policy.portainer_api.source_ranges.")
 PY
 
 if [[ -n "${runner_ipv4}" ]]; then

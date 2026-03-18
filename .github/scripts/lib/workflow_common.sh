@@ -201,6 +201,26 @@ assert_https_url_value() {
   fi
 }
 
+assert_url_value() {
+  # Accepts http:// or https://. HTTP is intentional here: PORTAINER_API_URL
+  # uses a Tailscale IP — WireGuard provides transport encryption, so plain
+  # HTTP on port 9000 is safe over the private mesh.
+  local name="$1"
+  local value="${2:-}"
+
+  assert_nonempty_value "${name}" "${value}" || return 1
+
+  if [[ ! "${value}" =~ ^https?://[^[:space:]]+$ ]]; then
+    echo "${name} must be a valid http or https URL." >&2
+    return 1
+  fi
+
+  if is_placeholder_url_value "${value}"; then
+    echo "${name} contains a placeholder URL and must be replaced with a real endpoint." >&2
+    return 1
+  fi
+}
+
 assert_bcrypt_hash_value() {
   local name="$1"
   local value="${2:-}"

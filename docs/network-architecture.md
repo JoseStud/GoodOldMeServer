@@ -51,8 +51,8 @@ graph TB
 | Source | Destination | Protocol/Port | Purpose | Enforcement point |
 |--------|-------------|---------------|---------|-------------------|
 | Internet clients | OCI workers (`app-worker-1`, `app-worker-2`) | TCP `80`, `443` | Public HTTP/HTTPS ingress to Traefik entrypoints | OCI Gateway NSG ingress rules (`gateway_http`, `gateway_https`) |
-| Cloud static runner IPv4 egress | OCI workers | TCP `22` | Ansible/SSH administrative access to OCI nodes | OCI NSG SSH rule (`oci_core_network_security_group_security_rule.ssh`) driven by `TF_VAR_network_access_policy.oci_ssh.source_ranges` |
-| Cloud static runner dual-stack egress | `portainer-api.<BASE_DOMAIN>` (Traefik -> Portainer service) | TCP `443` | Terraform Portainer provider calls and private webhook automation traffic | Traefik `ipAllowList` middleware (`PORTAINER_AUTOMATION_ALLOWED_CIDRS`) + rate limit middleware |
+| `ubuntu-latest` GHA runner (ephemeral) IPv4 egress | OCI workers | TCP `22` | Ansible/SSH administrative access to OCI nodes | OCI NSG SSH rule driven by `TF_VAR_network_access_policy.oci_ssh.source_ranges` |
+| Dagger pipeline container (via Tailscale SOCKS5 proxy) | `app-worker-1` Tailscale IP, TCP `9000` | TCP `9000` | Terraform Portainer provider calls and webhook automation traffic | Tailscale mesh ACL (WireGuard) — no public IP allowlist. `portainer-api.<BASE_DOMAIN>` Traefik route removed. |
 | Swarm manager nodes (all 3) | Swarm manager nodes (all 3) | TCP `2377`, TCP/UDP `7946`, UDP `4789` | Swarm control-plane, gossip, and overlay networking | Docker Swarm over Tailscale mesh; nodes are joined with Tailscale advertise addresses |
 | OCI workers + GCP witness | GlusterFS peers/bricks | TCP `24007` + GlusterFS brick ports | GlusterFS peer management and replicated storage traffic | GlusterFS daemon configuration over Tailscale private network |
 | LAN/Tailscale clients | Pi-hole services on OCI nodes | TCP/UDP `53` (host mode) | DNS resolution via Pi-hole pair | Host-mode port binding in `stacks/network/docker-compose.yml` + node pinning |
@@ -213,9 +213,9 @@ The `dagger-pipeline` job in `orchestrator.yml` runs on `ubuntu-latest` with the
 
 | Destination | Protocol/Port | Purpose |
 |-------------|---------------|---------|
-| `api.ipify.org` | HTTPS (443) | Detect runner public IPv4 for network policy validation |
+| `api.ipify.org` | HTTPS (443) | Detect runner public IPv4 for OCI SSH policy validation |
 | All inventory hosts (OCI workers + GCP witness via Tailscale MagicDNS) | TCP 22 | SSH reachability preflight |
-| `portainer-api.<BASE_DOMAIN>` | HTTPS (443) | Portainer API preflight (in portainer stage) |
+| `app-worker-1` Tailscale IP, port `9000` (via SOCKS5 proxy) | HTTP (9000) | Portainer API preflight and `portainer-apply` (Terraform Portainer provider) — accessed over the Tailscale mesh, not via a public Traefik route |
 
 If the self-hosted runner has egress restrictions (firewall, security group, etc.), these destinations **must** be allow-listed. IP detection uses `curl --retry 3 --retry-delay 1 --max-time 10` and will fail the pipeline if the external APIs are unreachable.
 
@@ -262,10 +262,11 @@ Pi-hole instances use **host-mode** port 53 (UDP/TCP) to bypass Docker Swarm's i
 
 ## Network Policy Sync — Idempotent Mutation Contract
 
-The network-policy-sync stage in the `dagger-pipeline` preflight phase (`ci_pipeline/phases/preflight.py`) writes to two external systems before the main pipeline stages execute:
+The network-policy-sync stage in the `dagger-pipeline` preflight phase (`ci_pipeline/phases/preflight.py`) writes to one external system before the main pipeline stages execute:
 
 1. **TFC variable sets** — the runner's current public IPv4 is written to Terraform Cloud as `TF_VAR_network_access_policy`, which controls OCI NSG SSH rules.
-2. **Infisical allowlists** — the runner's CIDR is written to Infisical as `PORTAINER_AUTOMATION_ALLOWED_CIDRS`, which Traefik's `ipAllowList` middleware enforces for Portainer API traffic.
+
+> `PORTAINER_AUTOMATION_ALLOWED_CIDRS` (Infisical allowlist sync) was removed. The Portainer API is now accessed directly over the Tailscale mesh (`http://<ts_ip>:9000`) — no public Traefik route or IP allowlist applies.
 
 ### Why mutations that persist through failure are safe here
 

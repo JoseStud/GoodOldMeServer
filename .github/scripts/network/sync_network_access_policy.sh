@@ -45,7 +45,6 @@ api_write() {
 }
 
 policy_json="$(jq -cS '.' <<<"${NETWORK_ACCESS_POLICY_JSON}")"
-portainer_cidrs_csv="$(jq -r '.portainer_api.source_ranges | join(",")' <<<"${policy_json}")"
 
 workspace_json="$(api_get "${TFC_API_URL%/}/organizations/${TFC_ORGANIZATION}/workspaces/${TFC_WORKSPACE_INFRA}")"
 workspace_id="$(jq -r '.data.id // empty' <<<"${workspace_json}")"
@@ -111,35 +110,12 @@ if [[ "${tfc_policy_json}" != "${policy_json}" ]]; then
   exit 1
 fi
 
-echo "Syncing Portainer CIDRs to Infisical /stacks/management..."
-infisical secrets set \
-  PORTAINER_AUTOMATION_ALLOWED_CIDRS="${portainer_cidrs_csv}" \
-  --projectId="${INFISICAL_PROJECT_ID}" \
-  --env=prod \
-  --path="/stacks/management" \
-  >/dev/null \
-  || { echo "Failed to write PORTAINER_AUTOMATION_ALLOWED_CIDRS to Infisical."; exit 1; }
-
-infisical_cidrs="$(
-  infisical run \
-    --projectId="${INFISICAL_PROJECT_ID}" \
-    --env=prod \
-    --path=/stacks/management \
-    -- bash -lc 'printf %s "${PORTAINER_AUTOMATION_ALLOWED_CIDRS:-}"'
-)"
-
-if [[ "${infisical_cidrs}" != "${portainer_cidrs_csv}" ]]; then
-  echo "Infisical secret verification failed."
-  echo "Expected: ${portainer_cidrs_csv}"
-  echo "Actual:   ${infisical_cidrs}"
-  exit 1
-fi
+# PORTAINER_AUTOMATION_ALLOWED_CIDRS sync removed: PORTAINER_API_URL now uses
+# the Tailscale IP directly. No public Traefik portainer-api route or IP
+# allowlist middleware exists anymore.
 
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
-  {
-    echo "network_access_policy_json=${policy_json}"
-    echo "portainer_automation_allowed_cidrs=${portainer_cidrs_csv}"
-  } >>"${GITHUB_OUTPUT}"
+  echo "network_access_policy_json=${policy_json}" >>"${GITHUB_OUTPUT}"
 fi
 
 echo "Network access policy sync completed and verified."

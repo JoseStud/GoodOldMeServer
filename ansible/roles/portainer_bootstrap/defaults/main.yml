@@ -32,10 +32,8 @@ portainer_bcrypt_rounds: 12
 # API token description used for Terraform-managed Portainer credentials
 portainer_api_token_description: terraform-managed
 
-# Safe fallback for PORTAINER_AUTOMATION_ALLOWED_CIDRS when the value cannot
-# be fetched from Infisical at bootstrap time.  127.0.0.1/32 blocks all
-# remote access until the Infisical agent reconciles the real value.
-portainer_automation_cidrs_fallback: "127.0.0.1/32"
+# portainer_automation_cidrs_fallback removed: the portainer-api Traefik route
+# and its ipAllowList middleware no longer exist. CI uses Tailscale directly.
 
 # Infisical project ID for writing the API key
 infisical_project_id: "{{ lookup('env', 'INFISICAL_PROJECT_ID') | default('', true) }}"

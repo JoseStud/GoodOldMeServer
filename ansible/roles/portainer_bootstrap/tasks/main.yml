@@ -55,47 +55,10 @@
   when: inventory_hostname == groups['oci_nodes'][0]
 
 # ──────────────────────────────────────────────
-# Fetch PORTAINER_AUTOMATION_ALLOWED_CIDRS from Infisical so the Traefik
-# ipAllowList middleware is correct from the very first stack deploy,
-# without waiting for the Phase 7 Infisical agent to render .env.
-# ──────────────────────────────────────────────
-
-- name: Fetch PORTAINER_AUTOMATION_ALLOWED_CIDRS from Infisical
-  ansible.builtin.command: >
-    infisical secrets get PORTAINER_AUTOMATION_ALLOWED_CIDRS
-    --env=prod
-    --path=/stacks/management
-    --projectId={{ infisical_project_id }}
-    --plain
-    --silent
-  delegate_to: localhost
-  run_once: true
-  become: false
-  register: cidr_lookup
-  changed_when: false
-  failed_when: false
-  when:
-    - inventory_hostname == groups['oci_nodes'][0]
-    - infisical_project_id | length > 0
-  no_log: true
-
-- name: Set PORTAINER_AUTOMATION_ALLOWED_CIDRS (fetched or fallback)
-  ansible.builtin.set_fact:
-    portainer_automation_cidrs: >-
-      {{ (cidr_lookup.stdout | default('') | trim) if (cidr_lookup is defined and cidr_lookup.rc | default(1) == 0 and cidr_lookup.stdout | default('') | trim | length > 0)
-         else portainer_automation_cidrs_fallback }}
-  when: inventory_hostname == groups['oci_nodes'][0]
-
-- name: Warn when using CIDR fallback
-  ansible.builtin.debug:
-    msg: |
-      [WARNING] PORTAINER_AUTOMATION_ALLOWED_CIDRS could not be fetched from Infisical.
-      Using safe fallback: {{ portainer_automation_cidrs_fallback }}
-      The Traefik ipAllowList will block all remote API access until the Infisical agent reconciles the real value.
-  when:
-    - inventory_hostname == groups['oci_nodes'][0]
-    - cidr_lookup is not defined or cidr_lookup.rc | default(1) != 0 or cidr_lookup.stdout | default('') | trim | length == 0
-
+# PORTAINER_AUTOMATION_ALLOWED_CIDRS fetch + pass removed: the portainer-api
+# Traefik router (and its ipAllowList middleware) no longer exists. CI
+# automation accesses Portainer directly via the Tailscale IP — no public
+# route or IP allowlist is needed.
 # ──────────────────────────────────────────────
 # Pre-deploy cleanup: remove stale stack + volume when Portainer is unhealthy
 # ──────────────────────────────────────────────
@@ -156,7 +119,6 @@
     HOMARR_SECRET_KEY: "{{ lookup('env', 'HOMARR_SECRET_KEY') | default('changeme', true) }}"
     TZ: "{{ lookup('env', 'TZ') | default('Etc/UTC', true) }}"
     PORTAINER_ADMIN_PASSWORD_HASH: "{{ portainer_admin_password_hash }}"
-    PORTAINER_AUTOMATION_ALLOWED_CIDRS: "{{ portainer_automation_cidrs | default(portainer_automation_cidrs_fallback) }}"
   register: stack_deploy_result
   changed_when: "'Creating service' in stack_deploy_result.stdout or 'Updating service' in stack_deploy_result.stdout"
   when: inventory_hostname == groups['oci_nodes'][0]
@@ -576,7 +538,7 @@
 
 - name: Write PORTAINER_API_URL to Infisical
   ansible.builtin.command: >
-    infisical secrets set PORTAINER_API_URL=https://portainer-api.{{ portainer_base_domain }}
+    infisical secrets set PORTAINER_API_URL=http://{{ ts_ip }}:9000/api
     --env=prod
     --path=/management
     --projectId={{ infisical_project_id }}
@@ -585,10 +547,12 @@
   become: false
   register: infisical_api_url_result
   changed_when: infisical_api_url_result.rc == 0
+  # Use Tailscale IP — WireGuard provides transport encryption; no public route needed.
+  # ts_ip is set as a fact by the swarm role (Phase 5) on this same host.
   when:
     - inventory_hostname == groups['oci_nodes'][0]
     - infisical_project_id | length > 0
-    - portainer_base_domain != 'localhost'
+    - ts_ip is defined
 
 - name: Write PORTAINER_API_KEY to Infisical
   ansible.builtin.command: >
@@ -629,7 +593,7 @@
     msg: |
       Portainer bootstrap complete:
         UI URL:      https://portainer.{{ portainer_base_domain }}
-        API URL:     https://portainer-api.{{ portainer_base_domain }}
+        API URL:     http://{{ ts_ip | default('(ts_ip unavailable)') }}:9000/api (Tailscale)
         API Key:     {{ 'written to Infisical /management' if (infisical_project_id | length > 0) else 'MANUAL — set PORTAINER_API_KEY in Infisical /management' }}
         Key Mode:    {{ portainer_api_key_source }}
         Admin Hash:  {{ 'written to Infisical /stacks/management' if (infisical_project_id | length > 0) else 'MANUAL — set PORTAINER_ADMIN_PASSWORD_HASH in Infisical /stacks/management' }}

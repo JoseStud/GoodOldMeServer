@@ -17,7 +17,7 @@ flowchart LR
     TFP -->|SDK write /deployments| INF
     INF -->|Agent| ENV[.env files<br/>rendered on host]
     ENV -->|/infrastructure + /stacks/*| STACKS[Docker Stack Deploy]
-    INF -->|/deployments| AUTO[Private Automation<br/>Stacks repo cloud static runner]
+    INF -->|/deployments| AUTO[Private Automation<br/>Dagger pipeline / on-node webhook helper]
 ```
 
 ## Secret Organization
@@ -26,11 +26,11 @@ flowchart LR
 |------|----------|---------|
 | `/infrastructure` | Terraform, Ansible, Scripts | `BASE_DOMAIN`, `CLOUDFLARE_API_TOKEN`, `TAILSCALE_AUTH_KEY`, `TZ`, `ZONE_ID` |
 | `/management` | Terraform (Portainer provider), Operators | `PORTAINER_URL`, `PORTAINER_API_URL`, `PORTAINER_API_KEY`, `PORTAINER_LICENSE_KEY` |
-| `/deployments` | Terraform (auto-written), Stacks repo cloud static runner | `PORTAINER_WEBHOOK_URLS`, `WEBHOOK_URL_*` |
+| `/deployments` | Terraform (auto-written), Dagger pipeline health-gated-redeploy, on-node webhook helper | `PORTAINER_WEBHOOK_URLS`, `WEBHOOK_URL_*` |
 | `/security` | Terraform (cloud-init), GitHub Actions (SSH) | `SSH_CA_PUBLIC_KEY`, `SSH_CA_PRIVATE_KEY`, `SSH_HOST_CA_PUBKEY` |
 | `/stacks/gateway` | Traefik | `ACME_EMAIL`, `DOCKER_SOCKET_PROXY_URL` |
 | `/stacks/identity` | Authelia SSO | `AUTHELIA_JWT_SECRET`, `AUTHELIA_SESSION_SECRET`, `POSTGRES_PASSWORD`, `AUTHELIA_NOTIFIER_SMTP_USERNAME`, `AUTHELIA_NOTIFIER_SMTP_PASSWORD`, `AUTHELIA_NOTIFIER_SMTP_SENDER`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_JWKS_0_KEY` |
-| `/stacks/management` | Homarr + Portainer | `HOMARR_SECRET_KEY`, `PORTAINER_ADMIN_PASSWORD`, `PORTAINER_ADMIN_PASSWORD_HASH`, `PORTAINER_AUTOMATION_ALLOWED_CIDRS` |
+| `/stacks/management` | Homarr + Portainer | `HOMARR_SECRET_KEY`, `PORTAINER_ADMIN_PASSWORD`, `PORTAINER_ADMIN_PASSWORD_HASH` |
 | `/stacks/network` | Vaultwarden, Pi-hole | `VW_DB_PASS`, `VW_ADMIN_TOKEN`, `PIHOLE_PASSWORD` |
 | `/stacks/observability` | Grafana | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET`, `ALERTMANAGER_WEBHOOK_URL` |
 | `/stacks/ai-interface` | Open WebUI | `ARCH_PC_IP` |
@@ -53,7 +53,7 @@ Use this as the source of truth for whether a value is operator-managed or autom
 | `/management/PORTAINER_URL`, `/management/PORTAINER_API_URL`, `/management/PORTAINER_API_KEY` | Platform | Auto-written by Ansible `portainer_bootstrap` after bootstrap (API key may be rotated). Do not set manually. |
 | `/deployments/PORTAINER_WEBHOOK_URLS` + `/deployments/WEBHOOK_URL_*` | Platform | Auto-written by Terraform `portainer` module on Portainer workspace apply. Do not edit manually. |
 | `TF_VAR_network_access_policy` (Terraform Cloud env var) | Security | Auto-created/updated by the `orchestrator.yml` `dagger-pipeline` preflight phase (`ci_pipeline/phases/preflight.py` / `network-policy-sync`). Do not set manually outside policy sync flow. |
-| `/stacks/management/PORTAINER_AUTOMATION_ALLOWED_CIDRS` | Security | Auto-synced by `orchestrator.yml` preflight stage from `network_access_policy.portainer_api.source_ranges`. Do not set manually outside break-glass recovery. |
+| ~~`/stacks/management/PORTAINER_AUTOMATION_ALLOWED_CIDRS`~~ | ~~Security~~ | Removed — portainer-api Traefik route deleted; CI uses Tailscale IP directly, no IP allowlist. |
 
 > For first-run setup and required GitHub/TFC inputs, see [Infrastructure Orchestrator Cutover Checklist](meta-pipeline-cutover-checklist.md).
 
@@ -71,7 +71,7 @@ Use this as the source of truth for whether a value is operator-managed or autom
 | `/stacks/network` | `VW_DB_PASS`, `VW_ADMIN_TOKEN`, `PIHOLE_PASSWORD` | Required | Operator | Required for network stack stateful services |
 | `/stacks/observability` | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET`, `ALERTMANAGER_WEBHOOK_URL` | Required | Operator | Required for observability deploy and alert routing |
 | `/stacks/ai-interface` | `ARCH_PC_IP` | Required | Operator | Required for Open WebUI upstream reachability |
-| GitHub `vars.*`/`secrets.*` bootstrap set | `INFISICAL_MACHINE_IDENTITY_ID`, `INFISICAL_PROJECT_ID`, `TFC_*`, `CLOUD_STATIC_RUNNER_LABEL`, `TFC_TOKEN`, `INFISICAL_TOKEN` | Required | Platform | Required for pipeline execution; `INFISICAL_TOKEN` is needed anywhere `terraform/portainer-root` runs, including the orchestrator `portainer-apply` stage |
+| GitHub `vars.*`/`secrets.*` bootstrap set | `INFISICAL_MACHINE_IDENTITY_ID`, `INFISICAL_PROJECT_ID`, `TFC_*`, `TFC_TOKEN`, `INFISICAL_TOKEN` | Required | Platform | Required for pipeline execution; `INFISICAL_TOKEN` is needed anywhere `terraform/portainer-root` runs, including the orchestrator `portainer-apply` stage. `CLOUD_STATIC_RUNNER_LABEL` removed — no workflow uses a cloud static runner. |
 
 ### Steady-State / Optional
 
@@ -80,7 +80,7 @@ Use this as the source of truth for whether a value is operator-managed or autom
 | `/management` | `PORTAINER_LICENSE_KEY` | Optional | Operator | Only needed for Portainer BE licensing |
 | GitHub `vars.*` | Timeout/poll interval tunables (`TFC_PLAN_*`, `PORTAINER_ALLOWLIST_PROPAGATION_*`, etc.) | Optional | Operator | Operational tuning only; defaults exist |
 | `/deployments` | `PORTAINER_WEBHOOK_URLS`, `WEBHOOK_URL_*` | Optional (manual use) | Platform | Auto-managed outputs from Terraform apply; consumed automatically by pipelines |
-| `/stacks/management` | `PORTAINER_AUTOMATION_ALLOWED_CIDRS` | Optional (manual seed only) | Security | Auto-synced by policy pipeline; manual set only as temporary break-glass bridge |
+| ~~`/stacks/management/PORTAINER_AUTOMATION_ALLOWED_CIDRS`~~ | ~~Optional~~ | ~~Security~~ | Removed — portainer-api Traefik route deleted. | N/A |
 
 ### Detailed Path Reference
 
@@ -99,7 +99,7 @@ Use this as the source of truth for whether a value is operator-managed or autom
 | Variable | How to Get | Used By |
 |----------|-----------|--------|
 | `PORTAINER_URL` | Auto-written by Ansible `portainer_bootstrap` role (or manually set) | Human-facing Portainer URL (`https://portainer.<domain>`) behind Authelia |
-| `PORTAINER_API_URL` | Auto-written by Ansible `portainer_bootstrap` role (or manually set) | Terraform Portainer provider `endpoint` (`https://portainer-api.<domain>`, API-only + IP allowlist) |
+| `PORTAINER_API_URL` | Auto-written by Ansible `portainer_bootstrap` role (or manually set) | Terraform Portainer provider `endpoint` — Tailscale IP (`http://<ts_ip>:9000/api`); accessed via Dagger pipeline SOCKS5 proxy over the WireGuard mesh |
 | `PORTAINER_API_KEY` | Auto-written by Ansible `portainer_bootstrap` role (or manually via Portainer → Access Tokens) | Terraform Portainer provider `api_key` |
 | `PORTAINER_LICENSE_KEY` | Portainer BE license key (optional — leave unset for CE). Obtain from [Portainer pricing](https://www.portainer.io/pricing) or your account portal | Terraform `portainer_licenses` resource |
 
@@ -149,7 +149,7 @@ The management stack (Portainer + Homarr) is deployed by Ansible, not Terraform,
 | `HOMARR_SECRET_KEY` | Generate: `openssl rand -hex 32` | Homarr `SECRET_ENCRYPTION_KEY` |
 | `PORTAINER_ADMIN_PASSWORD` | Choose a strong password or generate: `openssl rand -base64 24` | Ansible `portainer_bootstrap` role — hashed to bcrypt at deploy time and passed to Portainer via `--admin-password`; plaintext used only for JWT auth to create API key |
 | `PORTAINER_ADMIN_PASSWORD_HASH` | **Auto-generated and rewritten by Ansible on every bootstrap run** (`password_hash('bcrypt')`) and written to Infisical `/stacks/management` for Infisical Agent renders — do not set manually | Portainer `--admin-password` CLI flag (set in `docker-compose.yml`) |
-| `PORTAINER_AUTOMATION_ALLOWED_CIDRS` | Auto-synced by the infrastructure orchestrator network policy sync job (or manually seeded before first sync) | Traefik `ipAllowList` middleware on `portainer-api.<domain>` |
+| ~~`PORTAINER_AUTOMATION_ALLOWED_CIDRS`~~ | Removed — portainer-api Traefik route deleted; CI uses Tailscale IP. | N/A |
 
 ### `/stacks/network` — Vaultwarden + Pi-hole
 
@@ -211,14 +211,12 @@ The `dagger-pipeline` job injects both `INFISICAL_MACHINE_IDENTITY_ID` and `INFI
 | `INFISICAL_PROJECT_ID` | Infisical → Project Settings → Project ID | Terraform/Ansible workflows and webhook runner secret reads; exported alongside `INFISICAL_MACHINE_IDENTITY_ID` to reusable workflow shell steps |
 | `SSH_CERT_PRINCIPALS` | Comma-separated list of allowed SSH principals (e.g. `ubuntu,debian`) | Ansible/config-sync stages that sign ephemeral SSH certs via `ssh-keygen -s` |
 | `TFC_ORGANIZATION` (or `TFC_ORG`) | Terraform Cloud organization slug | Infrastructure orchestrator + infrastructure validation Terraform Cloud API calls |
-| `CLOUD_STATIC_RUNNER_LABEL` | Label of your static-egress private runner conforming to the `toolingDebian` contract (`bash`, `jq`, `yq`, `openssh-client`, `python3`, `ansible`, `infisical`, `gcloud`, `oci`, `gomplate`, `nc` on `PATH`) | Infrastructure orchestrator jobs that require deterministic egress + private reachability |
+| ~~`CLOUD_STATIC_RUNNER_LABEL`~~ | Removed — `portainer-live-plan` job deleted; all CI runs on `ubuntu-latest` via Tailscale. | N/A |
 | `TFC_WORKSPACE_INFRA` | Terraform Cloud → Workspace name (`goodoldme-infra`) | Infra workspace apply (`terraform/infra`) |
 | `TFC_WORKSPACE_PORTAINER` | Terraform Cloud → Workspace name (`goodoldme-portainer`) | Portainer workspace apply (`terraform/portainer-root`) |
 | `TFC_INFRA_APPLY_WAIT_TIMEOUT_SECONDS` *(optional)* | Integer seconds (default `7200`) | Infra manual-confirm wait loop in infrastructure orchestrator |
 | `TFC_PLAN_WAIT_TIMEOUT_SECONDS` *(optional)* | Integer seconds (default `7200`) | IaC validation speculative-plan wait timeout |
 | `TFC_PLAN_POLL_INTERVAL_SECONDS` *(optional)* | Integer seconds (default `10`) | IaC validation speculative-plan polling interval |
-| `PORTAINER_ALLOWLIST_PROPAGATION_TIMEOUT_SECONDS` *(optional)* | Integer seconds (default `420`) | Portainer allowlist propagation wait timeout |
-| `PORTAINER_ALLOWLIST_PROPAGATION_POLL_INTERVAL_SECONDS` *(optional)* | Integer seconds (default `5`) | Portainer allowlist propagation polling interval |
 | `STACKS_SHA_TRUST_WAIT_TIMEOUT_SECONDS` *(optional)* | Integer seconds (default `900`) | Wait timeout for trusted stacks SHA CI check completion on dispatch |
 | `STACKS_SHA_TRUST_POLL_INTERVAL_SECONDS` *(optional)* | Integer seconds (default `15`) | Poll interval for trusted stacks SHA CI check completion on dispatch |
 

@@ -91,14 +91,6 @@ async def portainer_api_preflight(
         .with_workdir("/work")
         .with_env_variable("RUN_PORTAINER", str(run_portainer).lower())
         .with_env_variable("RUN_HEALTH", str(run_health).lower())
-        .with_env_variable(
-            "PORTAINER_ALLOWLIST_PROPAGATION_TIMEOUT_SECONDS",
-            os.environ.get("PORTAINER_ALLOWLIST_PROPAGATION_TIMEOUT_SECONDS", "420"),
-        )
-        .with_env_variable(
-            "PORTAINER_ALLOWLIST_PROPAGATION_POLL_INTERVAL_SECONDS",
-            os.environ.get("PORTAINER_ALLOWLIST_PROPAGATION_POLL_INTERVAL_SECONDS", "5"),
-        )
     )
 
     if network_access_policy_json:

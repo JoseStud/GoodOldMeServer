@@ -14,7 +14,7 @@ Before deploying any stack, verify that all infrastructure layers are operationa
 | Automation-managed variables understood | Review [Variable Ownership & Mutability](infisical-workflow.md#variable-ownership--mutability) | Do not manually edit automation-managed variables outside their owning workflow |
 | Terraform infra workspace applied | Terraform Cloud run for `goodoldme-infra` succeeds (or `terraform -chdir=terraform/infra output`) | Merge/push a change under `terraform/infra`, `terraform/oci`, or `terraform/gcp` to `main` so `orchestrator.yml` runs automatically, or use `terraform -chdir=terraform/infra apply` |
 | Terraform Portainer workspace applied | Local CI apply for `terraform/portainer-root` succeeds against TFC remote state (`goodoldme-portainer`) (or `terraform -chdir=terraform/portainer-root output`) | Merge/push a change under `terraform/portainer` or `terraform/portainer-root` to `main` so `orchestrator.yml` runs automatically, or use `terraform -chdir=terraform/portainer-root apply` |
-| Cloud static runner ready | `vars.CLOUD_STATIC_RUNNER_LABEL` is set and workflow logs show deterministic IPv4/IPv6 egress | Configure runner label and egress routing, then re-run |
+| Tailscale mesh active (CI) | `dagger-pipeline` job connects Tailscale via `tailscale/github-action@v3` — verify `TS_OAUTH_CLIENT_ID` + `TS_OAUTH_SECRET` are set | Set OAuth credentials in GitHub repo secrets |
 | Ansible provisioning complete | SSH into nodes, verify Docker/Tailscale/GlusterFS/Portainer | Re-run `ansible-playbook` |
 | Portainer running | `curl -s http://localhost:9000/api/system/status` returns HTTP 200 | Re-run Ansible `portainer_bootstrap` role |
 | `PORTAINER_ADMIN_PASSWORD` set | `echo $PORTAINER_ADMIN_PASSWORD` is non-empty | `export PORTAINER_ADMIN_PASSWORD='...'` (bcrypt-hashed by Ansible and written to `/stacks/management` during bootstrap) |
@@ -200,7 +200,7 @@ After Ansible has bootstrapped Portainer, **Terraform manages all application st
 
 Runs execute with a split model:
 - `goodoldme-infra`: Terraform Cloud managed workers (remote run/apply)
-- `goodoldme-portainer`: local Terraform CLI on the cloud static runner, backed by Terraform Cloud remote state (`operations=false`)
+- `goodoldme-portainer`: local Terraform CLI inside the Dagger pipeline container (`portainer-apply` stage), backed by Terraform Cloud remote state (`operations=false`)
 
 ## Decision Gate: Normal vs Break-Glass
 
