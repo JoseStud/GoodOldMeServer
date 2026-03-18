@@ -280,6 +280,97 @@
 # is skipped, so the endpoint is never persisted. We create it via API
 # with a fresh JWT on each retry to tolerate any intermediate restarts.
 
+- name: Debug - diagnose endpoint creation (single attempt, visible output)
+  ansible.builtin.shell:
+    cmd: |
+      python3 << 'PYEOF'
+      import json, os, sys, urllib.request, urllib.error, traceback
+
+      api = os.environ["P_API"]
+      creds = json.dumps({"Username": os.environ["P_USER"],
+                           "Password": os.environ["P_PASS"]}).encode()
+
+      # Step 1: Authenticate
+      print(f"=== Step 1: POST {api}/auth ===")
+      try:
+          resp = urllib.request.urlopen(urllib.request.Request(
+              f"{api}/auth", data=creds,
+              headers={"Content-Type": "application/json"}, method="POST"
+          ))
+          jwt = json.loads(resp.read())["jwt"]
+          print(f"Auth OK (JWT length={len(jwt)})")
+      except urllib.error.HTTPError as e:
+          body = e.read().decode(errors="replace")
+          print(f"Auth FAILED: HTTP {e.code} — {body}")
+          sys.exit(1)
+      except Exception as e:
+          print(f"Auth FAILED: {e}")
+          traceback.print_exc()
+          sys.exit(1)
+
+      hdr = {"Authorization": f"Bearer {jwt}"}
+
+      # Step 2: List endpoints
+      print(f"\n=== Step 2: GET {api}/endpoints ===")
+      try:
+          resp = urllib.request.urlopen(
+              urllib.request.Request(f"{api}/endpoints", headers=hdr))
+          eps = json.loads(resp.read())
+          print(f"Endpoints count={len(eps)}")
+          for ep in eps:
+              print(f"  id={ep.get('Id')} name={ep.get('Name')} type={ep.get('Type')} url={ep.get('URL')}")
+      except urllib.error.HTTPError as e:
+          body = e.read().decode(errors="replace")
+          print(f"List FAILED: HTTP {e.code} — {body}")
+          sys.exit(1)
+      except Exception as e:
+          print(f"List FAILED: {e}")
+          traceback.print_exc()
+          sys.exit(1)
+
+      if eps:
+          print("\nEndpoint already exists — nothing to create")
+          sys.exit(0)
+
+      # Step 3: Create endpoint
+      ep_body = json.dumps({"Name": "primary", "EndpointCreationType": 2,
+                             "URL": "tcp://tasks.portainer-agent:9001",
+                             "TLSSkipVerify": True})
+      print(f"\n=== Step 3: POST {api}/endpoints ===")
+      print(f"Request body: {ep_body}")
+      try:
+          resp = urllib.request.urlopen(urllib.request.Request(
+              f"{api}/endpoints", data=ep_body.encode(),
+              headers={**hdr, "Content-Type": "application/json"}, method="POST"
+          ))
+          result = resp.read().decode(errors="replace")
+          print(f"Create OK: HTTP {resp.status} — {result[:500]}")
+      except urllib.error.HTTPError as e:
+          body = e.read().decode(errors="replace")
+          print(f"Create FAILED: HTTP {e.code} — {body}")
+          print(f"Response headers: {dict(e.headers)}")
+          sys.exit(1)
+      except Exception as e:
+          print(f"Create FAILED: {e}")
+          traceback.print_exc()
+          sys.exit(1)
+      PYEOF
+    executable: /bin/bash
+  environment:
+    P_API: "{{ portainer_api_url }}"
+    P_USER: "{{ portainer_admin_user }}"
+    P_PASS: "{{ portainer_admin_password }}"
+  register: endpoint_debug
+  failed_when: false
+  changed_when: false
+  when: inventory_hostname == groups['oci_nodes'][0]
+  no_log: true
+
+- name: Debug - print endpoint creation diagnostics
+  ansible.builtin.debug:
+    msg: "{{ endpoint_debug.stdout_lines | default([]) + endpoint_debug.stderr_lines | default([]) }}"
+  when: inventory_hostname == groups['oci_nodes'][0]
+
 - name: Ensure agent endpoint exists in Portainer
   ansible.builtin.shell:
     cmd: |
