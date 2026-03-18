@@ -1,5 +1,5 @@
 """Portainer stages: post-bootstrap-secret-check, portainer-api-preflight,
-portainer-apply, config-sync, health-gated-redeploy.
+portainer-apply-debug, portainer-apply, config-sync, health-gated-redeploy.
 """
 
 from __future__ import annotations
@@ -46,6 +46,59 @@ def _wire_infisical(
 # ---------------------------------------------------------------------------
 # Stages
 # ---------------------------------------------------------------------------
+
+
+def _portainer_terraform_container(
+    client: dagger.Client,
+    *,
+    source_dir: dagger.Directory,
+    stacks_sha: str = "",
+    proxy: TailscaleProxy | None = None,
+) -> dagger.Container:
+    """Shared Terraform container wiring for Portainer apply/debug stages."""
+    ctr = container_from_profile(client, "terraform")
+    ctr = (
+        ctr
+        .with_mounted_directory("/work", source_dir)
+        .with_workdir("/work")
+        .with_env_variable(
+            "SHADOW_MODE", os.environ.get("SHADOW_MODE", "false")
+        )
+    )
+
+    if stacks_sha:
+        ctr = ctr.with_env_variable("STACKS_SHA", stacks_sha)
+        ctr = ctr.with_env_variable("TF_VAR_stacks_sha", stacks_sha)
+
+    for var in (
+        "TFC_ORGANIZATION",
+        "TFC_WORKSPACE_PORTAINER",
+        "INFISICAL_PROJECT_ID",
+    ):
+        val = os.environ.get(var, "")
+        if val:
+            ctr = ctr.with_env_variable(var, val)
+
+    tf_var_infisical_project_id = os.environ.get("INFISICAL_PROJECT_ID", "")
+    if tf_var_infisical_project_id:
+        ctr = ctr.with_env_variable(
+            "TF_VAR_infisical_project_id", tf_var_infisical_project_id
+        )
+
+    for var in ("TFC_TOKEN", "INFISICAL_TOKEN"):
+        val = os.environ.get(var, "")
+        if val:
+            secret = client.set_secret(var, val)
+            ctr = ctr.with_secret_variable(var, secret)
+            if var == "TFC_TOKEN":
+                ctr = ctr.with_secret_variable("TF_TOKEN_app_terraform_io", secret)
+
+    ctr = _wire_infisical(ctr, client)
+
+    if proxy:
+        ctr = proxy.bind(ctr)
+
+    return ctr
 
 
 async def post_bootstrap_secret_check(
@@ -114,6 +167,29 @@ async def portainer_api_preflight(
     print(f"portainer-api-preflight: {output.strip()}")
 
 
+async def portainer_apply_debug(
+    client: dagger.Client,
+    *,
+    source_dir: dagger.Directory,
+    stacks_sha: str = "",
+    proxy: TailscaleProxy | None = None,
+) -> None:
+    """Emit Terraform Cloud workspace diagnostics for Portainer apply."""
+    ctr = _portainer_terraform_container(
+        client,
+        source_dir=source_dir,
+        stacks_sha=stacks_sha,
+        proxy=proxy,
+    )
+
+    output = await (
+        ctr
+        .with_exec(["bash", ".github/scripts/stages/portainer_apply_debug.sh"])
+        .stdout()
+    )
+    print(f"portainer-apply-debug: {output.strip()}")
+
+
 async def portainer_apply(
     client: dagger.Client,
     *,
@@ -122,48 +198,12 @@ async def portainer_apply(
     proxy: TailscaleProxy | None = None,
 ) -> None:
     """Terraform plan/apply for portainer-root workspace."""
-    ctr = container_from_profile(client, "terraform")
-    ctr = (
-        ctr
-        .with_mounted_directory("/work", source_dir)
-        .with_workdir("/work")
-        .with_env_variable(
-            "SHADOW_MODE", os.environ.get("SHADOW_MODE", "false")
-        )
+    ctr = _portainer_terraform_container(
+        client,
+        source_dir=source_dir,
+        stacks_sha=stacks_sha,
+        proxy=proxy,
     )
-
-    if stacks_sha:
-        ctr = ctr.with_env_variable("STACKS_SHA", stacks_sha)
-        ctr = ctr.with_env_variable("TF_VAR_stacks_sha", stacks_sha)
-
-    for var in (
-        "TFC_ORGANIZATION",
-        "TFC_WORKSPACE_PORTAINER",
-        "INFISICAL_PROJECT_ID",
-    ):
-        val = os.environ.get(var, "")
-        if val:
-            ctr = ctr.with_env_variable(var, val)
-
-    # TF_VAR passthrough
-    tf_var_infisical_project_id = os.environ.get("INFISICAL_PROJECT_ID", "")
-    if tf_var_infisical_project_id:
-        ctr = ctr.with_env_variable(
-            "TF_VAR_infisical_project_id", tf_var_infisical_project_id
-        )
-
-    for var in ("TFC_TOKEN", "INFISICAL_TOKEN"):
-        val = os.environ.get(var, "")
-        if val:
-            secret = client.set_secret(var, val)
-            ctr = ctr.with_secret_variable(var, secret)
-            if var == "TFC_TOKEN":
-                ctr = ctr.with_secret_variable("TF_TOKEN_app_terraform_io", secret)
-
-    ctr = _wire_infisical(ctr, client)
-
-    if proxy:
-        ctr = proxy.bind(ctr)
 
     output = await (
         ctr

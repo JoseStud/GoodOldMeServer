@@ -143,7 +143,8 @@ async def run_pipeline() -> None:
         # ── Layer 4: Portainer ────────────────────────────────────
         # post-bootstrap-secret-check, then parallel:
         #   portainer-api-preflight + config-sync (subprocess)
-        # then: portainer-apply, then health-gated-redeploy
+        # then: portainer-apply-debug, portainer-apply,
+        # then health-gated-redeploy
 
         if run_portainer_apply:
             await portainer.post_bootstrap_secret_check(
@@ -169,6 +170,14 @@ async def run_pipeline() -> None:
                 network_access_policy_json=network_access_policy_json,
                 run_portainer=run_portainer_apply,
                 run_health=run_health_redeploy,
+                proxy=proxy,
+            )
+
+        if run_portainer_apply:
+            await portainer.portainer_apply_debug(
+                client,
+                source_dir=source_dir,
+                stacks_sha=stacks_sha,
                 proxy=proxy,
             )
 
