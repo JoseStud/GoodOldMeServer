@@ -103,6 +103,9 @@ async def portainer_api_preflight(
     if proxy:
         ctr = proxy.bind(ctr)
 
+    # preflight_network_access.sh shells out to python3 for CIDR validation.
+    ctr = ctr.with_exec(["apk", "add", "--no-cache", "python3"])
+
     output = await (
         ctr
         .with_exec(["bash", ".github/scripts/stages/portainer_api_preflight.sh"])
