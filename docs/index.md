@@ -9,7 +9,7 @@ Welcome to the centralized GoodOldMeServer documentation. This repository manage
 
 > **Note:** The `stacks/` directory is a [Git submodule](https://github.com/JoseStud/stacks) tracking the `main` branch. Submodule update PRs are managed by Dependabot (`gitsubmodule` ecosystem).
 >
-> **Trust boundary:** The infrastructure orchestrator consumes a `stacks_sha` only after `.github/scripts/stacks/verify_trusted_stacks_sha.sh` confirms that SHA is on the trusted `main` lineage and that every observed GitHub CI signal on the stacks repo commit is green. This boundary separates public stacks-repo CI evidence from the private runner stages that mutate Terraform Cloud, sync `/opt/stacks`, pin Portainer Git refs, and trigger redeploys.
+> **Trust boundary:** The infrastructure orchestrator consumes a `stacks_sha` only after `.github/scripts/stacks/verify_trusted_stacks_sha.sh` confirms that SHA is on the trusted `main` lineage and that every observed GitHub CI signal on the stacks repo commit is green. This boundary separates public stacks-repo CI evidence from the private runner stages that mutate Terraform Cloud, sync `/opt/stacks`, select the Portainer manifest input, and trigger redeploys.
 
 ## Start Here (Cutover + Ownership)
 

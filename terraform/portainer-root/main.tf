@@ -69,7 +69,7 @@ variable "repository_reference" {
 }
 
 variable "stacks_sha" {
-  description = "Optional immutable stacks repository commit SHA that overrides repository_reference and stacks_manifest_url"
+  description = "Optional immutable stacks repository commit SHA that overrides stacks_manifest_url only"
   type        = string
   default     = null
 

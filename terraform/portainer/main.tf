@@ -28,7 +28,7 @@ variable "repository_reference" {
 }
 
 variable "stacks_sha" {
-  description = "Optional immutable stacks repository commit SHA that overrides repository_reference and stacks_manifest_url"
+  description = "Optional immutable stacks repository commit SHA that overrides stacks_manifest_url only"
   type        = string
   default     = null
 
@@ -101,9 +101,6 @@ locals {
   ])
   github_repo_owner = local.github_repo_valid ? local.github_repo_parts[0] : null
   github_repo_name  = local.github_repo_valid ? local.github_repo_parts[1] : null
-  effective_repository_reference = local.has_stacks_sha ? (
-    local.github_repo_valid ? var.stacks_sha : var.repository_reference
-  ) : var.repository_reference
   effective_stacks_manifest_url = local.has_stacks_sha ? (
     local.github_repo_valid ? "https://raw.githubusercontent.com/${local.github_repo_owner}/${local.github_repo_name}/${var.stacks_sha}/stacks.yaml" : var.stacks_manifest_url
   ) : var.stacks_manifest_url
@@ -123,7 +120,7 @@ locals {
 check "stacks_sha_requires_github_repository_url" {
   assert {
     condition     = !local.has_stacks_sha || local.github_repo_valid
-    error_message = "stacks_sha requires repository_url to use https://github.com/<owner>/<repo>.git or git@github.com:<owner>/<repo>.git format."
+    error_message = "stacks_sha requires repository_url to use https://github.com/<owner>/<repo>.git or git@github.com:<owner>/<repo>.git format so Terraform can derive the raw GitHub manifest URL."
   }
 }
 
@@ -157,7 +154,7 @@ resource "portainer_stack" "swarm" {
   endpoint_id     = var.endpoint_id
 
   repository_url            = var.repository_url
-  repository_reference_name = local.effective_repository_reference
+  repository_reference_name = var.repository_reference
   file_path_in_repository   = each.value
 
   # GitOps: enable webhook + pull latest images on redeploy

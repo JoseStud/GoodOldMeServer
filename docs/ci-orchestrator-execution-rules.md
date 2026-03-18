@@ -61,7 +61,7 @@ This trust boundary applies to:
 
 - runtime sync
 - config sync
-- Portainer apply SHA pinning
+- Portainer apply manifest selection
 - health-gated webhook redeploy
 
 ## Concurrency
