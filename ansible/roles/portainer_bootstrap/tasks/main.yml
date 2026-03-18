@@ -320,6 +320,7 @@
         -F "Name=primary" \
         -F "EndpointCreationType=2" \
         -F "URL=tcp://tasks.portainer-agent:9001" \
+        -F "TLS=true" \
         -F "TLSSkipVerify=true" 2>&1 || true
     executable: /bin/bash
   environment:
@@ -368,6 +369,7 @@
         -F "Name=primary" \
         -F "EndpointCreationType=2" \
         -F "URL=tcp://tasks.portainer-agent:9001" \
+        -F "TLS=true" \
         -F "TLSSkipVerify=true" > /dev/null
 
       echo 'CHANGED'
