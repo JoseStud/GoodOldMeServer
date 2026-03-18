@@ -125,7 +125,10 @@ if [[ "${should_check_portainer}" == "true" ]]; then
     exit 1
   fi
 
-  status="$(curl -sS -o /dev/null -w "%{http_code}" --max-time 10 "${PORTAINER_API_URL%/}/api/system/status" || true)"
+  target_url="${PORTAINER_API_URL%/}"
+  target_url="${target_url%/api}"
+
+  status="$(curl -sS -o /dev/null -w "%{http_code}" --max-time 10 "${target_url}/api/system/status" || true)"
   if [[ "${status}" != "200" && "${status}" != "401" ]]; then
     echo "Portainer API preflight failed (expected 200 or 401, got ${status})."
     exit 1
