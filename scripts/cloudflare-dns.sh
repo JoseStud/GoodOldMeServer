@@ -31,7 +31,7 @@ done
 
 RECORD_NAME="${STACK_NAME}.${BASE_DOMAIN}"
 RECORD_TYPE="A"
-PROXIED="true"
+PROXIED="${PROXIED:-true}" # Override via env var for DNS-only records (e.g. IP-allowlisted endpoints)
 TTL=1
 
 echo "Configuring DNS for Stack: ${STACK_NAME}"

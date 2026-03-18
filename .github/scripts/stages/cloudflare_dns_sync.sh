@@ -89,11 +89,28 @@ ALL_SUBDOMAINS=("${INFRASTRUCTURE_SUBDOMAINS[@]}" "${STACKS[@]}")
 echo "cloudflare-dns-sync: subdomains = ${ALL_SUBDOMAINS[*]}"
 
 # ── Reconcile DNS for each subdomain ──────────────────────────────────────────
+# Infrastructure subdomains use PROXIED=false (DNS-only) so connections arrive
+# from the CI runner's IP directly, satisfying the OCI IP allowlist. Portainer-
+# managed stacks use the default PROXIED=true (Cloudflare CDN/proxy).
+
+is_infrastructure_subdomain() {
+    local name="$1"
+    for infra in "${INFRASTRUCTURE_SUBDOMAINS[@]}"; do
+        [[ "$name" == "$infra" ]] && return 0
+    done
+    return 1
+}
+
 FAILED=0
 for stack in "${ALL_SUBDOMAINS[@]}"; do
     echo "--- ${stack} ---"
-    if ! bash scripts/cloudflare-dns.sh "${stack}" "${OCI_IPS[@]}"; then
-        echo "Error: DNS sync failed for stack '${stack}'." >&2
+    if is_infrastructure_subdomain "${stack}"; then
+        proxied_env="PROXIED=false"
+    else
+        proxied_env="PROXIED=true"
+    fi
+    if ! env "${proxied_env}" bash scripts/cloudflare-dns.sh "${stack}" "${OCI_IPS[@]}"; then
+        echo "Error: DNS sync failed for subdomain '${stack}'." >&2
         FAILED=$((FAILED + 1))
     fi
 done
