@@ -108,6 +108,14 @@
     - inventory_hostname == groups['oci_nodes'][0]
     - portainer_pre_health.status | default(0) != 200
 
+- name: Ensure shared Traefik overlay network exists
+  community.docker.docker_network:
+    name: traefik_proxy
+    driver: overlay
+    attachable: yes
+    state: present
+  when: inventory_hostname == groups['oci_nodes'][0]
+
 - name: Deploy management stack (Portainer + Homarr)
   ansible.builtin.command: >
     docker stack deploy

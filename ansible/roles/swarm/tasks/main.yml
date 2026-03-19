@@ -118,5 +118,4 @@
     driver: overlay
     attachable: yes
     state: present
-  run_once: true
-  when: swarm_state.stdout == 'active'
+  when: inventory_hostname == groups['oci_nodes'][0]
