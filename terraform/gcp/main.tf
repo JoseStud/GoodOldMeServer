@@ -170,7 +170,7 @@ resource "google_compute_instance" "witness" {
       fi
 
       systemctl enable --now tailscaled
-      timeout 120 bash -c 'until tailscale status &>/dev/null; do sleep 2; done'
+      timeout 60 bash -c 'until systemctl is-active --quiet tailscaled && [[ -S /run/tailscale/tailscaled.sock ]]; do sleep 2; done'
 
       for attempt in 1 2 3; do
         if tailscale up --authkey='${var.tailscale_auth_key}' --ssh --hostname=swarm-witness --advertise-tags=tag:server --accept-dns=false --timeout=120s; then
@@ -180,6 +180,7 @@ resource "google_compute_instance" "witness" {
           echo "Failed to authenticate the witness with Tailscale after $${attempt} attempts" >&2
           exit 1
         fi
+        systemctl restart tailscaled || true
         sleep 10
       done
     EOT
