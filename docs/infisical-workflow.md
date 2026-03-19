@@ -342,7 +342,9 @@ Manual stacks reconciliation is no longer supported from `orchestrator.yml`; man
 
 ## Infisical Agent (Docker Swarm)
 
-The Infisical Agent runs on each Swarm node as a **systemd service**. It renders `.env` files and selected config files from templates and triggers stack redeploys on secret changes.
+The Infisical Agent runs on each Swarm node as a **systemd service**. It renders host-side `.env` files and selected config files from templates.
+
+For Portainer-managed stacks, the live stack environment is injected into Portainer by Terraform (`terraform/portainer-root`) via `portainer_stack.env`. The agent-rendered `/opt/stacks/<stack>/.env` files remain useful for break-glass direct `docker stack deploy` workflows, but Portainer does not consume them during normal GitOps redeploys.
 
 ### Installing the Agent
 
@@ -417,14 +419,18 @@ The agent config lives at `/etc/infisical/agent.yaml` and is rendered by Ansible
 - `source-path` → the template file on disk
 - `destination-path` → the rendered output path
 - `polling-interval: 60s` → how often to check for changes
-- `exec.command` → either direct management `docker stack deploy` or the local Portainer webhook helper, depending on stack ownership
+- `config.execute.command` → optional follow-up command for templates that must apply local changes immediately (for example management stack deploy or rendered config sync helpers)
+
+The agent authenticates with Universal Auth using credential files rendered by Ansible under `/etc/infisical/client-id` and `/etc/infisical/client-secret`.
 
 ### Workflow
 
 1. Operator adds/updates a secret in the Infisical dashboard
 2. The agent detects the change on its next polling interval (60s default)
 3. Agent re-renders the target `.env` or config file with the new value
-4. Agent runs the `exec.command` on the primary manager to redeploy the stack or trigger the Portainer webhook
+4. For templates with `config.execute`, the agent runs the follow-up command on the primary manager
+
+For Portainer-managed stack environment changes, re-run the normal Terraform/Portainer apply path so Portainer's stored stack env is updated from Infisical. The host-rendered `.env` mirror alone does not change Portainer's stack environment.
 
 ## infisical.json
 

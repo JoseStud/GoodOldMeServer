@@ -4,7 +4,7 @@ Personal homelab/cloud server infrastructure using a four-layer architecture:
 
 1. **Terraform** provisions cloud resources across Oracle Cloud (2× Ampere A1.Flex workers) and Google Cloud (1× e2-micro Swarm witness)
 2. **Ansible** bootstraps nodes through 7 phases: system user + storage → Docker → Tailscale mesh → GlusterFS → Docker Swarm → Portainer bootstrap → host runtime sync
-3. **Docker Swarm** runs 8 stacks behind Traefik with Authelia SSO, using Infisical-rendered runtime env files and Portainer GitOps for the Portainer-managed stacks
+3. **Docker Swarm** runs 8 stacks behind Traefik with Authelia SSO, using Infisical-backed Portainer stack env vars plus host-rendered runtime env/config files for break-glass and local sync workflows
 4. **Infrastructure Orchestrator (GitHub Actions)** orchestrates secret validation → infra apply → inventory handover → Ansible bootstrap → Portainer apply → health-gated stack redeploy
 
 ## Prerequisites
@@ -38,7 +38,7 @@ terraform -chdir=terraform/portainer-root apply
 # See docs/deployment-runbook.md for the current host-synced /opt/stacks flow
 ```
 
-Ansible Phase 6 bootstraps the `management` stack. The remaining Portainer-managed stacks are normally converged by `terraform/portainer-root` and redeployed through webhooks rather than direct `docker stack deploy` calls from this checkout.
+Ansible Phase 6 bootstraps the `management` stack. The remaining Portainer-managed stacks are normally converged by `terraform/portainer-root`, which injects their stack environment variables from Infisical into Portainer and redeploys them through webhooks rather than direct `docker stack deploy` calls from this checkout.
 
 For the full deployment procedure, see the [Deployment Runbook](docs/deployment-runbook.md).
 For first-time pipeline setup, use the [Infrastructure Orchestrator Cutover Checklist](docs/meta-pipeline-cutover-checklist.md).

@@ -55,6 +55,27 @@
     owner: root
     group: root
     mode: "0600"
+  no_log: true
+
+- name: Render Infisical agent client id file
+  ansible.builtin.copy:
+    dest: "{{ runtime_sync_agent_client_id_path }}"
+    content: "{{ runtime_sync_infisical_agent_client_id }}\n"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: Restart infisical agent
+
+- name: Render Infisical agent client secret file
+  ansible.builtin.copy:
+    dest: "{{ runtime_sync_agent_client_secret_path }}"
+    content: "{{ runtime_sync_infisical_agent_client_secret }}\n"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: Restart infisical agent
 
 - name: Install local Portainer webhook helper
   ansible.builtin.template:

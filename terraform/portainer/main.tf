@@ -88,6 +88,42 @@ data "http" "stacks_manifest" {
   } : {}
 }
 
+data "infisical_secrets" "infrastructure" {
+  env_slug     = "prod"
+  workspace_id = var.infisical_project_id
+  folder_path  = "/infrastructure"
+}
+
+data "infisical_secrets" "gateway" {
+  env_slug     = "prod"
+  workspace_id = var.infisical_project_id
+  folder_path  = "/stacks/gateway"
+}
+
+data "infisical_secrets" "identity" {
+  env_slug     = "prod"
+  workspace_id = var.infisical_project_id
+  folder_path  = "/stacks/identity"
+}
+
+data "infisical_secrets" "network" {
+  env_slug     = "prod"
+  workspace_id = var.infisical_project_id
+  folder_path  = "/stacks/network"
+}
+
+data "infisical_secrets" "observability" {
+  env_slug     = "prod"
+  workspace_id = var.infisical_project_id
+  folder_path  = "/stacks/observability"
+}
+
+data "infisical_secrets" "ai_interface" {
+  env_slug     = "prod"
+  workspace_id = var.infisical_project_id
+  folder_path  = "/stacks/ai-interface"
+}
+
 locals {
   has_stacks_sha = var.stacks_sha != null
   github_repo_path = startswith(var.repository_url, "https://github.com/") ? trimprefix(var.repository_url, "https://github.com/") : (
@@ -112,6 +148,66 @@ locals {
     for name, cfg in local.stack_entries :
     name => cfg.compose_path
     if try(cfg.portainer_managed, false)
+  }
+
+  infrastructure_secrets = { for key, secret in data.infisical_secrets.infrastructure.secrets : key => secret.value }
+  gateway_secrets        = { for key, secret in data.infisical_secrets.gateway.secrets : key => secret.value }
+  identity_secrets       = { for key, secret in data.infisical_secrets.identity.secrets : key => secret.value }
+  network_secrets        = { for key, secret in data.infisical_secrets.network.secrets : key => secret.value }
+  observability_secrets  = { for key, secret in data.infisical_secrets.observability.secrets : key => secret.value }
+  ai_interface_secrets   = { for key, secret in data.infisical_secrets.ai_interface.secrets : key => secret.value }
+
+  portainer_stack_envs = {
+    gateway = {
+      BASE_DOMAIN             = local.infrastructure_secrets["BASE_DOMAIN"]
+      CLOUDFLARE_API_TOKEN    = local.infrastructure_secrets["CLOUDFLARE_API_TOKEN"]
+      ACME_EMAIL              = local.gateway_secrets["ACME_EMAIL"]
+      DOCKER_SOCKET_PROXY_URL = try(local.gateway_secrets["DOCKER_SOCKET_PROXY_URL"], "")
+    }
+    auth = {
+      BASE_DOMAIN                                    = local.infrastructure_secrets["BASE_DOMAIN"]
+      TZ                                             = local.infrastructure_secrets["TZ"]
+      AUTHELIA_JWT_SECRET                            = local.identity_secrets["AUTHELIA_JWT_SECRET"]
+      AUTHELIA_SESSION_SECRET                        = local.identity_secrets["AUTHELIA_SESSION_SECRET"]
+      POSTGRES_PASSWORD                              = local.identity_secrets["POSTGRES_PASSWORD"]
+      AUTHELIA_STORAGE_ENCRYPTION_KEY                = local.identity_secrets["AUTHELIA_STORAGE_ENCRYPTION_KEY"]
+      AUTHELIA_NOTIFIER_SMTP_USERNAME                = local.identity_secrets["AUTHELIA_NOTIFIER_SMTP_USERNAME"]
+      AUTHELIA_NOTIFIER_SMTP_PASSWORD                = local.identity_secrets["AUTHELIA_NOTIFIER_SMTP_PASSWORD"]
+      AUTHELIA_NOTIFIER_SMTP_SENDER                  = local.identity_secrets["AUTHELIA_NOTIFIER_SMTP_SENDER"]
+      AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET   = local.identity_secrets["AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET"]
+      AUTH_OIDC_JWKS_0_KEY                           = local.identity_secrets["AUTHELIA_IDENTITY_PROVIDERS_OIDC_JWKS_0_KEY"]
+      AUTH_GRAFANA_OIDC_CLIENT_SECRET_HASH           = local.identity_secrets["AUTHELIA_IDENTITY_PROVIDERS_OIDC_CLIENTS_0_CLIENT_SECRET"]
+      AUTH_SESSION_COOKIES_0_DOMAIN                  = local.infrastructure_secrets["BASE_DOMAIN"]
+      AUTH_SESSION_COOKIES_0_AUTHELIA_URL            = "https://auth.${local.infrastructure_secrets["BASE_DOMAIN"]}"
+      AUTH_SESSION_COOKIES_0_DEFAULT_REDIRECTION_URL = "https://home.${local.infrastructure_secrets["BASE_DOMAIN"]}"
+      AUTHELIA_TOTP_ISSUER                           = local.infrastructure_secrets["BASE_DOMAIN"]
+    }
+    network = {
+      BASE_DOMAIN     = local.infrastructure_secrets["BASE_DOMAIN"]
+      TZ              = local.infrastructure_secrets["TZ"]
+      VW_DB_PASS      = local.network_secrets["VW_DB_PASS"]
+      VW_ADMIN_TOKEN  = local.network_secrets["VW_ADMIN_TOKEN"]
+      PIHOLE_PASSWORD = local.network_secrets["PIHOLE_PASSWORD"]
+    }
+    observability = {
+      BASE_DOMAIN           = local.infrastructure_secrets["BASE_DOMAIN"]
+      TZ                    = local.infrastructure_secrets["TZ"]
+      GF_OIDC_CLIENT_ID     = local.observability_secrets["GF_OIDC_CLIENT_ID"]
+      GF_OIDC_CLIENT_SECRET = local.observability_secrets["GF_OIDC_CLIENT_SECRET"]
+    }
+    "ai-interface" = {
+      BASE_DOMAIN = local.infrastructure_secrets["BASE_DOMAIN"]
+      TZ          = local.infrastructure_secrets["TZ"]
+      ARCH_PC_IP  = try(local.ai_interface_secrets["ARCH_PC_IP"], "")
+    }
+    uptime = {
+      BASE_DOMAIN = local.infrastructure_secrets["BASE_DOMAIN"]
+      TZ          = local.infrastructure_secrets["TZ"]
+    }
+    cloud = {
+      BASE_DOMAIN = local.infrastructure_secrets["BASE_DOMAIN"]
+      TZ          = local.infrastructure_secrets["TZ"]
+    }
   }
 
   has_git_auth = var.git_username != null && var.git_password != null
@@ -141,6 +237,16 @@ check "stacks_manifest_compose_paths" {
   }
 }
 
+check "portainer_stack_envs_cover_all_managed_stacks" {
+  assert {
+    condition = alltrue([
+      for name in keys(local.stacks) :
+      contains(keys(local.portainer_stack_envs), name)
+    ])
+    error_message = "Every Portainer-managed stack in stacks.yaml must have a corresponding env map in local.portainer_stack_envs."
+  }
+}
+
 # ──────────────────────────────────────────────
 # Portainer Stacks (Swarm + GitOps)
 # ──────────────────────────────────────────────
@@ -166,6 +272,15 @@ resource "portainer_stack" "swarm" {
   git_repository_authentication = local.has_git_auth
   repository_username           = local.has_git_auth ? var.git_username : null
   repository_password           = local.has_git_auth ? var.git_password : null
+
+  dynamic "env" {
+    for_each = local.portainer_stack_envs[each.key]
+
+    content {
+      name  = env.key
+      value = env.value
+    }
+  }
 }
 
 # ──────────────────────────────────────────────

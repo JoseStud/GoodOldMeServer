@@ -157,7 +157,11 @@ Data volumes are bind-mounted to GlusterFS for persistence and replication.
 
 ## Environment Variables
 
-All compose files use `${BASE_DOMAIN}` for domain names and `${TZ}` for timezone. These globals live in `/infrastructure` and are injected into every stack's `.env` by the Infisical Agent — no duplication needed.
+All compose files use `${BASE_DOMAIN}` for domain names and `${TZ}` for timezone. These globals live in `/infrastructure`.
+
+For direct-deploy and break-glass workflows, the Infisical Agent renders host-side `.env` mirrors under `/opt/stacks/<stack>/.env`.
+
+For Portainer-managed stacks, Terraform injects the same values into the Portainer stack definition via `portainer_stack.env`. Portainer does not read the host-rendered `/opt/stacks/<stack>/.env` files during normal GitOps redeploys.
 
 Per-stack secrets are in their own Infisical paths:
 
@@ -189,7 +193,7 @@ Stacks that are self-configuring (no config files needed): **gateway**, **manage
 
 ## Host Runtime Sync
 
-Host runtime assets are Ansible-managed. Use `phase7_runtime_sync` to mirror the trusted `stacks/` checkout to `/opt/stacks`, render `/etc/infisical/agent.yaml`, and refresh the local webhook helper/service on every node. The management stack template is the exception to the webhook pattern: it renders `/opt/stacks/management/.env` and then runs a direct `docker stack deploy`, while the Portainer-managed templates call the local webhook helper on the primary manager.
+Host runtime assets are Ansible-managed. Use `phase7_runtime_sync` to mirror the trusted `stacks/` checkout to `/opt/stacks`, render `/etc/infisical/agent.yaml`, and refresh the local webhook helper/service on every node. The management stack template renders `/opt/stacks/management/.env` and runs a direct `docker stack deploy`. Portainer-managed stack `.env` templates are still rendered to `/opt/stacks/<stack>/.env` for break-glass direct deploys, but their normal stack environment lives in Portainer and is updated by Terraform rather than the on-node agent.
 
 ```bash
 ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase7_runtime_sync
@@ -203,5 +207,6 @@ ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.
 4. If the stack needs config files, add them under `stacks/<name>/config/` and add a sync task to `ansible/roles/glusterfs/tasks/sync-configs.yml`
 5. Register the stack in `stacks/infisical-agent.yaml` so host-sync-only template changes can update the runtime path
 6. Run `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase7_runtime_sync` to converge `/opt/stacks` and the agent config
-7. Deploy: use direct `docker stack deploy` only for non-Portainer-managed stacks; otherwise let the normal Terraform + Portainer webhook automation own the deploy path
-8. Update this document and the [Deployment Runbook](deployment-runbook.md)
+7. If the stack is Portainer-managed, add its env mapping in `terraform/portainer/main.tf` so Portainer receives the required compose variables from Infisical
+8. Deploy: use direct `docker stack deploy` only for non-Portainer-managed stacks; otherwise let the normal Terraform + Portainer webhook automation own the deploy path
+9. Update this document and the [Deployment Runbook](deployment-runbook.md)
