@@ -1,0 +1,145 @@
+---
+- name: Check if Tailscale is already installed
+  ansible.builtin.stat:
+    path: /usr/bin/tailscale
+  register: tailscale_binary
+
+- name: Install Tailscale via official APT repo
+  when: not tailscale_binary.stat.exists
+  block:
+    - name: Install prerequisites for Tailscale APT repo
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+        state: present
+        update_cache: true
+
+    - name: Ensure APT keyrings directory exists
+      ansible.builtin.file:
+        path: /usr/share/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Add Tailscale signing key
+      ansible.builtin.get_url:
+        url: https://pkgs.tailscale.com/stable/{{ ansible_facts['distribution'] | lower }}/{{ ansible_facts['distribution_release'] }}.noarmor.gpg
+        dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+        mode: '0644'
+
+    - name: Add Tailscale APT repository
+      ansible.builtin.apt_repository:
+        repo: >-
+          deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg]
+          https://pkgs.tailscale.com/stable/{{ ansible_facts['distribution'] | lower }}
+          {{ ansible_facts['distribution_release'] }} main
+        state: present
+        filename: tailscale
+
+    - name: Install Tailscale package
+      ansible.builtin.apt:
+        name: tailscale
+        state: present
+        update_cache: true
+
+- name: Ensure tailscaled service is started and enabled
+  ansible.builtin.systemd:
+    name: tailscaled
+    state: started
+    enabled: true
+
+- name: Query Tailscale status
+  ansible.builtin.command: tailscale status --json
+  register: tailscale_status
+  changed_when: false
+  failed_when: false
+
+- name: Derive Tailscale backend state
+  ansible.builtin.set_fact:
+    tailscale_backend_state: >-
+      {% if tailscale_status.stdout | default('') | trim | length > 0 %}
+      {{ (tailscale_status.stdout | from_json).BackendState | default('') }}
+      {% else %}
+      {% endif %}
+
+- name: Determine whether Tailscale authentication is required
+  ansible.builtin.set_fact:
+    tailscale_needs_auth: "{{ tailscale_status.rc != 0 or tailscale_backend_state | trim != 'Running' }}"
+
+- name: Assert TAILSCALE_AUTH_KEY is available
+  ansible.builtin.assert:
+    that: lookup('env', 'TAILSCALE_AUTH_KEY') | length > 0
+    fail_msg: >-
+      TAILSCALE_AUTH_KEY is not set or empty.
+      Ensure the secret exists in Infisical at /infrastructure with this exact name.
+  when: tailscale_needs_auth
+
+- name: Authenticate Tailscale (Requires TAILSCALE_AUTH_KEY env)
+  ansible.builtin.command: >
+    tailscale up
+    --authkey={{ lookup('env', 'TAILSCALE_AUTH_KEY') }}
+    --ssh
+    --accept-dns=false
+    --reset
+  register: tailscale_up_job
+  when: tailscale_needs_auth
+  async: 120
+  poll: 0
+  no_log: true
+
+- name: Wait for connection after Tailscale reconfiguration
+  ansible.builtin.wait_for_connection:
+    delay: 5
+    timeout: 120
+  when: tailscale_needs_auth
+
+- name: Wait for Tailscale authentication command to finish
+  ansible.builtin.async_status:
+    jid: "{{ tailscale_up_job.ansible_job_id }}"
+  register: tailscale_up_result
+  until: tailscale_up_result.finished
+  retries: 24
+  delay: 5
+  when: tailscale_needs_auth
+  no_log: true
+
+- name: Verify Tailscale mesh connectivity
+  block:
+    - name: Refresh Tailscale status
+      ansible.builtin.command: tailscale status --json
+      register: tailscale_status_verify
+      changed_when: false
+
+    - name: Derive verified Tailscale backend state
+      ansible.builtin.set_fact:
+        tailscale_backend_state_verify: >-
+          {% if tailscale_status_verify.stdout | default('') | trim | length > 0 %}
+          {{ (tailscale_status_verify.stdout | from_json).BackendState | default('') }}
+          {% else %}
+          {% endif %}
+
+    - name: Assert Tailscale backend is running
+      ansible.builtin.assert:
+        that:
+          - tailscale_status_verify.rc == 0
+          - tailscale_backend_state_verify | trim == 'Running'
+        fail_msg: >-
+          Tailscale is installed, but the backend is not running.
+          Check tailscaled logs on the host for more detail.
+  rescue:
+    - name: Capture Tailscale daemon log (auth diagnostics)
+      ansible.builtin.command: journalctl -u tailscaled --since "3 minutes ago" --no-pager --output=cat
+      register: tailscale_daemon_log
+      changed_when: false
+      failed_when: false
+
+    - name: Show Tailscale daemon auth errors
+      ansible.builtin.debug:
+        msg: "{{ tailscale_daemon_log.stdout_lines }}"
+      when: tailscale_daemon_log.stdout_lines | default([]) | length > 0
+
+    - name: Fail due to Tailscale verification error
+      ansible.builtin.fail:
+        msg: >-
+          Tailscale verification failed on {{ inventory_hostname }}.
+          Review the tailscaled journal output above for diagnostics.

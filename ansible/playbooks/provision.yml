@@ -1,20 +1,23 @@
 ---
-- name: Provision Infrastructure
-  hosts: all
+- name: Bootstrap OCI infrastructure
+  hosts: oci_nodes
   become: true
-  gather_facts: false # Disable until connection is verified
-  
+  gather_facts: false
+
   tasks:
     - name: Wait for ssh connection to become available
       ansible.builtin.wait_for_connection:
         delay: 10
         timeout: 600
-    
+      tags: [always]
+
     - name: Gather facts
       ansible.builtin.setup:
+      tags: [always]
 
     - name: Verify connection
       ansible.builtin.ping:
+      tags: [always]
 
     # === Phase 1: Base system setup ===
     - name: Run system_user role
@@ -25,7 +28,6 @@
     - name: Run storage role (OCI block volumes)
       ansible.builtin.include_role:
         name: storage
-      when: inventory_hostname in groups['oci_nodes']
       tags: [phase1_base]
 
     - name: Run infisical_cli role
@@ -40,95 +42,63 @@
       tags: [phase2_docker]
 
     # === Phase 3: Tailscale mesh networking ===
-    - name: Check if Tailscale is already authenticated
-      ansible.builtin.command: tailscale status --json
-      register: tailscale_status
-      ignore_errors: true
-      changed_when: false
+    - name: Run tailscale role
+      ansible.builtin.include_role:
+        name: tailscale
       tags: [phase3_tailscale]
 
-    - name: Install Tailscale via official APT repo
-      when: tailscale_status.rc != 0 or 'BackendState' not in (tailscale_status.stdout | default(''))
-      tags: [phase3_tailscale]
-      block:
-        - name: Add Tailscale signing key
-          ansible.builtin.apt_key:
-            url: https://pkgs.tailscale.com/stable/{{ ansible_distribution | lower }}/{{ ansible_distribution_release }}.noarmor.gpg
-            state: present
+- name: Bootstrap GCP witness over Tailscale
+  hosts: gcp_witness
+  become: true
+  gather_facts: false
 
-        - name: Add Tailscale APT repository
-          ansible.builtin.apt_repository:
-            repo: "deb https://pkgs.tailscale.com/stable/{{ ansible_distribution | lower }} {{ ansible_distribution_release }} main"
-            state: present
-            filename: tailscale
-
-        - name: Install Tailscale package
-          ansible.builtin.apt:
-            name: tailscale
-            state: present
-            update_cache: true
-
-    - name: Assert TAILSCALE_AUTH_KEY is available
-      ansible.builtin.assert:
-        that: lookup('env', 'TAILSCALE_AUTH_KEY') | length > 0
-        fail_msg: >-
-          TAILSCALE_AUTH_KEY is not set or empty.
-          Ensure the secret exists in Infisical at /infrastructure with this exact name.
-      when: >
-        tailscale_status.rc != 0 or
-        tailscale_status.stdout | length == 0 or
-        (tailscale_status.stdout | from_json).BackendState | default('') != 'Running'
-      tags: [phase3_tailscale]
-
-    - name: Authenticate Tailscale (Requires TAILSCALE_AUTH_KEY env)
-      ansible.builtin.command: >
-        tailscale up
-        --authkey={{ lookup('env', 'TAILSCALE_AUTH_KEY') }}
-        --ssh
-        --accept-dns=false
-        --reset
-      when: >
-        tailscale_status.rc != 0 or
-        tailscale_status.stdout | length == 0 or
-        (tailscale_status.stdout | from_json).BackendState | default('') != 'Running'
-      async: 120
-      poll: 0
-      no_log: true
-      tags: [phase3_tailscale]
-
-    - name: Wait for connection after Tailscale reconfiguration
+  tasks:
+    - name: Wait for Tailscale SSH connection to become available
       ansible.builtin.wait_for_connection:
-        delay: 5
-        timeout: 120
-      when: >
-        tailscale_status.rc != 0 or
-        tailscale_status.stdout | length == 0 or
-        (tailscale_status.stdout | from_json).BackendState | default('') != 'Running'
+        delay: 10
+        timeout: 900
+      tags: [always]
+
+    - name: Gather facts
+      ansible.builtin.setup:
+      tags: [always]
+
+    - name: Verify connection
+      ansible.builtin.ping:
+      tags: [always]
+
+    # === Phase 1: Base system setup ===
+    - name: Run system_user role
+      ansible.builtin.include_role:
+        name: system_user
+      tags: [phase1_base]
+
+    - name: Run infisical_cli role
+      ansible.builtin.include_role:
+        name: infisical_cli
+      tags: [phase1_base]
+
+    # === Phase 2: Docker Engine ===
+    - name: Run docker role
+      ansible.builtin.include_role:
+        name: docker
+      tags: [phase2_docker]
+
+    # === Phase 3: Tailscale mesh networking ===
+    - name: Run tailscale role
+      ansible.builtin.include_role:
+        name: tailscale
       tags: [phase3_tailscale]
 
-    - name: Capture Tailscale daemon log (auth diagnostics)
-      ansible.builtin.command: journalctl -u tailscaled --since "3 minutes ago" --no-pager --output=cat
-      register: tailscale_daemon_log
-      changed_when: false
-      failed_when: false
-      when: >
-        tailscale_status.rc != 0 or
-        tailscale_status.stdout | length == 0 or
-        (tailscale_status.stdout | from_json).BackendState | default('') != 'Running'
-      tags: [phase3_tailscale]
+- name: Provision clustered services
+  hosts: all
+  become: true
+  gather_facts: false
 
-    - name: Show Tailscale daemon auth errors
-      ansible.builtin.debug:
-        msg: "{{ tailscale_daemon_log.stdout_lines }}"
-      when: tailscale_daemon_log is defined and tailscale_daemon_log.stdout_lines | default([]) | length > 0
-      tags: [phase3_tailscale]
-
-    - name: Verify Tailscale mesh connectivity
-      ansible.builtin.command: tailscale status
-      register: tailscale_verify
-      changed_when: false
-      failed_when: tailscale_verify.rc != 0
-      tags: [phase3_tailscale]
+  tasks:
+    - name: Verify clustered nodes remain reachable
+      ansible.builtin.ping:
+      tags: [always]
 
     # === Phase 4: GlusterFS distributed storage (OCI nodes + GCP arbiter) ===
     - name: Run glusterfs role

@@ -145,6 +145,8 @@ resource "google_compute_instance" "witness" {
 
     "startup-script" = <<-EOT
       #!/bin/bash
+      set -euo pipefail
+
       # Ensure the 'debian' user exists for Tailscale SSH / Ansible.
       # GCP Debian images do not pre-create this user without SSH key metadata.
       if ! id debian &>/dev/null; then
@@ -153,12 +155,33 @@ resource "google_compute_instance" "witness" {
         echo 'debian ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/debian
         chmod 440 /etc/sudoers.d/debian
       fi
+
       if ! command -v tailscale &>/dev/null; then
-        curl -fsSL --ipv6 https://tailscale.com/install.sh | sh
+        for attempt in 1 2 3; do
+          if curl -fsSL --ipv6 https://tailscale.com/install.sh | sh; then
+            break
+          fi
+          if [[ "$${attempt}" -eq 3 ]]; then
+            echo "Failed to install Tailscale after $${attempt} attempts" >&2
+            exit 1
+          fi
+          sleep 10
+        done
       fi
+
       systemctl enable --now tailscaled
-      timeout 30 bash -c 'until tailscale status &>/dev/null; do sleep 1; done'
-      tailscale up --authkey='${var.tailscale_auth_key}' --ssh --hostname=swarm-witness --advertise-tags=tag:server --accept-dns=false --timeout=30s
+      timeout 120 bash -c 'until tailscale status &>/dev/null; do sleep 2; done'
+
+      for attempt in 1 2 3; do
+        if tailscale up --authkey='${var.tailscale_auth_key}' --ssh --hostname=swarm-witness --advertise-tags=tag:server --accept-dns=false --timeout=120s; then
+          exit 0
+        fi
+        if [[ "$${attempt}" -eq 3 ]]; then
+          echo "Failed to authenticate the witness with Tailscale after $${attempt} attempts" >&2
+          exit 1
+        fi
+        sleep 10
+      done
     EOT
   }
 }
