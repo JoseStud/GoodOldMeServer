@@ -8,8 +8,25 @@ source .github/scripts/lib/workflow_common.sh
 : "${INVENTORY_FILE:?INVENTORY_FILE is required}"
 
 ANSIBLE_TAGS="${ANSIBLE_TAGS:-}"
-TAILSCALE_PEER_WAIT_SECONDS="${TAILSCALE_PEER_WAIT_SECONDS:-600}"
+TAILSCALE_PEER_WAIT_SECONDS="${TAILSCALE_PEER_WAIT_SECONDS:-300}"
 TAILSCALE_PEER_POLL_INTERVAL="${TAILSCALE_PEER_POLL_INTERVAL:-15}"
+
+emit_tailscale_debug_state() {
+  local hostname="${1:-}"
+
+  if ! command -v tailscale >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "Tailscale debug: local status"
+  tailscale status || true
+
+  if [[ -n "${hostname}" ]]; then
+    echo "Tailscale debug: peer lookup for '${hostname}'"
+    tailscale ping -c 1 "${hostname}" || true
+    tailscale ip "${hostname}" || true
+  fi
+}
 
 # For non-IP ansible_host values (e.g. Tailscale MagicDNS short names), resolve
 # the peer's Tailscale IP via 'tailscale ip' and patch the inventory in-place.
@@ -56,7 +73,10 @@ patch_tailscale_hostnames() {
 
     if [[ -z "$ts_ip" ]]; then
       echo "ERROR: Tailscale peer '$hostname' not found after ${TAILSCALE_PEER_WAIT_SECONDS}s." >&2
+      emit_tailscale_debug_state "$hostname"
       echo "Ensure cloud-init completed on the node and that TAILSCALE_AUTH_KEY in Infisical is a valid reusable key." >&2
+      echo "If your tailnet policy requires tag-based SSH (for example dst=tag:server), make sure the auth key is allowed to advertise that tag and the startup script still uses --advertise-tags accordingly." >&2
+      echo "If the witness startup script changed, remember that GCE startup scripts rerun on boot, not immediately on metadata update; reboot or recreate the instance to pick up the change." >&2
       return 1
     fi
 

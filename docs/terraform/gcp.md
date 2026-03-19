@@ -13,7 +13,7 @@ The module creates:
   - `allow_ssh` — TCP port 22 from explicit IPv6 `ssh_allowed_cidrs` with `ssh-access` target tag (only when `ssh_enabled=true`)
 - A single **e2-micro** Debian 12 instance (`swarm-witness`) with dual-stack networking and premium-tier IPv6
 
-Tailscale is installed at first boot via cloud-init (using the `tailscale_auth_key` input). After provisioning, Ansible connects to the witness via its Tailscale MagicDNS hostname and joins it to the Docker Swarm as a manager. The witness communicates with OCI workers over the Tailscale mesh.
+Tailscale is installed at first boot via the Terraform-managed instance startup script (using the `tailscale_auth_key` input). The script ensures the `debian` user exists, retries Tailscale installation and authentication, enables `tailscaled`, and brings the witness onto the mesh before Ansible targets it through Tailscale MagicDNS. After provisioning, Ansible connects to the witness via that MagicDNS hostname and joins it to the Docker Swarm as a manager. The witness communicates with OCI workers over the Tailscale mesh.
 
 > **Note:** The witness instance has no external IPv4 `access_config` — it is reachable only via its external IPv6 address or through the Tailscale mesh.
 
@@ -21,7 +21,7 @@ Tailscale is installed at first boot via cloud-init (using the `tailscale_auth_k
 
 ## SSH Access
 
-SSH to the GCP witness is **disabled by default** (`ssh_enabled=false`). The infra root module intentionally omits `ssh_enabled` and `ssh_allowed_cidrs` when calling the GCP module — Ansible connects via Tailscale MagicDNS (`witness_tailscale_hostname`), not via the external IPv6 address.
+SSH to the GCP witness is **disabled by default** (`ssh_enabled=false`). The infra root module intentionally omits `ssh_enabled` and `ssh_allowed_cidrs` when calling the GCP module — Ansible connects via Tailscale MagicDNS (`witness_tailscale_hostname`), not via the external IPv6 address. The Ansible playbook therefore waits on the witness in a dedicated Tailscale-based bootstrap play instead of treating it like a public-SSH-reachable host.
 
 The GCP module accepts `ssh_enabled` and `ssh_allowed_cidrs` inputs for break-glass scenarios, but these are not wired into `TF_VAR_network_access_policy` at the infra root level. To enable SSH, pass these inputs directly when calling the module.
 

@@ -69,10 +69,11 @@ All 3 nodes (2 OCI workers + 1 GCP witness) are connected via a [Tailscale](http
 
 ### How It's Provisioned
 
-1. Ansible Phase 3 installs Tailscale on every node via the official APT repository
-2. Each node authenticates with `tailscale up --authkey=$TAILSCALE_AUTH_KEY --ssh`
-3. After authentication, nodes discover each other through Tailscale's coordination server
-4. Direct WireGuard tunnels are established (or relayed through Tailscale DERP if direct connectivity isn't possible)
+1. Terraform bootstraps Tailscale on the GCP witness at first boot via the instance startup script so the node becomes reachable through MagicDNS without public IPv4 SSH.
+2. Ansible Phase 3 runs the `tailscale` role across all nodes. On OCI, this usually means install + auth; on the witness, it usually means verify and repair if needed.
+3. Any node whose backend is not already `Running` authenticates with `tailscale up --authkey=$TAILSCALE_AUTH_KEY --ssh`.
+4. After authentication, nodes discover each other through Tailscale's coordination server.
+5. Direct WireGuard tunnels are established, or traffic is relayed through Tailscale DERP when direct connectivity is not possible.
 
 ### What Uses Tailscale IPs
 
@@ -81,7 +82,7 @@ All 3 nodes (2 OCI workers + 1 GCP witness) are connected via a [Tailscale](http
 | **Docker Swarm** | `swarm init` and `swarm join` use `--advertise-addr <tailscale_ip>` so all Raft and gossip traffic flows over encrypted tunnels |
 | **GlusterFS** | Brick endpoints use Tailscale IPv4 addresses — replication traffic is encrypted without needing separate TLS configuration |
 
-The GCP witness bootstraps Tailscale at first boot via cloud-init (Terraform-injected startup script) before Ansible connects. Ansible Phase 3 is a no-op for the witness (Tailscale already running).
+The GCP witness bootstraps Tailscale at first boot via Terraform's instance startup script before Ansible connects. On a healthy run, Ansible Phase 3 on the witness is mostly a verification pass; if first-boot registration failed or drifted, the same role can re-authenticate it.
 
 ## Docker Swarm Topology
 

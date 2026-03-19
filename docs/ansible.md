@@ -6,6 +6,14 @@ This section covers the configuration management strategy, detailing every role,
 
 Ansible bridges raw Terraform-provisioned infrastructure and the Docker Swarm workloads. Local runs use a dynamic inventory plugin to auto-discover nodes from Terraform state, while CI renders a deterministic `inventory-ci.yml` artifact from Terraform Cloud outputs (`oci_public_ips`, `gcp_witness_tailscale_hostname`) before executing Ansible.
 
+The provisioning playbook is intentionally split into three plays:
+
+1. `Bootstrap OCI infrastructure` runs against `oci_nodes` first, using public IPv4 SSH reachability.
+2. `Bootstrap GCP witness over Tailscale` runs against `gcp_witness` only after the witness becomes reachable through Tailscale MagicDNS.
+3. `Provision clustered services` runs against `all` once every node is reachable and phases 1-3 are complete.
+
+This prevents the SSH-disabled-by-default witness from blocking OCI bootstrap while still guaranteeing that GlusterFS and Swarm only start after the full Tailscale mesh is healthy.
+
 ```mermaid
 sequenceDiagram
     participant TF as Terraform State
@@ -33,7 +41,7 @@ sequenceDiagram
     Note over PB,GCP: Phase 3 — Tailscale Mesh
     PB->>OCI1: Install + auth Tailscale
     PB->>OCI2: Install + auth Tailscale
-    PB->>GCP: Install + auth Tailscale
+    PB->>GCP: Verify / repair Tailscale
 
     Note over PB,GCP: Phase 4 — GlusterFS
     PB->>OCI1: glusterfs role (replica-3-arbiter-1 volume)
@@ -79,6 +87,8 @@ project_path: ../../terraform/infra
 
 **Host resolution:** OCI nodes use `public_ip` (IPv4); the GCP witness falls back to `witness_tailscale_hostname` (Tailscale MagicDNS) when `public_ip` is unavailable.
 
+Because SSH ingress is disabled on the witness by default, the playbook does not include it in the initial OCI connectivity wait. The witness is waited on separately over Tailscale in its dedicated bootstrap play.
+
 ## SSH Certificate Authentication
 
 Ansible connects using SSH certificate-based auth instead of password or key-pair authentication. This is configured in `ansible/ansible.cfg`:
@@ -98,7 +108,13 @@ This eliminates the need to distribute individual public keys to each node.
 
 ## Provisioning Lifecycle
 
-The `ansible/playbooks/provision.yml` playbook runs all 7 phases sequentially. It starts by waiting for SSH connectivity (up to 300s with 10s delay), gathering facts, and verifying with a ping.
+The `ansible/playbooks/provision.yml` playbook still executes the same 7 infrastructure phases, but it now does so across three plays:
+
+1. **OCI bootstrap play** — waits up to 600s for SSH on `oci_nodes`, gathers facts, verifies connectivity, then runs phases 1-3 for the OCI workers.
+2. **Witness bootstrap play** — waits up to 900s for Tailscale SSH/MagicDNS reachability on `gcp_witness`, gathers facts, verifies connectivity, then runs phases 1-3 for the witness (without the OCI-only storage role).
+3. **Cluster services play** — verifies all nodes are still reachable, then runs phases 4-7 across the now-connected cluster.
+
+This ordering matches the infrastructure design: the GCP witness self-registers to Tailscale at first boot via Terraform, and Ansible only begins cluster-wide roles after that control path is available.
 
 Examples below assume you run commands from the repository root.
 
@@ -108,7 +124,7 @@ Examples below assume you run commands from the repository root.
 |------|------|----------|------------------|-----------------------|
 | Phase 1: Base system | `phase1_base` | `system_user`, `storage` (OCI only), `infisical_cli` | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase1_base` | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --skip-tags phase1_base` |
 | Phase 2: Docker | `phase2_docker` | `docker` role | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase2_docker` | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --skip-tags phase2_docker` |
-| Phase 3: Tailscale | `phase3_tailscale` | Tailscale install/auth/verify tasks | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase3_tailscale` | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --skip-tags phase3_tailscale` |
+| Phase 3: Tailscale | `phase3_tailscale` | `tailscale` role (install/auth/verify) | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase3_tailscale` | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --skip-tags phase3_tailscale` |
 | Phase 4: GlusterFS | `phase4_glusterfs` | `glusterfs` role + config sync include | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase4_glusterfs` | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --skip-tags phase4_glusterfs` |
 | Phase 4b: Config sync only | `sync-configs` | `roles/glusterfs/tasks/sync-configs.yml` | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags sync-configs` | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --skip-tags sync-configs` |
 | Phase 5: Swarm | `phase5_swarm` | `swarm` role | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase5_swarm` | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --skip-tags phase5_swarm` |
@@ -123,7 +139,7 @@ Expected runtimes below are guidance ranges for healthy nodes and network condit
 |------|-----------------|-------------------------|
 | Phase 1 (`phase1_base`) | 2-8 min | Block device not present (`/dev/sdb` mapping mismatch), partition/format permissions, mount failures on OCI nodes |
 | Phase 2 (`phase2_docker`) | 3-10 min | APT/GPG key fetch failures, Docker repository reachability, package lock contention |
-| Phase 3 (`phase3_tailscale`) | 1-5 min | Missing/invalid `TAILSCALE_AUTH_KEY`, outbound connectivity to Tailscale package/auth endpoints, node already in inconsistent auth state |
+| Phase 3 (`phase3_tailscale`) | 1-5 min | Missing/invalid `TAILSCALE_AUTH_KEY`, outbound connectivity to Tailscale package/auth endpoints, witness first-boot Tailscale registration not yet complete, node already in inconsistent auth state |
 | Phase 4 (`phase4_glusterfs`) | 5-20 min | Peer probe failure over Tailscale, Gluster volume create/start errors, witness connectivity issues, mount and brick path availability |
 | Phase 4b (`sync-configs`) | <1-3 min | Missing source config files under `stacks/*/config`, GlusterFS mount/path permissions |
 | Phase 5 (`phase5_swarm`) | 2-8 min | Manager join token retrieval/use issues, Tailscale IP discovery problems, pre-existing conflicting swarm state |
@@ -150,13 +166,18 @@ Expected runtimes below are guidance ranges for healthy nodes and network condit
 
 ### Phase 3: Tailscale Mesh Networking
 
-**Applies to:** All nodes (inline tasks, no role)
+**Applies to:** All nodes (`tailscale` role)
 
-1. **Install Tailscale** — Adds the official Tailscale APT repository (GPG key + apt source), installs the `tailscale` package
-2. **Authenticate** — Checks `tailscale status --json` for existing connection; only runs `tailscale up --authkey=$TAILSCALE_AUTH_KEY --ssh` if not already authenticated
-3. **Verify** — Asserts exit code 0; fails with descriptive message if auth key is invalid
+1. **Install when missing** — Checks for `/usr/bin/tailscale`; if absent, adds the official Tailscale APT repository via a keyring-backed source and installs the `tailscale` package
+2. **Start daemon** — Ensures `tailscaled` is started and enabled
+3. **Inspect current state** — Runs `tailscale status --json` and derives the backend state from the returned JSON
+4. **Authenticate only when needed** — Runs `tailscale up --authkey=$TAILSCALE_AUTH_KEY --ssh --accept-dns=false --reset` only when the backend is not already `Running`
+5. **Wait and re-check** — Waits for connectivity after reconfiguration, waits for the async `tailscale up` job to finish, then verifies that the backend is `Running`
+6. **Collect diagnostics on failure** — If verification fails, captures recent `tailscaled` journal output before failing the role
 
 After this phase, all 3 nodes (2 OCI + 1 GCP) can communicate over Tailscale's encrypted mesh using private IPs, regardless of cloud provider or network topology.
+
+On a healthy run, the GCP witness is usually already connected because Terraform bootstraps Tailscale in its first-boot startup script. The Ansible role still runs on the witness so it can verify that state and repair it if startup-time registration drifted or failed.
 
 > **Important:** The `TAILSCALE_AUTH_KEY` must be set as an environment variable before running the playbook. Generate an auth key from the Tailscale admin console.
 
