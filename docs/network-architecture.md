@@ -146,7 +146,7 @@ Docker overlay networks span all Swarm nodes and provide encrypted service-to-se
 
 ## GlusterFS Replication
 
-GlusterFS provides a **replicated distributed filesystem** between the 2 OCI workers and the GCP witness arbiter, ensuring all Docker bind-mount data is available on both nodes regardless of which one a service is scheduled on, while preventing split-brain.
+GlusterFS provides a **replicated distributed filesystem** between the 2 OCI workers and the GCP witness arbiter, ensuring the GlusterFS-backed subset of Docker bind-mount data is available on both nodes regardless of which one a service is scheduled on, while preventing split-brain.
 
 ```mermaid
 flowchart LR
@@ -192,7 +192,8 @@ flowchart LR
 2. GlusterFS creates a "brick" directory at `/mnt/app_data/gluster_brick` on each OCI node, and an "arbiter brick" at `/mnt/arbiter_brick` on the GCP witness.
 3. The `swarm_data` volume is created as `replica 3 arbiter 1` — every write to either OCI brick is synchronously replicated to the other, while the arbiter node only stores metadata to break ties.
 4. Both OCI nodes mount the GlusterFS volume at `/mnt/swarm-shared` via localhost
-5. Docker services bind-mount subdirectories of `/mnt/swarm-shared` for persistent data
+5. Most Docker services bind-mount subdirectories of `/mnt/swarm-shared` for persistent data
+6. Write-heavy exceptions (`vaultwarden-db`, Loki) use node-pinned local block-volume paths under `/mnt/app_data/local/...` to avoid GlusterFS fsync latency
 
 ### Split-Brain Considerations
 
@@ -200,7 +201,7 @@ With the `replica 3 arbiter 1` configuration, the GCP witness node acts as a tie
 
 - The arbiter brick does not store file data, making it lightweight and suitable for the e2-micro instance.
 - Swarm typically schedules each service on one node at a time (`replicas: 1`) — concurrent writes are rare
-- Services that are especially sensitive (Vaultwarden) use PostgreSQL instead of direct file storage to avoid GlusterFS consistency issues
+- Services that are especially sensitive to synchronous-write latency (`vaultwarden-db`, Loki) use node-pinned local block-volume mounts instead of GlusterFS for their write-ahead logs and database files
 - If an issue occurs, manual resolution can be checked with: `gluster volume heal swarm_data info`
 
 

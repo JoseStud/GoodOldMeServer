@@ -59,3 +59,59 @@
     name: "{{ service_user }}"
     groups: docker
     append: true
+
+- name: Check for systemd-resolved configuration on OCI workers
+  ansible.builtin.stat:
+    path: /etc/systemd/resolved.conf
+  register: systemd_resolved_conf
+  when:
+    - "'oci_nodes' in group_names"
+    - ansible_service_mgr == 'systemd'
+    - ansible_distribution == 'Ubuntu'
+
+- name: Check for systemd-resolved upstream resolv.conf on OCI workers
+  ansible.builtin.stat:
+    path: /run/systemd/resolve/resolv.conf
+  register: systemd_resolved_runtime_resolv
+  when:
+    - "'oci_nodes' in group_names"
+    - ansible_service_mgr == 'systemd'
+    - ansible_distribution == 'Ubuntu'
+
+- name: Disable systemd-resolved DNS stub listener for Pi-hole host port 53
+  ansible.builtin.lineinfile:
+    path: /etc/systemd/resolved.conf
+    regexp: '^#?DNSStubListener='
+    line: 'DNSStubListener=no'
+    insertafter: '^\[Resolve\]'
+    backup: true
+  register: dns_stub_listener
+  when:
+    - "'oci_nodes' in group_names"
+    - ansible_service_mgr == 'systemd'
+    - ansible_distribution == 'Ubuntu'
+    - systemd_resolved_conf.stat.exists | default(false)
+
+- name: Point /etc/resolv.conf at systemd-resolved upstream resolvers
+  ansible.builtin.file:
+    src: /run/systemd/resolve/resolv.conf
+    dest: /etc/resolv.conf
+    state: link
+    force: true
+  register: systemd_resolved_resolv_link
+  when:
+    - "'oci_nodes' in group_names"
+    - ansible_service_mgr == 'systemd'
+    - ansible_distribution == 'Ubuntu'
+    - systemd_resolved_runtime_resolv.stat.exists | default(false)
+
+- name: Restart systemd-resolved after freeing host port 53
+  ansible.builtin.systemd:
+    name: systemd-resolved
+    state: restarted
+  when:
+    - "'oci_nodes' in group_names"
+    - ansible_service_mgr == 'systemd'
+    - ansible_distribution == 'Ubuntu'
+    - (dns_stub_listener is defined and dns_stub_listener.changed) or
+      (systemd_resolved_resolv_link is defined and systemd_resolved_resolv_link.changed)

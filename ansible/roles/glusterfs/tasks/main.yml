@@ -143,8 +143,8 @@
     state: mounted
   when: inventory_hostname in groups['oci_nodes']
 
-# Pre-create all shared directories for stacks
-- name: Create shared directory structure
+# Pre-create all GlusterFS-backed shared directories for stacks
+- name: Create shared directory structure on GlusterFS
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
@@ -159,7 +159,6 @@
     - /mnt/swarm-shared/ai-interface/openclaw/config
     # Observability
     - /mnt/swarm-shared/observability/prometheus_data
-    - /mnt/swarm-shared/observability/loki_data
     - /mnt/swarm-shared/observability/grafana_data
     - /mnt/swarm-shared/observability/prometheus
     - /mnt/swarm-shared/observability/loki
@@ -173,7 +172,6 @@
     - /mnt/swarm-shared/management/portainer/data
     # Network
     - /mnt/swarm-shared/network/vaultwarden/data
-    - /mnt/swarm-shared/network/vaultwarden-db
     - /mnt/swarm-shared/network/pihole/node1/etc-pihole
     - /mnt/swarm-shared/network/pihole/node1/etc-dnsmasq.d
     - /mnt/swarm-shared/network/pihole/node2/etc-pihole
@@ -183,3 +181,15 @@
     # Cloud
     - /mnt/swarm-shared/cloud/filebrowser/database
   when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Create node-local state directories for pinned write-heavy services
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
+    mode: '0755'
+  loop:
+    - /mnt/app_data/local/network/vaultwarden-db
+    - /mnt/app_data/local/observability/loki_data
+  when: inventory_hostname in groups['oci_nodes']

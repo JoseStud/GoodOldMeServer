@@ -21,8 +21,8 @@ Most user-facing and stateful workloads are constrained to `node.labels.location
 | **gateway** | traefik, socket-proxy | `traefik`: `location == cloud` (replicas: 2); `socket-proxy`: `node.role == manager` | — |
 | **auth** | authelia, authelia-db | `location == cloud` | gateway |
 | **management** | homarr, portainer-server, portainer-agent | `location == cloud` (homarr), `node.role == manager` (server), global (agent) | — (bootstrapped by Ansible Phase 6) |
-| **network** | vaultwarden, vaultwarden-db, pihole-1, pihole-2, orbital-sync | `location == cloud` | gateway, auth |
-| **observability** | prometheus, loki, promtail, node-exporter, grafana, alertmanager | `location == cloud` (stateful), global (promtail, node-exporter) | gateway, auth |
+| **network** | vaultwarden, vaultwarden-db, pihole-1, pihole-2, orbital-sync | `location == cloud`; `vaultwarden-db`: `node.hostname == app-worker-2` | gateway, auth |
+| **observability** | prometheus, loki, promtail, node-exporter, grafana, alertmanager | `location == cloud` (stateful), global (promtail, node-exporter); `loki`: `node.hostname == app-worker-1` | gateway, auth |
 | **ai-interface** | open-webui, openclaw-gateway, openclaw-cli | `location == cloud` | gateway, auth |
 | **uptime** | uptime-kuma | `location == cloud` | gateway, auth |
 | **cloud** | filebrowser | `location == cloud` | gateway, auth |
@@ -66,7 +66,7 @@ All stacks follow these conventions:
 - **Image versioning**: Critical infrastructure and data services (Prometheus, Loki, Grafana, Vaultwarden, Authelia, socket-proxy, Alertmanager) are pinned to specific versions. Utility/dashboard services (Homarr, Pi-hole, Orbital Sync, OpenClaw) may use `:latest`
 - **Resources**: Memory limits on every service to prevent OOM
 - **Logging**: json-file driver with 10 MB rotation, 3 files max
-- **Storage**: Persistent data on GlusterFS at `/mnt/swarm-shared/<stack>/`
+- **Storage**: Most persistent data on GlusterFS at `/mnt/swarm-shared/<stack>/`; write-heavy pinned services can use node-local block-volume paths under `/mnt/app_data/local/<stack>/`
 
 ## Stack Details
 
@@ -115,20 +115,20 @@ All stacks follow these conventions:
 
 ### Network
 
-- **Vaultwarden** — Bitwarden-compatible password manager with PostgreSQL backend. Uses its own native authentication (master password + optional 2FA) without Authelia ForwardAuth to ensure compatibility with Bitwarden client apps (desktop, mobile, browser extension)
-- **Pi-hole ×2** — DNS ad-blocking (node1 on OCI Worker 1, node2 on OCI Worker 2 via hostname constraint)
+- **Vaultwarden** — Bitwarden-compatible password manager with PostgreSQL backend. Uses its own native authentication (master password + optional 2FA) without Authelia ForwardAuth to ensure compatibility with Bitwarden client apps (desktop, mobile, browser extension). The PostgreSQL service is pinned to OCI Worker 2 and stores `PGDATA` on the node-local block volume at `/mnt/app_data/local/network/vaultwarden-db` rather than GlusterFS.
+- **Pi-hole ×2** — DNS ad-blocking (node1 on OCI Worker 1, node2 on OCI Worker 2 via hostname constraint). Because both services publish host port `53`, the OCI workers disable the `systemd-resolved` stub listener during Ansible phase 2.
 - **Orbital Sync** — Syncs Pi-hole configs between instances every 30 minutes
 
 ### Observability
 
 - **Prometheus** — Metrics collection (15-day retention)
-- **Loki** — Log aggregation (7-day retention, TSDB + filesystem storage)
+- **Loki** — Log aggregation (7-day retention, TSDB + filesystem storage). Loki is pinned to OCI Worker 1 and keeps its WAL/TSDB data on `/mnt/app_data/local/observability/loki_data` to avoid GlusterFS fsync stalls. After unclean shutdowns, the `wal/` directory under that path is the first place to inspect if Loki crash-loops on startup.
 - **Promtail** — Log shipper (global — runs on every node, Docker socket discovery)
 - **Node Exporter** — Host metrics (global)
 - **Grafana** — Dashboards and visualization (Authelia OIDC SSO, login form disabled)
 - **Alertmanager** — Alert routing and notifications via webhook (Slack/Discord). Receives alerts from Prometheus based on defined rules (instance down, high memory/disk/CPU, Traefik error rates)
 
-Data volumes are bind-mounted to GlusterFS for persistence and replication.
+Most data volumes are bind-mounted to GlusterFS for persistence and replication. `vaultwarden-db` and Loki are the deliberate exceptions: their data lives on local OCI block-volume paths so PostgreSQL `fsync` and Loki WAL/TSDB writes do not pay GlusterFS synchronous replication latency.
 
 **Config files** (in `stacks/observability/config/`):
 
@@ -143,7 +143,7 @@ Data volumes are bind-mounted to GlusterFS for persistence and replication.
 
 ### Media / AI Interface
 
-- **Open WebUI** — LLM chat interface connecting to a remote Ollama instance
+- **Open WebUI** — LLM chat interface connecting to a remote Ollama instance. This service carries a higher Swarm memory reservation than most stateless apps because it is one of the most burst-prone workloads in the cluster.
 - **OpenClaw Gateway** — AI gateway proxy
 - **OpenClaw CLI** — CLI tool (no web UI, no Traefik routing)
 

@@ -313,6 +313,8 @@ docker stack deploy -c /opt/stacks/uptime/docker-compose.yml uptime
 docker stack deploy -c /opt/stacks/cloud/docker-compose.yml cloud
 ```
 
+Before the first redeploy that moves `vaultwarden-db` or Loki off GlusterFS, migrate their existing data onto the pinned node-local paths: `/mnt/app_data/local/network/vaultwarden-db` on `app-worker-2` and `/mnt/app_data/local/observability/loki_data` on `app-worker-1`. Stop the affected service first; for Vaultwarden PostgreSQL, prefer a logical backup/restore over copying a live `PGDATA` directory.
+
 ### Full Verification
 
 ```bash
@@ -406,7 +408,7 @@ docker stack services <stack>
 # Expected: "Nothing found in stack: <stack>"
 ```
 
-> **Warning:** `docker stack rm` does not delete volumes or bind-mount data. Persistent data on GlusterFS remains intact.
+> **Warning:** `docker stack rm` does not delete volumes or bind-mount data. Persistent data on GlusterFS and node-local block-volume mounts remains intact.
 
 ## Rollback
 
@@ -506,3 +508,44 @@ docker service ps network_pihole-1
 # Verify host-mode port binding
 ss -ulnp | grep :53
 ```
+
+If `docker service ps network_pihole-1` shows tasks stuck in `Created` and `ss` shows `systemd-resolved` already listening on port `53`, free the port on the affected OCI worker:
+
+```bash
+sudoedit /etc/systemd/resolved.conf
+# set: DNSStubListener=no
+
+sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+sudo systemctl restart systemd-resolved
+```
+
+The Ansible `phase2_docker` role now enforces this automatically on OCI Ubuntu workers, so rerunning that phase is the durable fix:
+
+```bash
+ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase2_docker
+```
+
+### Loki Crash Loop After OOM or Hard Reboot
+
+```bash
+# Confirm Loki is failing before it ever becomes ready
+docker service ps observability_loki --no-trunc
+
+# Look for WAL replay or parse failures
+docker service logs observability_loki --tail 200 | grep -i "wal\|parse\|replay"
+```
+
+If the logs show `failed to parse WAL`, clear the corrupted WAL and restart Loki. This discards only the unreplayed tail of recent logs:
+
+```bash
+# Stop Loki before removing WAL segments
+docker service scale observability_loki=0
+
+# Run on app-worker-1: Loki is pinned there and stores WAL locally
+rm -rf /mnt/app_data/local/observability/loki_data/wal
+
+# Bring Loki back
+docker service scale observability_loki=1
+```
+
+If you are recovering from repeated `Exit 137` events, inspect both the service limit and the node's free memory before redeploying. The heavier services now carry explicit Swarm reservations, but a single node can still be pressured during failover or manual stack pinning.

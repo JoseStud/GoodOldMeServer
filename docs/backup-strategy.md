@@ -32,7 +32,7 @@ Conservative recovery targets for current architecture:
 
 ### Configuration
 
-Each OCI worker has a 50 GB block volume (`/dev/sdb`) that stores all application data (GlusterFS bricks). Terraform assigns OCI's **Silver backup policy** to both volumes:
+Each OCI worker has a 50 GB block volume (`/dev/sdb`) that stores the GlusterFS brick plus any node-local state directories for pinned write-heavy services. Terraform assigns OCI's **Silver backup policy** to both volumes:
 
 ```terraform
 resource "oci_core_volume_backup_policy_assignment" "worker_volume_backup" {
@@ -55,21 +55,25 @@ resource "oci_core_volume_backup_policy_assignment" "worker_volume_backup" {
 
 ### What's Backed Up
 
-The block volumes contain `/mnt/app_data`, which holds the GlusterFS brick (`/mnt/app_data/gluster_brick`). This brick contains **all** application data:
+The block volumes contain `/mnt/app_data`, which holds the GlusterFS brick plus node-local service data:
 
 ```
-/mnt/app_data/gluster_brick/
-├── auth/{authelia/config,authelia-db}/
-├── ai-interface/{open-webui,openclaw/config}/
-├── observability/{prometheus_data,loki_data,grafana_data,prometheus,loki,promtail,alertmanager,alertmanager_data}/
-├── gateway/traefik_acme/
-├── management/{homarr/appdata,portainer/data}/
-├── network/{vaultwarden/data,vaultwarden-db,pihole/node*/etc-*}/
-├── uptime-kuma/data/
-└── cloud/filebrowser/database/
+/mnt/app_data/
+├── gluster_brick/
+│   ├── auth/{authelia/config,authelia-db}/
+│   ├── ai-interface/{open-webui,openclaw/config}/
+│   ├── observability/{prometheus_data,grafana_data,prometheus,loki,promtail,alertmanager,alertmanager_data}/
+│   ├── gateway/traefik_acme/
+│   ├── management/{homarr/appdata,portainer/data}/
+│   ├── network/{vaultwarden/data,pihole/node*/etc-*}/
+│   ├── uptime-kuma/data/
+│   └── cloud/filebrowser/database/
+└── local/
+    ├── observability/loki_data/
+    └── network/vaultwarden-db/
 ```
 
-Since GlusterFS replicates this data between both nodes, backing up either volume captures all stack data.
+GlusterFS-backed data exists on both worker volumes, but `/mnt/app_data/local/...` exists only on the worker that owns the pinned service. OCI block-volume backups still cover both layouts, but PostgreSQL dumps remain the safer recovery path for Vaultwarden.
 
 ### Restoring from Block Volume Backup
 
@@ -82,8 +86,8 @@ Since GlusterFS replicates this data between both nodes, backing up either volum
    mkdir /mnt/restore
    mount /dev/sdc1 /mnt/restore  # Device name may vary
 
-   # Copy data back to the active GlusterFS brick
-   rsync -av /mnt/restore/gluster_brick/ /mnt/app_data/gluster_brick/
+   # Copy data back to the active application-data volume
+   rsync -av /mnt/restore/ /mnt/app_data/
 
    # Trigger GlusterFS heal to sync changes to the peer
    gluster volume heal swarm_data
@@ -143,7 +147,7 @@ If a node needs full replacement:
 
 ### Vaultwarden (PostgreSQL)
 
-The most critical data. PostgreSQL runs in a container with data on GlusterFS.
+The most critical data. PostgreSQL runs in a container pinned to `app-worker-2` with data on `/mnt/app_data/local/network/vaultwarden-db`.
 
 **Export (pg_dump):**
 ```bash

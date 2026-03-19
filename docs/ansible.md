@@ -162,7 +162,7 @@ Expected runtimes below are guidance ranges for healthy nodes and network condit
 
 | Role | What It Does |
 |------|-------------|
-| `docker` | Adds Docker's official APT repository (GPG key + apt source), installs `docker-ce`, `docker-ce-cli`, `containerd.io`, and `docker-compose-plugin`, enables the `docker` systemd service, adds `{{ service_user }}` to the `docker` group |
+| `docker` | Adds Docker's official APT repository (GPG key + apt source), installs `docker-ce`, `docker-ce-cli`, `containerd.io`, and `docker-compose-plugin`, enables the `docker` systemd service, adds `{{ service_user }}` to the `docker` group, and on OCI Ubuntu workers disables `systemd-resolved`'s stub listener so Pi-hole can bind host port `53` |
 
 ### Phase 3: Tailscale Mesh Networking
 
@@ -187,7 +187,7 @@ On a healthy run, the GCP witness is usually already connected because Terraform
 
 | Role | What It Does |
 |------|-------------|
-| `glusterfs` | Installs GlusterFS server and client, creates a **replica 3 arbiter 1** volume `swarm_data` across both OCI nodes (full bricks) and GCP witness (arbiter brick) over Tailscale IPv4, mounts at `/mnt/swarm-shared`, and pre-creates the entire shared directory tree |
+| `glusterfs` | Installs GlusterFS server and client, creates a **replica 3 arbiter 1** volume `swarm_data` across both OCI nodes (full bricks) and GCP witness (arbiter brick) over Tailscale IPv4, mounts at `/mnt/swarm-shared`, pre-creates the shared directory tree on GlusterFS, and seeds node-local directories under `/mnt/app_data/local` for pinned write-heavy services |
 
 **Detailed flow:**
 1. Install `glusterfs-server`, start `glusterd` service
@@ -196,19 +196,27 @@ On a healthy run, the GCP witness is usually already connected because Terraform
 4. **Peer probing** — Each node probes the other (bidirectional, idempotent)
 5. **Volume creation** — From the first OCI node, creates `swarm_data` as `replica 3 arbiter 1 transport tcp` using both OCI nodes' Tailscale IPs as full brick endpoints and the GCP witness Tailscale IP as the arbiter brick
 6. **Start volume** and mount via `localhost:/swarm_data` with `glusterfs` fstype and `_netdev` option
-7. **Pre-create shared directories** (from first OCI node) for all stacks:
+7. **Pre-create GlusterFS-backed shared directories** (from first OCI node) for all stacks:
 
 ```
 /mnt/swarm-shared/
 ├── auth/authelia/config/
 ├── ai-interface/open-webui/
 ├── ai-interface/openclaw/config/
-├── observability/{prometheus_data,loki_data,grafana_data,prometheus,loki,promtail,alertmanager,alertmanager_data}/
+├── observability/{prometheus_data,grafana_data,prometheus,loki,promtail,alertmanager,alertmanager_data}/
 ├── gateway/traefik_acme/
 ├── management/{homarr/appdata,portainer/data}/
-├── network/{vaultwarden/data,vaultwarden-db,pihole/node{1,2}/{etc-pihole,etc-dnsmasq.d}}/
+├── network/{vaultwarden/data,pihole/node{1,2}/{etc-pihole,etc-dnsmasq.d}}/
 ├── uptime-kuma/data/
 └── cloud/filebrowser/database/
+```
+
+8. **Pre-create node-local directories** (on both OCI nodes) for pinned write-heavy services:
+
+```
+/mnt/app_data/local/
+├── observability/loki_data/
+└── network/vaultwarden-db/
 ```
 
 All directories are owned by `media-srv:media-srv` (UID/GID 1500) with mode `0755`.
