@@ -23,7 +23,7 @@ The `compute-context` job emits these outputs (all as strings):
 - `ansible_tags` (optional comma-separated Ansible tags)
 - `reason` (non-empty reason string)
 
-Downstream reusable workflows consume typed booleans/strings via explicit workflow inputs.
+Downstream GHA jobs and Dagger pipeline phases consume typed booleans/strings via explicit inputs.
 
 ## Event Semantics
 
@@ -91,4 +91,4 @@ Current top-level orchestration chain:
 - `ansible`
 - `portainer`
 
-`preflight`, `infra`, `ansible`, and `portainer` are reusable workflows that consume explicit typed inputs, not a schema-threaded JSON plan object.
+`preflight`, `infra`, `ansible`, and `portainer` are Dagger pipeline phases (`ci_pipeline/phases/`) that consume explicit typed inputs, not a schema-threaded JSON plan object.

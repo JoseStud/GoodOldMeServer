@@ -101,7 +101,7 @@ Use this as the source of truth for whether a value is operator-managed or autom
 | `PORTAINER_URL` | Auto-written by Ansible `portainer_bootstrap` role (or manually set) | Human-facing Portainer URL (`https://portainer.<domain>`) behind Authelia |
 | `PORTAINER_API_URL` | Auto-written by Ansible `portainer_bootstrap` role (or manually set) | Terraform Portainer provider `endpoint` — Tailscale IP (`http://<ts_ip>:9000/api`); accessed via Dagger pipeline SOCKS5 proxy over the WireGuard mesh |
 | `PORTAINER_API_KEY` | Auto-written by Ansible `portainer_bootstrap` role (or manually via Portainer → Access Tokens) | Automation/API use outside Terraform; validated and repaired during bootstrap/post-bootstrap checks |
-| `PORTAINER_LICENSE_KEY` | Portainer BE license key (optional — leave unset for CE). Obtain from [Portainer pricing](https://www.portainer.io/pricing) or your account portal | Terraform `portainer_licenses` resource |
+| `PORTAINER_LICENSE_KEY` | Portainer BE license key (optional — leave empty to skip automatic license installation). Obtain from [Portainer pricing](https://www.portainer.io/pricing) or your account portal | Terraform `portainer_licenses` resource |
 
 > **Note:** These credentials are written automatically by the Ansible `portainer_bootstrap` role during Phase 6 provisioning. Terraform reads `PORTAINER_API_URL` from `/management` and `PORTAINER_ADMIN_PASSWORD` from `/stacks/management`, then lets the Portainer provider mint and use a JWT internally. The resulting webhook URLs are written automatically to `/deployments` by Terraform.
 
@@ -208,7 +208,7 @@ The `dagger-pipeline` job injects both `INFISICAL_MACHINE_IDENTITY_ID` and `INFI
 | Variable | How to Get | Used By |
 |----------|-----------|---------|
 | `INFISICAL_MACHINE_IDENTITY_ID` | Infisical → Access Control → Machine Identities → OIDC Auth → Identity ID | Reusable orchestrator stages that log into Infisical via OIDC |
-| `INFISICAL_PROJECT_ID` | Infisical → Project Settings → Project ID | Terraform/Ansible workflows and webhook runner secret reads; exported alongside `INFISICAL_MACHINE_IDENTITY_ID` to reusable workflow shell steps |
+| `INFISICAL_PROJECT_ID` | Infisical → Project Settings → Project ID | Terraform/Ansible workflows and webhook runner secret reads; exported alongside `INFISICAL_MACHINE_IDENTITY_ID` to Dagger pipeline phase containers and host subprocess env |
 | `SSH_CERT_PRINCIPALS` | Comma-separated list of allowed SSH principals (e.g. `ubuntu,debian`) | Ansible/config-sync stages that sign ephemeral SSH certs via `ssh-keygen -s` |
 | `TFC_ORGANIZATION` (or `TFC_ORG`) | Terraform Cloud organization slug | Infrastructure orchestrator + infrastructure validation Terraform Cloud API calls |
 | ~~`CLOUD_STATIC_RUNNER_LABEL`~~ | Removed — `portainer-live-plan` job deleted; all CI runs on `ubuntu-latest` via Tailscale. | N/A |
@@ -229,7 +229,7 @@ The `dagger-pipeline` job injects both `INFISICAL_MACHINE_IDENTITY_ID` and `INFI
 | `INFRA_REPO_DISPATCH_TOKEN` (stacks repo) | Fine-grained GitHub token with `contents:write` + repository dispatch access on this infra repo | `stacks/.github/workflows/stacks-dispatch-redeploy.yml` dispatches `stacks-redeploy-intent-v5` to this repo |
 | `INFISICAL_AGENT_CLIENT_ID` (infra repo) | Universal Auth client id for the host-side Infisical Agent | Ansible `phase7_runtime_sync` and local Portainer webhook helper |
 | `INFISICAL_AGENT_CLIENT_SECRET` (infra repo) | Universal Auth client secret for the host-side Infisical Agent | Ansible `phase7_runtime_sync` and local Portainer webhook helper |
-| `TFC_TOKEN` (infra repo) | Terraform Cloud Team/API token with workspace run access | Orchestrator reusable workflows for Terraform Cloud run/apply + state output inventory handover |
+| `TFC_TOKEN` (infra repo) | Terraform Cloud Team/API token with workspace run access | Orchestrator CI stages (Dagger pipeline phases + GHA jobs) for Terraform Cloud run/apply + state output inventory handover |
 
 ---
 
@@ -258,7 +258,7 @@ Creates:
 Exports:
 
 - `oci_public_ips`
-- `gcp_witness_ipv6`
+- `gcp_witness_tailscale_hostname`
 
 ### Portainer Workspace (`terraform/portainer-root`)
 

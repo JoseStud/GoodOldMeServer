@@ -23,7 +23,7 @@ Most user-facing and stateful workloads are constrained to `node.labels.location
 | **management** | homarr, portainer-server, portainer-agent | `location == cloud` (homarr), `node.role == manager` (server), global (agent) | — (bootstrapped by Ansible Phase 6) |
 | **network** | vaultwarden, vaultwarden-db, pihole-1, pihole-2, orbital-sync | `location == cloud` | gateway, auth |
 | **observability** | prometheus, loki, promtail, node-exporter, grafana, alertmanager | `location == cloud` (stateful), global (promtail, node-exporter) | gateway, auth |
-| **media** | open-webui, openclaw-gateway, openclaw-cli | `location == cloud` | gateway, auth |
+| **ai-interface** | open-webui, openclaw-gateway, openclaw-cli | `location == cloud` | gateway, auth |
 | **uptime** | uptime-kuma | `location == cloud` | gateway, auth |
 | **cloud** | filebrowser | `location == cloud` | gateway, auth |
 
@@ -160,7 +160,7 @@ Per-stack secrets are in their own Infisical paths:
 |-------|----------|---------------|--------------------------|
 | gateway | `stacks/gateway/.env.tmpl` | `/stacks/gateway` | `CLOUDFLARE_API_TOKEN` (from `/infrastructure`), `ACME_EMAIL`, `DOCKER_SOCKET_PROXY_URL` |
 | auth | `stacks/auth/.env.tmpl` | `/stacks/identity` | `AUTHELIA_JWT_SECRET`, `AUTHELIA_SESSION_SECRET`, `POSTGRES_PASSWORD`, `AUTHELIA_NOTIFIER_SMTP_USERNAME`, `AUTHELIA_NOTIFIER_SMTP_PASSWORD`, `AUTHELIA_NOTIFIER_SMTP_SENDER`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_JWKS_0_KEY` |
-| management | `stacks/management/.env.tmpl` | `/stacks/management` | `HOMARR_SECRET_KEY`, `PORTAINER_ADMIN_PASSWORD_HASH`, `PORTAINER_AUTOMATION_ALLOWED_CIDRS` |
+| management | `stacks/management/.env.tmpl` | `/stacks/management` | `HOMARR_SECRET_KEY`, `PORTAINER_ADMIN_PASSWORD_HASH` |
 | network | `stacks/network/.env.tmpl` | `/stacks/network` | `VW_DB_PASS`, `VW_ADMIN_TOKEN`, `PIHOLE_PASSWORD` |
 | observability | `stacks/observability/.env.tmpl` | `/stacks/observability` | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET`, `ALERTMANAGER_WEBHOOK_URL` |
 | ai-interface | `stacks/media/ai-interface/.env.tmpl` | `/stacks/ai-interface` | `ARCH_PC_IP` |

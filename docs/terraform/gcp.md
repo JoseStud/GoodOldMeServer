@@ -13,43 +13,23 @@ The module creates:
   - `allow_ssh` — TCP port 22 from explicit IPv6 `ssh_allowed_cidrs` with `ssh-access` target tag (only when `ssh_enabled=true`)
 - A single **e2-micro** Debian 12 instance (`swarm-witness`) with dual-stack networking and premium-tier IPv6
 
-After provisioning, Ansible installs Tailscale on this instance and joins it to the Docker Swarm as a manager. The witness communicates with OCI workers over the Tailscale mesh — the IPv6 address is primarily used for initial Ansible connectivity.
+Tailscale is installed at first boot via cloud-init (using the `tailscale_auth_key` input). After provisioning, Ansible connects to the witness via its Tailscale MagicDNS hostname and joins it to the Docker Swarm as a manager. The witness communicates with OCI workers over the Tailscale mesh.
 
 > **Note:** The witness instance has no external IPv4 `access_config` — it is reachable only via its external IPv6 address or through the Tailscale mesh.
 
 > See [Network Architecture](../network-architecture.md#docker-swarm-topology) for the 3-manager quorum rationale.
 
-## Network Access Policy Example (IPv6 witness SSH)
+## SSH Access
 
-The GCP module consumes `ssh_allowed_cidrs` from `TF_VAR_network_access_policy.gcp_ssh.source_ranges` through the infra root module wiring.
+SSH to the GCP witness is **disabled by default** (`ssh_enabled=false`). The infra root module intentionally omits `ssh_enabled` and `ssh_allowed_cidrs` when calling the GCP module — Ansible connects via Tailscale MagicDNS (`witness_tailscale_hostname`), not via the external IPv6 address.
 
-Example:
-
-```bash
-export TF_VAR_network_access_policy='{
-  "oci_ssh": {
-    "enabled": true,
-    "source_ranges": ["203.0.113.10/32"]
-  },
-  "gcp_ssh": {
-    "enabled": true,
-    "source_ranges": ["2001:db8:100::10/128"]
-  },
-  "portainer_api": {
-    "source_ranges": ["203.0.113.10/32", "2001:db8:100::10/128"]
-  }
-}'
-```
-
-`gcp_ssh.source_ranges` must contain IPv6 CIDRs only.
+The GCP module accepts `ssh_enabled` and `ssh_allowed_cidrs` inputs for break-glass scenarios, but these are not wired into `TF_VAR_network_access_policy` at the infra root level. To enable SSH, pass these inputs directly when calling the module.
 
 ## Common Validation Errors
 
 | Validation source | Error pattern | Why it fails | Fix |
 |-------------------|--------------|-------------|-----|
 | `terraform/gcp/main.tf` (`ssh_allowed_cidrs`) | `ssh_allowed_cidrs must contain valid IPv6 CIDRs and must be non-empty when ssh_enabled=true.` | One or more CIDRs are invalid, IPv4, or list is empty while SSH is enabled | Provide valid IPv6 CIDRs (for example `/128` runner egress) and keep list non-empty when enabled |
-| `terraform/infra/main.tf` (`network_access_policy`) | `network_access_policy is invalid: ... gcp_ssh must use IPv6 CIDRs ...` | Root policy validation rejected `gcp_ssh.source_ranges` values | Ensure `gcp_ssh.source_ranges` are IPv6 CIDRs only |
-| `terraform/infra/main.tf` (`network_access_policy`) | `network_access_policy is invalid: ... portainer_api must include at least one valid CIDR.` | `portainer_api.source_ranges` empty or invalid | Provide at least one valid CIDR (dual-stack recommended for automation runners) |
 
 ## Regenerating Docs
 
@@ -87,13 +67,14 @@ No modules.
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
 | <a name="input_gcp_project"></a> [gcp\_project](#input\_gcp\_project) | GCP project ID (injected from Infisical) | `string` | n/a | yes |
+| <a name="input_tailscale_auth_key"></a> [tailscale\_auth\_key](#input\_tailscale\_auth\_key) | Tailscale reusable auth key for witness node self-registration at first boot | `string` | n/a | yes |
 | <a name="input_gcp_region"></a> [gcp\_region](#input\_gcp\_region) | GCP region for the subnet and resources | `string` | `"us-central1"` | no |
 | <a name="input_gcp_zone"></a> [gcp\_zone](#input\_gcp\_zone) | GCP zone for the compute instance | `string` | `"us-central1-a"` | no |
-| <a name="input_ssh_allowed_cidrs"></a> [ssh\_allowed\_cidrs](#input\_ssh\_allowed\_cidrs) | List of IPv6 CIDR blocks allowed to SSH into the witness instance | `list(string)` | n/a | yes |
-| <a name="input_ssh_enabled"></a> [ssh\_enabled](#input\_ssh\_enabled) | Whether SSH ingress should be managed for the witness instance | `bool` | `true` | no |
+| <a name="input_ssh_allowed_cidrs"></a> [ssh\_allowed\_cidrs](#input\_ssh\_allowed\_cidrs) | List of IPv6 CIDR blocks allowed to SSH into the witness instance | `list(string)` | `[]` | no |
+| <a name="input_ssh_enabled"></a> [ssh\_enabled](#input\_ssh\_enabled) | Whether SSH ingress should be managed for the witness instance | `bool` | `false` | no |
 
 ## Outputs
 
 | Name | Description |
 |------|-------------|
-| <a name="output_witness_ipv6"></a> [witness\_ipv6](#output\_witness\_ipv6) | External IPv6 address of the Swarm witness instance |
+| <a name="output_witness_tailscale_hostname"></a> [witness\_tailscale\_hostname](#output\_witness\_tailscale\_hostname) | Tailscale MagicDNS hostname of the Swarm witness instance |

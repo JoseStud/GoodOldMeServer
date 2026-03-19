@@ -17,13 +17,13 @@ Personal homelab/cloud server infrastructure using a four-layer architecture:
 - GCP free-tier account (e2-micro instance)
 - SSH CA key pair for certificate-based authentication
 - Terraform Cloud workspace variable for network policy:
-  - `TF_VAR_network_access_policy` (JSON object with OCI SSH IPv4, GCP SSH IPv6, Portainer API allowlists)
+  - `TF_VAR_network_access_policy` (JSON object with OCI SSH IPv4 and GCP SSH IPv6 allowlists)
 
 ## Quick Start
 
 ```bash
 # 1. End-to-end orchestration (recommended)
-# GitHub Actions: .github/workflows/infra-orchestrator.yml
+# GitHub Actions: .github/workflows/orchestrator.yml
 
 # 2. Local fallback: provision cloud infrastructure
 terraform -chdir=terraform/infra apply
@@ -43,7 +43,7 @@ Ansible Phase 6 bootstraps the `management` stack. The remaining Portainer-manag
 For the full deployment procedure, see the [Deployment Runbook](docs/deployment-runbook.md).
 For first-time pipeline setup, use the [Infrastructure Orchestrator Cutover Checklist](docs/meta-pipeline-cutover-checklist.md).
 For the current GitHub Actions entry points, see the [Workflow Lifecycle](docs/workflow-lifecycle.md).
-For workflow responsibilities, triggers, and reusable inputs/outputs, see [GitHub Actions Workflows](docs/github-actions-workflows.md).
+For workflow responsibilities, triggers, and stable contracts, see [GitHub Actions Workflows](docs/github-actions-workflows.md).
 For CI orchestration planning behavior, see the [CI Orchestrator Execution Rules](docs/ci-orchestrator-execution-rules.md).
 For the canonical orchestration execution contract, see the [CI Plan Contract](docs/ci-plan-contract.md).
 

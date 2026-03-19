@@ -65,7 +65,6 @@ The management stack (Portainer + Homarr) is deployed automatically by Ansible d
 # Deploy the management stack directly
 BASE_DOMAIN=example.com HOMARR_SECRET_KEY="your-key" TZ=Etc/UTC \
   PORTAINER_ADMIN_PASSWORD_HASH='$2b$12$...' \
-  PORTAINER_AUTOMATION_ALLOWED_CIDRS='203.0.113.10/32,2001:db8::/128' \
   docker stack deploy -c /opt/stacks/management/docker-compose.yml management
 ```
 
@@ -279,13 +278,13 @@ The orchestrator observes both GitHub Checks and legacy commit statuses. A stack
 
 ```bash
 # Trigger a single stack's webhook
-./scripts/portainer-webhook.sh https://portainer-api.example.com/api/webhooks/<uuid>
+./scripts/portainer-webhook.sh http://<tailscale_ip>:9000/api/webhooks/<uuid>
 
 # Trigger all stacks at once via env var
 WEBHOOK_URLS="<url1>,<url2>,<url3>" ./scripts/portainer-webhook.sh
 ```
 
-> No API key or `ENDPOINT_ID` needed — each webhook URL is natively bound to one specific stack in Portainer. Access is restricted at Traefik by IP allowlist/rate-limit middleware on `portainer-api.<domain>`.
+> No API key or `ENDPOINT_ID` needed — each webhook URL is natively bound to one specific stack in Portainer. Webhook traffic reaches Portainer over the Tailscale mesh (no public Traefik route).
 
 ### Via CLI (direct Swarm commands)
 

@@ -4,7 +4,7 @@ This section covers the configuration management strategy, detailing every role,
 
 ## Architecture & Integration
 
-Ansible bridges raw Terraform-provisioned infrastructure and the Docker Swarm workloads. Local runs use a dynamic inventory plugin to auto-discover nodes from Terraform state, while CI renders a deterministic `inventory-ci.yml` artifact from Terraform Cloud outputs (`oci_public_ips`, `gcp_witness_ipv6`) before executing Ansible.
+Ansible bridges raw Terraform-provisioned infrastructure and the Docker Swarm workloads. Local runs use a dynamic inventory plugin to auto-discover nodes from Terraform state, while CI renders a deterministic `inventory-ci.yml` artifact from Terraform Cloud outputs (`oci_public_ips`, `gcp_witness_tailscale_hostname`) before executing Ansible.
 
 ```mermaid
 sequenceDiagram
@@ -77,7 +77,7 @@ project_path: ../../terraform/infra
 | `oci_nodes` | `'oci' in provider` | 2× OCI A1.Flex workers | `ubuntu` |
 | `gcp_witness` | `'google' in provider` | 1× GCP e2-micro witness | `debian` |
 
-**Host resolution:** OCI nodes use `public_ip` (IPv4); the GCP witness falls back to `witness_ipv6` when `public_ip` is unavailable.
+**Host resolution:** OCI nodes use `public_ip` (IPv4); the GCP witness falls back to `witness_tailscale_hostname` (Tailscale MagicDNS) when `public_ip` is unavailable.
 
 ## SSH Certificate Authentication
 
@@ -106,7 +106,7 @@ Examples below assume you run commands from the repository root.
 
 | Phase | Tags | Includes | Example `--tags` | Example `--skip-tags` |
 |------|------|----------|------------------|-----------------------|
-| Phase 1: Base system | `phase1_base` | `system_user`, `storage` (OCI only) | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase1_base` | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --skip-tags phase1_base` |
+| Phase 1: Base system | `phase1_base` | `system_user`, `storage` (OCI only), `infisical_cli` | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase1_base` | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --skip-tags phase1_base` |
 | Phase 2: Docker | `phase2_docker` | `docker` role | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase2_docker` | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --skip-tags phase2_docker` |
 | Phase 3: Tailscale | `phase3_tailscale` | Tailscale install/auth/verify tasks | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase3_tailscale` | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --skip-tags phase3_tailscale` |
 | Phase 4: GlusterFS | `phase4_glusterfs` | `glusterfs` role + config sync include | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase4_glusterfs` | `ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --skip-tags phase4_glusterfs` |
@@ -138,6 +138,7 @@ Expected runtimes below are guidance ranges for healthy nodes and network condit
 |------|-------------|-----------|
 | `system_user` | Creates `media-srv` user and group with UID/GID `1500`, no home directory. All containers run file operations as this user for consistent ownership across GlusterFS. | All nodes |
 | `storage` | Partitions `{{ block_device }}`, formats `{{ block_device_partition }}` as ext4, mounts at `{{ mount_point }}`, and sets ownership to `{{ service_user }}:{{ service_group }}` with mode `0755`. Defaults are `/dev/sdb`, `/dev/sdb1` (or `p1` for NVMe), `/mnt/app_data`. | OCI nodes only (`oci_nodes` group) |
+| `infisical_cli` | Installs the Infisical CLI via the official APT repository (`artifacts-cli.infisical.com/setup.deb.sh`). Avoids GitHub API calls for version resolution, which fail on IPv6-only hosts like the GCP witness. | All nodes |
 
 ### Phase 2: Docker Engine
 
@@ -286,6 +287,8 @@ ansible/
     ├── docker/
     │   ├── defaults/main.yml        # Parameterized user
     │   └── tasks/main.yml           # APT repo install Docker, enable service
+    ├── infisical_cli/
+    │   └── tasks/main.yml           # Install Infisical CLI via official APT repo
     ├── glusterfs/
     │   ├── defaults/main.yml        # service_user / service_group (defaults: media-srv)
     │   └── tasks/main.yml           # GlusterFS replica-3-arbiter-1 volume + shared dirs

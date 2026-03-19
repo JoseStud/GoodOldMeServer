@@ -94,8 +94,8 @@ flowchart TD
 
 ### Core Documentation
 
-- [**Configuration Management (Ansible)**](ansible.md) — Playbooks, roles, dynamic inventory, and the 7-phase provisioning lifecycle. Last reviewed: `2026-03-07`.
-- [**Application Workloads (Stacks)**](stacks.md) — All Docker Swarm stack configurations: Gateway, Auth, Management, Network, Observability, Media/AI, Uptime, Cloud. Last reviewed: `2026-03-07`.
+- [**Configuration Management (Ansible)**](ansible.md) — Playbooks, roles, dynamic inventory, and the 7-phase provisioning lifecycle. Last reviewed: `2026-03-18`.
+- [**Application Workloads (Stacks)**](stacks.md) — All Docker Swarm stack configurations: Gateway, Auth, Management, Network, Observability, Media/AI, Uptime, Cloud. Last reviewed: `2026-03-18`.
 - [**Utilities (Scripts)**](scripts.md) — Helper scripts and manual execution wrappers. Last reviewed: `2026-03-07`.
 
 ### Infrastructure as Code (Terraform)
@@ -108,13 +108,13 @@ flowchart TD
 ### Architecture & Operations
 
 - [**Network Architecture**](network-architecture.md) — Tailscale mesh, 3-manager Swarm topology, GlusterFS replication, overlay networks, DNS & ingress flow. Last reviewed: `2026-03-07`.
-- [**Infisical Secrets Workflow**](infisical-workflow.md) — Agent config, `.env.tmpl` templating, secret injection pipeline. Last reviewed: `2026-03-07`.
-- [**CI Orchestrator Execution Rules**](ci-orchestrator-execution-rules.md) — Push and dispatch planning rules for the active infrastructure workflows. Last reviewed: `2026-03-07`.
-- [**CI Plan Contract**](ci-plan-contract.md) — Canonical execution-context contract and workflow-consumption rules. Last reviewed: `2026-03-13`.
-- [**GitHub Actions Workflows**](github-actions-workflows.md) — Public workflow entry points plus reusable stage workflow inputs, outputs, and artifacts. Last reviewed: `2026-03-07`.
-- [**Workflow Lifecycle**](workflow-lifecycle.md) — Current workflow entry points and reusable stage workflows. Last reviewed: `2026-03-07`.
-- [**Infrastructure Orchestrator Cutover Checklist**](meta-pipeline-cutover-checklist.md) — Minimal first-run checklist (GitHub vars/secrets + Terraform workspace vars). Last reviewed: `2026-03-07`.
-- [**Deployment Runbook**](deployment-runbook.md) — Stack ordering, deploy commands, verification, rollback procedures. Last reviewed: `2026-03-07`.
+- [**Infisical Secrets Workflow**](infisical-workflow.md) — Agent config, `.env.tmpl` templating, secret injection pipeline. Last reviewed: `2026-03-18`.
+- [**CI Orchestrator Execution Rules**](ci-orchestrator-execution-rules.md) — Push and dispatch planning rules for the active infrastructure workflows. Last reviewed: `2026-03-18`.
+- [**CI Plan Contract**](ci-plan-contract.md) — Canonical execution-context contract and workflow-consumption rules. Last reviewed: `2026-03-18`.
+- [**GitHub Actions Workflows**](github-actions-workflows.md) — Public workflow entry points, stable contracts, and execution rules. Last reviewed: `2026-03-18`.
+- [**Workflow Lifecycle**](workflow-lifecycle.md) — Current active GitHub Actions workflow set. Last reviewed: `2026-03-18`.
+- [**Infrastructure Orchestrator Cutover Checklist**](meta-pipeline-cutover-checklist.md) — Minimal first-run checklist (GitHub vars/secrets + Terraform workspace vars). Last reviewed: `2026-03-18`.
+- [**Deployment Runbook**](deployment-runbook.md) — Stack ordering, deploy commands, verification, rollback procedures. Last reviewed: `2026-03-18`.
 - [**Backup Strategy**](backup-strategy.md) — OCI Silver backup policy, GlusterFS redundancy, application-level backups, recovery. Last reviewed: `2026-03-07`.
 
 ### Guides & External Setups

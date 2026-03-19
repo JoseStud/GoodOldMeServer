@@ -10,7 +10,7 @@ This document is the single source of truth for:
 Validation is split by concern:
 
 - `validate-planner-contracts.yml`: bootstrap-query-tools smoke and trusted stacks SHA verification for current `HEAD:stacks`
-- `validate-terraform.yml`: `terraform fmt`, multi-root `terraform validate`, fixed Terraform Cloud speculative run for `terraform/infra`, and shadow Portainer plan checks
+- `validate-terraform.yml`: `terraform fmt`, multi-root `terraform validate`, and Terraform Cloud speculative plan for `terraform/infra`
 - `validate-ansible.yml`: ansible lint + syntax checks
 
 All validation workflows run on `pull_request` and path-filtered `push`, including pushes to `main`.
@@ -47,9 +47,9 @@ Top-level GHA jobs:
 Within `dagger-pipeline`, phases execute in this order:
 
 1. **Preflight** (parallel): stacks-sha-trust + secret-validation; inventory-handover (if needed)
-2. **Network policy sync**: depends on preflight completing
+2. **Network policy sync + Cloudflare DNS sync** (parallel): depends on preflight completing. DNS sync reconciles round-robin A records for all Portainer-managed stacks via `ci_pipeline/phases/dns.py`.
 3. **Ansible** (host subprocess): bootstrap and/or host-sync, using Tailscale SSH; depends on inventory-handover + network-policy-sync
-4. **Portainer**: post-bootstrap-secret-check, portainer-api-preflight, portainer-apply, health-gated-redeploy; depends on network-policy-sync
+4. **Portainer**: post-bootstrap-secret-check, config-sync (host subprocess), portainer-api-preflight, portainer-apply, health-gated-redeploy; depends on network-policy-sync
 
 Execution is gated by Python conditionals in `ci_pipeline/__main__.py` based on the toggle env vars from `compute-context`.
 
