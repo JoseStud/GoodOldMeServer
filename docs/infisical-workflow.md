@@ -29,7 +29,7 @@ flowchart LR
 | `/deployments` | Terraform (auto-written), Dagger pipeline health-gated-redeploy, on-node webhook helper | `PORTAINER_WEBHOOK_URLS`, `WEBHOOK_URL_*` |
 | `/security` | Terraform (cloud-init), GitHub Actions (SSH) | `SSH_CA_PUBLIC_KEY`, `SSH_CA_PRIVATE_KEY`, `SSH_HOST_CA_PUBKEY` |
 | `/stacks/gateway` | Traefik | `ACME_EMAIL`, `DOCKER_SOCKET_PROXY_URL` |
-| `/stacks/identity` | Authelia SSO | `AUTHELIA_JWT_SECRET`, `AUTHELIA_SESSION_SECRET`, `POSTGRES_PASSWORD`, `AUTHELIA_NOTIFIER_SMTP_USERNAME`, `AUTHELIA_NOTIFIER_SMTP_PASSWORD`, `AUTHELIA_NOTIFIER_SMTP_SENDER`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_JWKS_0_KEY` |
+| `/stacks/identity` | Authelia SSO | `AUTHELIA_JWT_SECRET`, `AUTHELIA_SESSION_SECRET`, `POSTGRES_PASSWORD`, `AUTHELIA_STORAGE_ENCRYPTION_KEY`, `AUTHELIA_USERS_DATABASE_YAML`, `AUTHELIA_NOTIFIER_SMTP_USERNAME`, `AUTHELIA_NOTIFIER_SMTP_PASSWORD`, `AUTHELIA_NOTIFIER_SMTP_SENDER`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_JWKS_0_KEY`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_CLIENTS_0_CLIENT_SECRET` |
 | `/stacks/management` | Homarr + Portainer | `HOMARR_SECRET_KEY`, `PORTAINER_ADMIN_PASSWORD`, `PORTAINER_ADMIN_PASSWORD_HASH` |
 | `/stacks/network` | Vaultwarden, Pi-hole | `VW_DB_PASS`, `VW_ADMIN_TOKEN`, `PIHOLE_PASSWORD` |
 | `/stacks/observability` | Grafana | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET`, `ALERTMANAGER_WEBHOOK_URL` |
@@ -67,7 +67,7 @@ Use this as the source of truth for whether a value is operator-managed or autom
 | `/security` | `SSH_CA_PUBLIC_KEY`, `SSH_CA_PRIVATE_KEY` (and host CA key if used) | Required | Security | `SSH_CA_PUBLIC_KEY` for cloud-init trust bootstrap; `SSH_CA_PRIVATE_KEY` for CI ephemeral cert signing |
 | `/stacks/management` | `HOMARR_SECRET_KEY`, `PORTAINER_ADMIN_PASSWORD` | Required | Operator | Needed before Phase 6 Portainer bootstrap |
 | `/stacks/gateway` | `ACME_EMAIL`, `DOCKER_SOCKET_PROXY_URL` | Required | Operator | Required for gateway stack certificate/Docker provider wiring |
-| `/stacks/identity` | `AUTHELIA_JWT_SECRET`, `AUTHELIA_SESSION_SECRET`, `POSTGRES_PASSWORD`, SMTP+OIDC secrets | Required | Security | Required for first auth deploy and SSO readiness |
+| `/stacks/identity` | `AUTHELIA_JWT_SECRET`, `AUTHELIA_SESSION_SECRET`, `POSTGRES_PASSWORD`, `AUTHELIA_USERS_DATABASE_YAML`, SMTP+OIDC secrets | Required | Security | Required for first auth deploy, initial login, and SSO readiness |
 | `/stacks/network` | `VW_DB_PASS`, `VW_ADMIN_TOKEN`, `PIHOLE_PASSWORD` | Required | Operator | Required for network stack stateful services |
 | `/stacks/observability` | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET`, `ALERTMANAGER_WEBHOOK_URL` | Required | Operator | Required for observability deploy and alert routing |
 | `/stacks/ai-interface` | `ARCH_PC_IP` | Required | Operator | Required for Open WebUI upstream reachability |
@@ -136,11 +136,14 @@ The management stack (Portainer + Homarr) is deployed by Ansible, not Terraform,
 | `AUTHELIA_JWT_SECRET` | Generate: `openssl rand -base64 48` | Authelia JWT token signing |
 | `AUTHELIA_SESSION_SECRET` | Generate: `openssl rand -base64 48` | Authelia session encryption |
 | `POSTGRES_PASSWORD` | Generate: `openssl rand -base64 32` | Authelia ↔ PostgreSQL storage backend |
+| `AUTHELIA_STORAGE_ENCRYPTION_KEY` | Generate: `openssl rand -base64 48` | Authelia storage encryption for persisted sensitive data |
+| `AUTHELIA_USERS_DATABASE_YAML` | Multi-line YAML for the full Authelia users database (generate argon2 hashes with `docker run --rm authelia/authelia:latest authelia crypto hash generate argon2 --password '<password>'`) | Rendered by the Infisical Agent into Authelia's file-based user database on GlusterFS |
 | `AUTHELIA_NOTIFIER_SMTP_USERNAME` | Your Gmail address (e.g. `user@gmail.com`) | SMTP authentication for 2FA enrollment emails |
 | `AUTHELIA_NOTIFIER_SMTP_PASSWORD` | Gmail App Password (Google Account → Security → App passwords) | SMTP authentication |
 | `AUTHELIA_NOTIFIER_SMTP_SENDER` | Display sender (e.g. `Authelia <noreply@yourdomain.com>`) | From address on notification emails |
 | `AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET` | Generate: `openssl rand -hex 32` | OIDC HMAC signing |
 | `AUTHELIA_IDENTITY_PROVIDERS_OIDC_JWKS_0_KEY` | Generate RSA key: `docker run --rm authelia/authelia authelia crypto certificate rsa generate --directory /tmp && cat /tmp/private.pem` (multi-line PEM) | OIDC JWT signing key |
+| `AUTHELIA_IDENTITY_PROVIDERS_OIDC_CLIENTS_0_CLIENT_SECRET` | Generate from `GF_OIDC_CLIENT_SECRET`: `docker run --rm authelia/authelia authelia crypto hash generate argon2 --password '<GF_OIDC_CLIENT_SECRET value>'` | Grafana OIDC client secret hash rendered into Authelia's templated client config |
 
 ### `/stacks/management` — Homarr + Portainer
 
@@ -164,7 +167,7 @@ The management stack (Portainer + Homarr) is deployed by Ansible, not Terraform,
 | Variable | How to Get | Used By |
 |----------|-----------|--------|
 | `GF_OIDC_CLIENT_ID` | Choose a client ID (e.g., `grafana`) to define in Authelia's config | Grafana SSO setup |
-| `GF_OIDC_CLIENT_SECRET` | Generate plaintext: `openssl rand -hex 32` (Must be hashed using `authelia crypto hash` for Authelia's config) | Grafana SSO setup |
+| `GF_OIDC_CLIENT_SECRET` | Generate plaintext: `openssl rand -hex 32` (store the matching argon2 hash in `/stacks/identity` as `AUTHELIA_IDENTITY_PROVIDERS_OIDC_CLIENTS_0_CLIENT_SECRET`) | Grafana SSO setup |
 | `ALERTMANAGER_WEBHOOK_URL` | Slack/Discord incoming webhook URL for alert notifications | Alertmanager webhook receiver |
 
 ### `/stacks/ai-interface` — Open WebUI
@@ -339,7 +342,7 @@ Manual stacks reconciliation is no longer supported from `orchestrator.yml`; man
 
 ## Infisical Agent (Docker Swarm)
 
-The Infisical Agent runs on each Swarm node as a **systemd service**. It renders `.env` files from `.env.tmpl` templates and triggers stack redeploys on secret changes.
+The Infisical Agent runs on each Swarm node as a **systemd service**. It renders `.env` files and selected config files from templates and triggers stack redeploys on secret changes.
 
 ### Installing the Agent
 
@@ -399,18 +402,20 @@ Stacks that only need globals (uptime, cloud) have a single `/infrastructure` bl
 |-------|----------|---------|
 | gateway | `stacks/gateway/.env.tmpl` | `/infrastructure` + `/stacks/gateway` |
 | auth | `stacks/auth/.env.tmpl` | `/infrastructure` + `/stacks/identity` |
+| auth | `stacks/auth/config/users_database.yml.tmpl` | `/stacks/identity` |
 | management | `stacks/management/.env.tmpl` | `/infrastructure` + `/stacks/management` |
 | network | `stacks/network/.env.tmpl` | `/infrastructure` + `/stacks/network` |
 | observability | `stacks/observability/.env.tmpl` | `/infrastructure` + `/stacks/observability` |
+| observability | `stacks/observability/config/alertmanager.yml.tmpl` | `/stacks/observability` |
 | ai-interface | `stacks/media/ai-interface/.env.tmpl` | `/infrastructure` + `/stacks/ai-interface` |
 | uptime | `stacks/uptime/.env.tmpl` | `/infrastructure` |
 | cloud | `stacks/cloud/.env.tmpl` | `/infrastructure` |
 
 ### Agent Configuration
 
-The agent config lives at `/etc/infisical/agent.yaml` and is rendered by Ansible from `stacks/infisical-agent.yaml`. It contains one template entry per stack, each with:
-- `source-path` → the `.env.tmpl` on disk
-- `destination-path` → the rendered `.env`
+The agent config lives at `/etc/infisical/agent.yaml` and is rendered by Ansible from `stacks/infisical-agent.yaml`. It contains template entries for stack env files and selected config files, each with:
+- `source-path` → the template file on disk
+- `destination-path` → the rendered output path
 - `polling-interval: 60s` → how often to check for changes
 - `exec.command` → either direct management `docker stack deploy` or the local Portainer webhook helper, depending on stack ownership
 
@@ -418,7 +423,7 @@ The agent config lives at `/etc/infisical/agent.yaml` and is rendered by Ansible
 
 1. Operator adds/updates a secret in the Infisical dashboard
 2. The agent detects the change on its next polling interval (60s default)
-3. Agent re-renders the `.env` file with the new value
+3. Agent re-renders the target `.env` or config file with the new value
 4. Agent runs the `exec.command` on the primary manager to redeploy the stack or trigger the Portainer webhook
 
 ## infisical.json
@@ -436,10 +441,10 @@ This file is intentionally kept in the repo (without secrets) so that ad hoc loc
 ## Adding a New Secret
 
 1. **Create the secret** in the Infisical dashboard under the appropriate path
-2. **Reference it in the template** — add a `{{- with secret "/path" }}` block to the stack's `.env.tmpl`
-3. **Use it in the compose file** — reference via `${SECRET_NAME}` in the stack's `docker-compose.yml`
+2. **Reference it in the template** — add a `{{- with secret "/path" }}` block to the stack's `.env.tmpl` or runtime-managed config template
+3. **Use it at runtime** — reference it via `${SECRET_NAME}` in the stack's `docker-compose.yml` or render it directly into the managed config file
 4. **Register the template** — add a new entry in `stacks/infisical-agent.yaml`
-5. **The agent picks it up** — on the next poll, the `.env` is re-rendered and the primary manager performs the direct deploy or webhook call
+5. **The agent picks it up** — on the next poll, the target file is re-rendered and the primary manager performs the direct deploy, runtime copy, or webhook call
 
 ## Security Considerations
 

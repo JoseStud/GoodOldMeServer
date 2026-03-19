@@ -7,16 +7,21 @@
 
 - name: Sync Authelia configuration to GlusterFS
   ansible.builtin.copy:
-    src: "{{ item.src }}"
-    dest: "{{ item.dest }}"
+    src: "{{ playbook_dir }}/../../stacks/auth/config/configuration.yml"
+    dest: /mnt/swarm-shared/auth/authelia/config/configuration.yml
     owner: "{{ service_user }}"
     group: "{{ service_group }}"
     mode: '0644'
-  loop:
-    - src: "{{ playbook_dir }}/../../stacks/auth/config/configuration.yml"
-      dest: /mnt/swarm-shared/auth/authelia/config/configuration.yml
-    - src: "{{ playbook_dir }}/../../stacks/auth/config/users_database.yml"
-      dest: /mnt/swarm-shared/auth/authelia/config/users_database.yml
+  when: inventory_hostname == groups['oci_nodes'][0]
+
+- name: Seed placeholder Authelia users database on GlusterFS if missing
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../stacks/auth/config/users_database.yml"
+    dest: /mnt/swarm-shared/auth/authelia/config/users_database.yml
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
+    mode: '0644'
+    force: false
   when: inventory_hostname == groups['oci_nodes'][0]
 
 - name: Sync Prometheus configuration to GlusterFS
@@ -46,13 +51,14 @@
     mode: '0644'
   when: inventory_hostname == groups['oci_nodes'][0]
 
-- name: Sync Alertmanager configuration to GlusterFS
+- name: Seed placeholder Alertmanager configuration on GlusterFS if missing
   ansible.builtin.copy:
     src: "{{ playbook_dir }}/../../stacks/observability/config/alertmanager.yml"
     dest: /mnt/swarm-shared/observability/alertmanager/alertmanager.yml
     owner: "{{ service_user }}"
     group: "{{ service_group }}"
     mode: '0644'
+    force: false
   when: inventory_hostname == groups['oci_nodes'][0]
 
 - name: Sync Prometheus alert rules to GlusterFS

@@ -14,4 +14,6 @@ runtime_sync_agent_env_path: /etc/infisical/runtime-sync.env
 runtime_sync_agent_cache_dir: /var/lib/infisical/cache
 runtime_sync_agent_service_path: /etc/systemd/system/infisical-agent.service
 runtime_sync_webhook_helper_path: /usr/local/bin/portainer-stack-webhook
+runtime_sync_auth_users_sync_helper_path: /usr/local/bin/auth-users-database-sync
+runtime_sync_observability_alertmanager_sync_helper_path: /usr/local/bin/observability-alertmanager-sync
 runtime_sync_primary_manager: "{{ groups['oci_nodes'][0] }}"

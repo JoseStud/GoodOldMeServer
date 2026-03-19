@@ -87,22 +87,26 @@ All stacks follow these conventions:
 - Default access policy: `two_factor` for all protected services
 - OIDC provider configured for Grafana SSO (`client_id: grafana`)
 
-**Config files** (in `stacks/auth/config/`, synced to GlusterFS by Ansible):
+**Config files** (in `stacks/auth/config/`):
 
 | File | Purpose |
 |------|---------|
-| `configuration.yml` | Authelia main config: server, session, storage, auth backend, access control, OIDC provider, TOTP/WebAuthn, SMTP notifier |
-| `users_database.yml` | File-based auth backend — user accounts with argon2id-hashed passwords |
+| `configuration.yml` | Authelia main config: server, session, storage, auth backend, access control, OIDC provider, TOTP/WebAuthn, SMTP notifier. Synced to GlusterFS by Ansible `sync-configs`. |
+| `users_database.yml` | Bootstrap placeholder file-based auth database. Seeded to GlusterFS only if missing. |
+| `users_database.yml.tmpl` | Infisical Agent template that renders the real Authelia users database from `/stacks/identity/AUTHELIA_USERS_DATABASE_YAML` and syncs it to GlusterFS on the primary manager. |
 
 **Additional Infisical secrets** (under `/stacks/identity`):
 
 | Variable | How to Get |
 |----------|-----------|
+| `AUTHELIA_STORAGE_ENCRYPTION_KEY` | Generate: `openssl rand -base64 48` |
+| `AUTHELIA_USERS_DATABASE_YAML` | Multi-line YAML for the full Authelia users database. Generate password hashes with `authelia crypto hash generate argon2` and store the resulting `users:` document in Infisical. |
 | `AUTHELIA_NOTIFIER_SMTP_USERNAME` | Gmail address for SMTP |
 | `AUTHELIA_NOTIFIER_SMTP_PASSWORD` | Gmail App Password (Settings → Security → App passwords) |
 | `AUTHELIA_NOTIFIER_SMTP_SENDER` | e.g. `Authelia <noreply@example.com>` |
 | `AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET` | Generate: `openssl rand -hex 32` |
 | `AUTHELIA_IDENTITY_PROVIDERS_OIDC_JWKS_0_KEY` | Generate: `authelia crypto certificate rsa generate --directory /tmp && cat /tmp/private.pem` |
+| `AUTHELIA_IDENTITY_PROVIDERS_OIDC_CLIENTS_0_CLIENT_SECRET` | Generate from `GF_OIDC_CLIENT_SECRET` with `authelia crypto hash generate argon2 --password '<GF_OIDC_CLIENT_SECRET value>'` |
 
 ### Management
 
@@ -126,7 +130,7 @@ All stacks follow these conventions:
 
 Data volumes are bind-mounted to GlusterFS for persistence and replication.
 
-**Config files** (in `stacks/observability/config/`, synced to GlusterFS by Ansible):
+**Config files** (in `stacks/observability/config/`):
 
 | File | GlusterFS Path | Purpose |
 |------|---------------|---------|
@@ -134,7 +138,8 @@ Data volumes are bind-mounted to GlusterFS for persistence and replication.
 | `alert-rules.yml` | `/mnt/swarm-shared/observability/prometheus/alert-rules.yml` | Alert rules: instance down, high memory/disk/CPU, Traefik error rates |
 | `loki-config.yaml` | `/mnt/swarm-shared/observability/loki/loki-config.yaml` | Loki storage, schema, retention, compactor |
 | `promtail.yml` | `/mnt/swarm-shared/observability/promtail/promtail.yml` | Docker SD log collection, label extraction, JSON pipeline |
-| `alertmanager.yml` | `/mnt/swarm-shared/observability/alertmanager/alertmanager.yml` | Alertmanager routing, webhook receiver, inhibition rules |
+| `alertmanager.yml` | `/mnt/swarm-shared/observability/alertmanager/alertmanager.yml` | Bootstrap placeholder config. Seeded to GlusterFS only if missing. |
+| `alertmanager.yml.tmpl` | `/mnt/swarm-shared/observability/alertmanager/alertmanager.yml` | Infisical Agent template that renders the real Alertmanager routing and webhook receiver config from `/stacks/observability/ALERTMANAGER_WEBHOOK_URL` and syncs it to GlusterFS on the primary manager. |
 
 ### Media / AI Interface
 
@@ -159,10 +164,12 @@ Per-stack secrets are in their own Infisical paths:
 | Stack | Template | Infisical Path | Stack-Specific Variables |
 |-------|----------|---------------|--------------------------|
 | gateway | `stacks/gateway/.env.tmpl` | `/stacks/gateway` | `CLOUDFLARE_API_TOKEN` (from `/infrastructure`), `ACME_EMAIL`, `DOCKER_SOCKET_PROXY_URL` |
-| auth | `stacks/auth/.env.tmpl` | `/stacks/identity` | `AUTHELIA_JWT_SECRET`, `AUTHELIA_SESSION_SECRET`, `POSTGRES_PASSWORD`, `AUTHELIA_NOTIFIER_SMTP_USERNAME`, `AUTHELIA_NOTIFIER_SMTP_PASSWORD`, `AUTHELIA_NOTIFIER_SMTP_SENDER`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_JWKS_0_KEY` |
+| auth | `stacks/auth/.env.tmpl` | `/stacks/identity` | `AUTHELIA_JWT_SECRET`, `AUTHELIA_SESSION_SECRET`, `POSTGRES_PASSWORD`, `AUTHELIA_STORAGE_ENCRYPTION_KEY`, `AUTHELIA_NOTIFIER_SMTP_USERNAME`, `AUTHELIA_NOTIFIER_SMTP_PASSWORD`, `AUTHELIA_NOTIFIER_SMTP_SENDER`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_JWKS_0_KEY`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_CLIENTS_0_CLIENT_SECRET` |
+| auth | `stacks/auth/config/users_database.yml.tmpl` | `/stacks/identity` | `AUTHELIA_USERS_DATABASE_YAML` |
 | management | `stacks/management/.env.tmpl` | `/stacks/management` | `HOMARR_SECRET_KEY`, `PORTAINER_ADMIN_PASSWORD_HASH` |
 | network | `stacks/network/.env.tmpl` | `/stacks/network` | `VW_DB_PASS`, `VW_ADMIN_TOKEN`, `PIHOLE_PASSWORD` |
 | observability | `stacks/observability/.env.tmpl` | `/stacks/observability` | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET`, `ALERTMANAGER_WEBHOOK_URL` |
+| observability | `stacks/observability/config/alertmanager.yml.tmpl` | `/stacks/observability` | `ALERTMANAGER_WEBHOOK_URL` |
 | ai-interface | `stacks/media/ai-interface/.env.tmpl` | `/stacks/ai-interface` | `ARCH_PC_IP` |
 | uptime | `stacks/uptime/.env.tmpl` | — | *(globals only)* |
 | cloud | `stacks/cloud/.env.tmpl` | — | *(globals only)* |
@@ -171,7 +178,7 @@ See [Infisical Workflow](infisical-workflow.md) for the full variable reference,
 
 ## Config File Sync
 
-Some stacks require configuration files that are bind-mounted from GlusterFS at runtime. These config files live in the repo under `stacks/<stack>/config/` and are synced to GlusterFS by Ansible:
+Some stacks require configuration files that are bind-mounted from GlusterFS at runtime. These config files live in the repo under `stacks/<stack>/config/`. Static files are synced to GlusterFS by Ansible `sync-configs`, while selected secret-backed templates are rendered by the Infisical Agent and copied to GlusterFS by runtime helpers:
 
 ```bash
 # Sync all config files to GlusterFS

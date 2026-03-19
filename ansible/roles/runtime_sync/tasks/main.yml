@@ -65,6 +65,24 @@
     mode: "0700"
   notify: Restart infisical agent
 
+- name: Install auth users database sync helper
+  ansible.builtin.template:
+    src: auth-users-database-sync.sh.j2
+    dest: "{{ runtime_sync_auth_users_sync_helper_path }}"
+    owner: root
+    group: root
+    mode: "0700"
+  notify: Restart infisical agent
+
+- name: Install observability Alertmanager sync helper
+  ansible.builtin.template:
+    src: observability-alertmanager-sync.sh.j2
+    dest: "{{ runtime_sync_observability_alertmanager_sync_helper_path }}"
+    owner: root
+    group: root
+    mode: "0700"
+  notify: Restart infisical agent
+
 - name: Render Infisical agent config
   ansible.builtin.template:
     src: "{{ runtime_sync_agent_template_src }}"

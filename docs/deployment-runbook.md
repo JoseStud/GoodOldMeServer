@@ -105,35 +105,94 @@ curl -I http://localhost:80
 
 Authelia requires config files and secrets to be prepared before the stack will start.
 
+Use this responsibility split during bootstrap:
+
+- **You do:** create the required secrets in Infisical and generate password/client-secret hashes. Run the tagged Ansible convergence commands only when doing targeted/manual convergence, or when changing the automation itself.
+- **Automation does:** sync static config, render the runtime-managed users database from Infisical, copy it onto GlusterFS, and trigger the auth stack redeploy on the primary manager when that rendered file changes.
+- **You do not need to:** edit `/mnt/swarm-shared/auth/authelia/config/users_database.yml` by hand, paste OIDC secrets into repo YAML files, or manually copy auth config files onto the nodes.
+
+If you are running the normal full bootstrap path (`provision.yml` without phase tags, or the infra orchestrator full reconcile), both `sync-configs` and `phase7_runtime_sync` are already included. The tagged commands below are for targeted/manual convergence and break-glass workflows.
+
 **1. Sync config files to GlusterFS:**
 
 ```bash
 ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags sync-configs
-# This copies stacks/auth/config/* to /mnt/swarm-shared/auth/authelia/config/
-# and stacks/observability/config/* to their respective GlusterFS paths
+# This copies stacks/auth/config/configuration.yml to /mnt/swarm-shared/auth/authelia/config/
+# seeds users_database.yml only if it is missing, syncs the static observability config files,
+# and seeds alertmanager.yml only if the runtime-managed file is not there yet.
 ```
 
-**2. Create a user in `users_database.yml`:**
+What you are doing:
+- Running the one-time/static config sync for bind-mounted files when doing targeted/manual convergence.
+
+What automation handles:
+- `sync-configs` copies the static Authelia `configuration.yml`.
+- `sync-configs` only seeds a placeholder `users_database.yml` if the runtime-managed file does not exist yet.
+- `sync-configs` only seeds a placeholder `alertmanager.yml` if the runtime-managed file does not exist yet.
+
+What you do not need to do:
+- Manually SCP/copy files into GlusterFS.
+- Re-run `sync-configs` for normal user-account changes.
+
+**2. Create the Authelia users database secret in Infisical:**
 
 ```bash
 # Generate an argon2id password hash
 docker run --rm authelia/authelia:latest \
   authelia crypto hash generate argon2 --password 'your-strong-password'
-
-# Edit the users database (on host or in repo, then re-sync)
-vim stacks/auth/config/users_database.yml
-# Add your user under the 'users:' key:
-#   admin:
-#     disabled: false
-#     displayname: 'Admin User'
-#     email: 'admin@example.com'
-#     password: '<paste argon2id hash>'
-#     groups:
-#       - 'admins'
-
-# Re-sync to GlusterFS
-ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags sync-configs
 ```
+
+Store the full users database as a multi-line secret under `/stacks/identity` as `AUTHELIA_USERS_DATABASE_YAML`.
+
+Copy this as the secret value, then replace the placeholder names, emails, and password hashes:
+
+```yaml
+users:
+  admin:
+    disabled: false
+    displayname: "Admin User"
+    email: "admin@example.com"
+    password: "$argon2id$v=19$m=65536,t=3,p=4$replace-with-generated-hash"
+    groups:
+      - "admins"
+
+  yourname:
+    disabled: false
+    displayname: "Your Name"
+    email: "you@example.com"
+    password: "$argon2id$v=19$m=65536,t=3,p=4$replace-with-generated-hash"
+    groups:
+      - "users"
+```
+
+Each user goes directly under `users:`. Add or remove user entries as needed, but keep the YAML structure unchanged.
+
+If you are **not** already using the normal full bootstrap/orchestrator path, and `phase7_runtime_sync` has not already been converged on this environment, or you changed the agent/helper/template implementation itself, run:
+
+```bash
+ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags phase7_runtime_sync
+```
+
+After phase 7 is installed once, normal user-database updates do **not** require rerunning Ansible. Update `AUTHELIA_USERS_DATABASE_YAML` in Infisical and the existing Infisical Agent will:
+
+- render the users database template
+- copy it to `/mnt/swarm-shared/auth/authelia/config/users_database.yml`
+- trigger the `auth` stack webhook automatically
+
+What you are doing:
+- Generating password hashes.
+- Storing the full `AUTHELIA_USERS_DATABASE_YAML` document in Infisical.
+- Running `phase7_runtime_sync` only for targeted/manual convergence if this runtime automation has not been installed yet, or after changing the agent/helper templates themselves.
+
+What automation handles:
+- The Infisical Agent renders `stacks/auth/config/users_database.yml.tmpl`.
+- The primary manager copies the rendered file to GlusterFS.
+- The primary manager triggers the `auth` stack webhook after the rendered users database changes.
+
+What you do not need to do:
+- Edit `stacks/auth/config/users_database.yml` for normal user updates.
+- Re-run `phase7_runtime_sync` for routine Authelia user additions or password/group changes once phase 7 is already in place.
+- Re-run `sync-configs` every time you add or change an Authelia user.
 
 **3. Generate OIDC keys and hash the Grafana client secret:**
 
@@ -150,20 +209,37 @@ openssl rand -hex 32
 # Hash the Grafana OIDC client secret (the plaintext is GF_OIDC_CLIENT_SECRET in Infisical)
 docker run --rm authelia/authelia:latest \
   authelia crypto hash generate argon2 --password '<GF_OIDC_CLIENT_SECRET value>'
-# Paste the resulting hash into stacks/auth/config/configuration.yml under:
-#   identity_providers.oidc.clients[0].client_secret
-# Then re-sync: ansible-playbook -i ansible/inventory/terraform.yml ansible/playbooks/provision.yml --tags sync-configs
+# Store the resulting hash in Infisical under /stacks/identity as:
+#   AUTHELIA_IDENTITY_PROVIDERS_OIDC_CLIENTS_0_CLIENT_SECRET
+# The auth stack renders it into Authelia's templated configuration at startup.
 ```
 
-**4. Add SMTP secrets to Infisical** (under `/stacks/identity`):
+What you are doing:
+- Generating the operator-managed secret material once and storing it in Infisical.
+
+What automation handles:
+- The auth stack reads these values from the rendered environment/template flow at deploy time.
+
+What you do not need to do:
+- Paste client secret hashes or environment-specific redirect URIs into `stacks/auth/config/configuration.yml`.
+
+**4. Add operator-managed auth secrets to Infisical** (under `/stacks/identity`):
 
 | Variable | Value |
 |----------|-------|
+| `AUTHELIA_STORAGE_ENCRYPTION_KEY` | Random secret, e.g. `openssl rand -base64 48` |
+| `AUTHELIA_USERS_DATABASE_YAML` | Multi-line YAML `users:` document for Authelia's file backend, using argon2id password hashes |
 | `AUTHELIA_NOTIFIER_SMTP_USERNAME` | Your Gmail address |
 | `AUTHELIA_NOTIFIER_SMTP_PASSWORD` | Gmail App Password (Google Account → Security → App passwords) |
 | `AUTHELIA_NOTIFIER_SMTP_SENDER` | `Authelia <noreply@yourdomain.com>` |
 | `AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET` | (generated above) |
 | `AUTHELIA_IDENTITY_PROVIDERS_OIDC_JWKS_0_KEY` | (RSA PEM generated above — paste full multi-line key) |
+| `AUTHELIA_IDENTITY_PROVIDERS_OIDC_CLIENTS_0_CLIENT_SECRET` | (argon2 hash generated from `GF_OIDC_CLIENT_SECRET`) |
+
+After these are set:
+- Future user-account changes are made by updating `AUTHELIA_USERS_DATABASE_YAML` in Infisical.
+- Future OIDC secret rotations are made by updating the relevant Infisical secrets.
+- The repo files remain static templates and bootstrap placeholders; they are not the day-to-day control surface.
 
 #### Deploy
 

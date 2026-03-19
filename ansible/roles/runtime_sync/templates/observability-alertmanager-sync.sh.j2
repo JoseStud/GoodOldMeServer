@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ $# -ne 1 ]]; then
+  echo "Usage: $0 <rendered-alertmanager-config-path>"
+  exit 1
+fi
+
+if ! command -v install >/dev/null 2>&1; then
+  echo "install is required but was not found in PATH."
+  exit 1
+fi
+
+rendered_path="$1"
+shared_path="/mnt/swarm-shared/observability/alertmanager/alertmanager.yml"
+
+if [[ ! -f "${rendered_path}" ]]; then
+  echo "Rendered Alertmanager configuration not found at ${rendered_path}."
+  exit 1
+fi
+
+mkdir -p "$(dirname "${shared_path}")"
+
+if [[ -f "${shared_path}" ]] && cmp -s "${rendered_path}" "${shared_path}"; then
+  echo "Alertmanager configuration is already up to date."
+  exit 0
+fi
+
+install -m 0644 "${rendered_path}" "${shared_path}"
+
+"{{ runtime_sync_webhook_helper_path }}" observability
