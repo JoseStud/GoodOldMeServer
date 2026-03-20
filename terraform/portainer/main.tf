@@ -196,9 +196,9 @@ locals {
       GF_OIDC_CLIENT_SECRET = local.observability_secrets["GF_OIDC_CLIENT_SECRET"]
     }
     "ai-interface" = {
-      BASE_DOMAIN = local.infrastructure_secrets["BASE_DOMAIN"]
-      TZ          = local.infrastructure_secrets["TZ"]
-      ARCH_PC_IP  = try(local.ai_interface_secrets["ARCH_PC_IP"], "")
+      BASE_DOMAIN       = local.infrastructure_secrets["BASE_DOMAIN"]
+      TZ                = local.infrastructure_secrets["TZ"]
+      ARCH_PC_IP        = try(local.ai_interface_secrets["ARCH_PC_IP"], "")
       OPENWEBUI_DB_PASS = local.ai_interface_secrets["OPENWEBUI_DB_PASS"]
     }
     uptime = {
