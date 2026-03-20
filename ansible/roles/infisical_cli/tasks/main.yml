@@ -1,21 +1,40 @@
 ---
-# Install Infisical CLI via the official APT repository.
-# Matches the method used in CI (artifacts-cli.infisical.com/setup.deb.sh).
-# Avoids a GitHub API call to resolve the latest version, which fails on
-# IPv6-only hosts (e.g. the GCP witness) that have no IPv4 internet gateway.
-- name: Download Infisical CLI APT repository setup script
+# Install Infisical CLI via the official APT repository without setup.deb.sh.
+# This avoids script-managed apt installs (for example apt-transport-https)
+# that can fail when unattended apt holds the dpkg lock.
+- name: Install Infisical APT repository prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - gnupg
+    state: present
+    update_cache: true
+    lock_timeout: 300
+  register: infisical_apt_prereq
+  retries: 5
+  delay: 20
+  until: infisical_apt_prereq is succeeded
+
+- name: Install Infisical APT repository signing key
   ansible.builtin.get_url:
-    url: https://artifacts-cli.infisical.com/setup.deb.sh
-    dest: /tmp/infisical-setup.sh
-    mode: '0755'
+    url: https://artifacts-cli.infisical.com/infisical.gpg
+    dest: /usr/share/keyrings/infisical-cli-archive-keyring.gpg
+    mode: '0644'
 
 - name: Configure Infisical CLI APT repository
-  ansible.builtin.command:
-    cmd: bash /tmp/infisical-setup.sh
-    creates: /etc/apt/sources.list.d/infisical-cli.list
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/infisical-cli-archive-keyring.gpg] https://artifacts-cli.infisical.com/deb stable main"
+    filename: infisical-cli
+    state: present
+    update_cache: false
 
 - name: Install Infisical CLI
   ansible.builtin.apt:
     name: infisical
     state: present
     update_cache: true
+    lock_timeout: 300
+  register: infisical_install
+  retries: 5
+  delay: 20
+  until: infisical_install is succeeded
