@@ -9,8 +9,11 @@ RUN_HOST_SYNC="${RUN_HOST_SYNC:-false}"
 RUN_CONFIG="${RUN_CONFIG:-false}"
 RUN_HEALTH="${RUN_HEALTH:-false}"
 RUN_PORTAINER="${RUN_PORTAINER:-false}"
+RUN_INFRA_APPLY="${RUN_INFRA_APPLY:-false}"
 INVENTORY_FILE="${INVENTORY_FILE:-inventory-ci.yml}"
 PORTAINER_API_URL="${PORTAINER_API_URL:-}"
+TAILSCALE_PEER_WAIT_SECONDS="${TAILSCALE_PEER_WAIT_SECONDS:-300}"
+TAILSCALE_PEER_POLL_INTERVAL="${TAILSCALE_PEER_POLL_INTERVAL:-15}"
 
 detect_public_ip() {
   local family="$1"
@@ -52,10 +55,48 @@ fi
 
 required_oci_ssh="false"
 declare -a hosts=()
+declare -a resolved_hosts=()
+prefer_tailscale_ssh="false"
+
+if [[ "${RUN_INFRA_APPLY}" != "true" ]]; then
+  prefer_tailscale_ssh="true"
+fi
 
 is_ipv4_literal() {
   local value="$1"
   [[ "${value}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]
+}
+
+resolve_tailscale_host() {
+  local host="$1"
+  local ts_ip=""
+  local elapsed=0
+  local lookup_name=""
+  local -a lookup_candidates
+
+  if ! command -v tailscale >/dev/null 2>&1; then
+    return 1
+  fi
+
+  lookup_candidates=("$host")
+  if [[ "$host" =~ ^oci-node-([0-9]+)$ ]]; then
+    lookup_candidates+=("app-worker-${BASH_REMATCH[1]}")
+  fi
+
+  while [[ -z "$ts_ip" && $elapsed -lt $TAILSCALE_PEER_WAIT_SECONDS ]]; do
+    for lookup_name in "${lookup_candidates[@]}"; do
+      ts_ip="$(tailscale ip -4 "$lookup_name" 2>/dev/null || true)"
+      if [[ -n "$ts_ip" ]]; then
+        echo "$ts_ip"
+        return 0
+      fi
+    done
+
+    sleep "$TAILSCALE_PEER_POLL_INTERVAL"
+    elapsed=$((elapsed + TAILSCALE_PEER_POLL_INTERVAL))
+  done
+
+  return 1
 }
 
 if [[ "${should_check_ssh}" == "true" ]]; then
@@ -83,8 +124,18 @@ if [[ "${should_check_ssh}" == "true" ]]; then
   for host in "${hosts[@]}"; do
     if is_ipv4_literal "${host}"; then
       required_oci_ssh="true"
-      break
+      resolved_hosts+=("${host}")
+      continue
     fi
+
+    resolved_host="${host}"
+    if resolved_ip="$(resolve_tailscale_host "${host}")"; then
+      resolved_host="${resolved_ip}"
+      if [[ "${prefer_tailscale_ssh}" == "true" ]]; then
+        echo "SSH preflight: resolved ${host} via Tailscale -> ${resolved_host}"
+      fi
+    fi
+    resolved_hosts+=("${resolved_host}")
   done
 fi
 
@@ -121,7 +172,7 @@ if [[ -n "${runner_ipv4}" ]]; then
 fi
 
 if [[ "${should_check_ssh}" == "true" ]]; then
-  for host in "${hosts[@]}"; do
+  for host in "${resolved_hosts[@]}"; do
     nc -z -w5 "${host}" 22
   done
   echo "SSH reachability preflight passed for all inventory hosts."

@@ -10,6 +10,12 @@ source .github/scripts/lib/workflow_common.sh
 ANSIBLE_TAGS="${ANSIBLE_TAGS:-}"
 TAILSCALE_PEER_WAIT_SECONDS="${TAILSCALE_PEER_WAIT_SECONDS:-300}"
 TAILSCALE_PEER_POLL_INTERVAL="${TAILSCALE_PEER_POLL_INTERVAL:-15}"
+RUN_INFRA_APPLY="${RUN_INFRA_APPLY:-false}"
+PREFER_TAILSCALE_SSH="${PREFER_TAILSCALE_SSH:-false}"
+
+if [[ "${RUN_INFRA_APPLY}" != "true" ]]; then
+  PREFER_TAILSCALE_SSH="true"
+fi
 
 emit_tailscale_debug_state() {
   local hostname="${1:-}"
@@ -51,6 +57,24 @@ patch_tailscale_hostnames() {
       | sort -u
   )
 
+  if [[ "${PREFER_TAILSCALE_SSH}" == "true" ]]; then
+    echo "Tailscale priority mode enabled (infra apply skipped)."
+    # Include OCI aliases even when ansible_host still contains IPv4 literals.
+    local -a oci_aliases
+    local alias
+    mapfile -t oci_aliases < <(
+      grep -E '^[[:space:]]{4}oci-node-[0-9]+:' "$inventory_file" \
+        | sed -E 's/^[[:space:]]+([^:]+):/\1/' \
+        | sort -u
+    )
+
+    for alias in "${oci_aliases[@]}"; do
+      if ! printf '%s\n' "${hostnames[@]}" | grep -qx -- "${alias}"; then
+        hostnames+=("${alias}")
+      fi
+    done
+  fi
+
   if [[ ${#hostnames[@]} -eq 0 ]]; then
     return 0
   fi
@@ -59,6 +83,27 @@ patch_tailscale_hostnames() {
 
   local hostname ts_ip host_elapsed lookup_name
   local -a lookup_candidates
+
+  set_inventory_host_ip() {
+    local inventory="$1"
+    local alias="$2"
+    local ip="$3"
+    local tmp_file
+    tmp_file="$(mktemp)"
+
+    awk -v host="$alias" -v new_ip="$ip" '
+      $1 == (host ":") { in_host = 1 }
+      in_host == 1 && $1 == "ansible_host:" {
+        print "      ansible_host: \"" new_ip "\""
+        in_host = 0
+        next
+      }
+      { print }
+    ' "$inventory" > "$tmp_file"
+
+    mv "$tmp_file" "$inventory"
+  }
+
   for hostname in "${hostnames[@]}"; do
     ts_ip=""
     host_elapsed=0
@@ -96,7 +141,11 @@ patch_tailscale_hostnames() {
     fi
 
     echo "Resolved $hostname -> $ts_ip (patching inventory)"
-    sed -i "s|ansible_host: \"${hostname}\"|ansible_host: \"${ts_ip}\"|g" "$inventory_file"
+    if [[ "$hostname" =~ ^oci-node-([0-9]+)$ ]]; then
+      set_inventory_host_ip "$inventory_file" "$hostname" "$ts_ip"
+    else
+      sed -i "s|ansible_host: \"${hostname}\"|ansible_host: \"${ts_ip}\"|g" "$inventory_file"
+    fi
   done
 }
 

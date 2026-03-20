@@ -67,7 +67,7 @@ fi
   for i in "${!OCI_IPS[@]}"; do
     host="oci-node-$((i + 1))"
     echo "    ${host}:"
-    echo "      ansible_host: \"${host}\""
+    echo "      ansible_host: \"${OCI_IPS[$i]}\""
     echo "      ansible_user: \"ubuntu\""
   done
   echo "    gcp-witness:"
