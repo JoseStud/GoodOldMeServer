@@ -175,6 +175,7 @@ The management stack (Portainer + Homarr) is deployed by Ansible, not Terraform,
 | Variable | How to Get | Used By |
 |----------|-----------|---------|
 | `ARCH_PC_IP` | Tailscale IP or LAN IP of your machine running Ollama | Open WebUI `OLLAMA_BASE_URL` |
+| `OPENWEBUI_DB_PASS` | Generate: `openssl rand -base64 32` | Open WebUI PostgreSQL backend (`DATABASE_URL`) |
 
 ### `/cloud-provider/oci` — OCI Terraform
 

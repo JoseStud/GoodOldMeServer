@@ -143,7 +143,8 @@ Most data volumes are bind-mounted to GlusterFS for persistence and replication.
 
 ### Media / AI Interface
 
-- **Open WebUI** — LLM chat interface connecting to a remote Ollama instance. This service carries a higher Swarm memory reservation than most stateless apps because it is one of the most burst-prone workloads in the cluster.
+- **Open WebUI** — LLM chat interface connecting to a remote Ollama instance. Uses a dedicated PostgreSQL backend (`open-webui-db`) to avoid SQLite migration corruption on shared storage.
+- **Open-WebUI-DB** — PostgreSQL 16 (Alpine) backend for Open WebUI metadata/state. Pinned to OCI Worker 2 and stored on node-local block volume path `/mnt/app_data/local/ai-interface/open-webui-db`.
 - **OpenClaw Gateway** — AI gateway proxy
 - **OpenClaw CLI** — CLI tool (no web UI, no Traefik routing)
 
@@ -174,7 +175,7 @@ Per-stack secrets are in their own Infisical paths:
 | network | `stacks/network/.env.tmpl` | `/stacks/network` | `VW_DB_PASS`, `VW_ADMIN_TOKEN`, `PIHOLE_PASSWORD` |
 | observability | `stacks/observability/.env.tmpl` | `/stacks/observability` | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET`, `ALERTMANAGER_WEBHOOK_URL` |
 | observability | `stacks/observability/config/alertmanager.yml.tmpl` | `/stacks/observability` | `ALERTMANAGER_WEBHOOK_URL` |
-| ai-interface | `stacks/media/ai-interface/.env.tmpl` | `/stacks/ai-interface` | `ARCH_PC_IP` |
+| ai-interface | `stacks/media/ai-interface/.env.tmpl` | `/stacks/ai-interface` | `ARCH_PC_IP`, `OPENWEBUI_DB_PASS` |
 | uptime | `stacks/uptime/.env.tmpl` | — | *(globals only)* |
 | cloud | `stacks/cloud/.env.tmpl` | — | *(globals only)* |
 
