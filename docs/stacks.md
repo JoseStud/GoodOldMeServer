@@ -22,7 +22,7 @@ Most user-facing and stateful workloads are constrained to `node.labels.location
 | **auth** | authelia, authelia-db | `location == cloud` | gateway |
 | **management** | homarr, portainer-server, portainer-agent | `location == cloud` (homarr), `node.role == manager` (server), global (agent) | — (bootstrapped by Ansible Phase 6) |
 | **network** | vaultwarden, vaultwarden-db, pihole-1, pihole-2, orbital-sync | `location == cloud`; `vaultwarden-db`: `node.hostname == app-worker-2` | gateway, auth |
-| **observability** | prometheus, loki, promtail, node-exporter, grafana, alertmanager | `location == cloud` (stateful), global (promtail, node-exporter); `loki`: `node.hostname == app-worker-1` | gateway, auth |
+| **observability** | prometheus, loki, promtail, node-exporter, grafana, grafana-db, alertmanager | `location == cloud` (stateful), global (promtail, node-exporter); `loki`: `node.hostname == app-worker-1`; `grafana-db`: `node.hostname == app-worker-2` | gateway, auth |
 | **ai-interface** | open-webui, openclaw | `location == cloud` | gateway, auth |
 | **uptime** | uptime-kuma | `location == cloud` | gateway, auth |
 | **cloud** | filebrowser | `location == cloud` | gateway, auth |
@@ -116,7 +116,7 @@ All stacks follow these conventions:
 ### Network
 
 - **Vaultwarden** — Bitwarden-compatible password manager with PostgreSQL backend. Uses its own native authentication (master password + optional 2FA) without Authelia ForwardAuth to ensure compatibility with Bitwarden client apps (desktop, mobile, browser extension). The PostgreSQL service is pinned to OCI Worker 2 and stores `PGDATA` on the node-local block volume at `/mnt/app_data/local/network/vaultwarden-db` rather than GlusterFS.
-- **Pi-hole ×2** — DNS ad-blocking (node1 on OCI Worker 1, node2 on OCI Worker 2 via hostname constraint). Because both services publish host port `53`, the OCI workers disable the `systemd-resolved` stub listener during Ansible phase 2.
+- **Pi-hole ×2** — DNS ad-blocking (node1 on OCI Worker 1, node2 on OCI Worker 2 via hostname constraint). Because both services publish host port `53`, the OCI workers disable the `systemd-resolved` stub listener during Ansible phase 2. Pi-hole runtime state (`/etc/pihole`, `/etc/dnsmasq.d`) is stored on node-local block-volume paths (`/mnt/app_data/local/network/pihole/...`) to avoid SQLite/FTL and gravity database issues on GlusterFS.
 - **Orbital Sync** — Syncs Pi-hole configs between instances every 30 minutes
 
 ### Observability
@@ -125,10 +125,11 @@ All stacks follow these conventions:
 - **Loki** — Log aggregation (7-day retention, TSDB + filesystem storage). Loki is pinned to OCI Worker 1 and keeps its WAL/TSDB data on `/mnt/app_data/local/observability/loki_data` to avoid GlusterFS fsync stalls. After unclean shutdowns, the `wal/` directory under that path is the first place to inspect if Loki crash-loops on startup.
 - **Promtail** — Log shipper (global — runs on every node, Docker socket discovery)
 - **Node Exporter** — Host metrics (global)
-- **Grafana** — Dashboards and visualization (Authelia OIDC SSO, login form disabled)
+- **Grafana** — Dashboards and visualization (Authelia OIDC SSO, login form disabled). Uses PostgreSQL for internal state/migrations.
+- **Grafana-DB** — PostgreSQL 16 (Alpine) backend for Grafana metadata. Pinned to OCI Worker 2 and stored on node-local block volume path `/mnt/app_data/local/observability/grafana-db`.
 - **Alertmanager** — Alert routing and notifications via webhook (Slack/Discord). Receives alerts from Prometheus based on defined rules (instance down, high memory/disk/CPU, Traefik error rates)
 
-Most data volumes are bind-mounted to GlusterFS for persistence and replication. `vaultwarden-db` and Loki are the deliberate exceptions: their data lives on local OCI block-volume paths so PostgreSQL `fsync` and Loki WAL/TSDB writes do not pay GlusterFS synchronous replication latency.
+Most data volumes are bind-mounted to GlusterFS for persistence and replication. `vaultwarden-db`, `grafana-db`, Loki, and Pi-hole state are the deliberate exceptions: their data lives on local OCI block-volume paths so PostgreSQL `fsync`, Loki WAL/TSDB writes, and Pi-hole SQLite/FTL gravity metadata are not impacted by GlusterFS synchronous replication semantics.
 
 **Config files** (in `stacks/observability/config/`):
 
@@ -172,7 +173,7 @@ Per-stack secrets are in their own Infisical paths:
 | auth | `stacks/auth/config/users_database.yml.tmpl` | `/stacks/identity` | `AUTHELIA_USERS_DATABASE_YAML` |
 | management | `stacks/management/.env.tmpl` | `/stacks/management` | `HOMARR_SECRET_KEY`, `PORTAINER_ADMIN_PASSWORD_HASH` |
 | network | `stacks/network/.env.tmpl` | `/stacks/network` | `VW_DB_PASS`, `VW_ADMIN_TOKEN`, `PIHOLE_PASSWORD` |
-| observability | `stacks/observability/.env.tmpl` | `/stacks/observability` | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET`, `ALERTMANAGER_WEBHOOK_URL` |
+| observability | `stacks/observability/.env.tmpl` | `/stacks/observability` | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET`, `GF_DB_PASS`, `ALERTMANAGER_WEBHOOK_URL` |
 | observability | `stacks/observability/config/alertmanager.yml.tmpl` | `/stacks/observability` | `ALERTMANAGER_WEBHOOK_URL` |
 | ai-interface | `stacks/media/ai-interface/.env.tmpl` | `/stacks/ai-interface` | `ARCH_PC_IP`, `OPENWEBUI_DB_PASS` |
 | uptime | `stacks/uptime/.env.tmpl` | — | *(globals only)* |

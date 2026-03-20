@@ -200,6 +200,24 @@
     mode: '0755'
   when: inventory_hostname in groups['oci_nodes']
 
+- name: Create node-local state directory for Grafana data
+  ansible.builtin.file:
+    path: /mnt/app_data/local/observability/grafana_data
+    state: directory
+    owner: '472'
+    group: '472'
+    mode: '0755'
+  when: inventory_hostname in groups['oci_nodes']
+
+- name: Create node-local state directory for Grafana DB
+  ansible.builtin.file:
+    path: /mnt/app_data/local/observability/grafana-db
+    state: directory
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
+    mode: '0755'
+  when: inventory_hostname in groups['oci_nodes']
+
 - name: Create node-local state directory for Open WebUI DB
   ansible.builtin.file:
     path: /mnt/app_data/local/ai-interface/open-webui-db

@@ -194,6 +194,7 @@ locals {
       TZ                    = local.infrastructure_secrets["TZ"]
       GF_OIDC_CLIENT_ID     = local.observability_secrets["GF_OIDC_CLIENT_ID"]
       GF_OIDC_CLIENT_SECRET = local.observability_secrets["GF_OIDC_CLIENT_SECRET"]
+      GF_DB_PASS            = local.observability_secrets["GF_DB_PASS"]
     }
     "ai-interface" = {
       BASE_DOMAIN       = local.infrastructure_secrets["BASE_DOMAIN"]

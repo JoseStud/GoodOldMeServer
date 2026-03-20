@@ -215,11 +215,13 @@ On a healthy run, the GCP witness is usually already connected because Terraform
 
 ```
 /mnt/app_data/local/
+├── observability/grafana_data/
+├── observability/grafana-db/
 ├── observability/loki_data/
 └── network/vaultwarden-db/
 ```
 
-All directories are owned by `media-srv:media-srv` (UID/GID 1500) with mode `0755`.
+GlusterFS shared directories are owned by `media-srv:media-srv` (UID/GID 1500) with mode `0755`; node-local pinned-service directories use service-specific ownership where required.
 
 > See [Network Architecture](network-architecture.md#glusterfs-replication) for replication strategy and split-brain considerations.
 

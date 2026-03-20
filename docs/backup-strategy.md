@@ -69,11 +69,13 @@ The block volumes contain `/mnt/app_data`, which holds the GlusterFS brick plus 
 │   ├── uptime-kuma/data/
 │   └── cloud/filebrowser/database/
 └── local/
+    ├── observability/grafana_data/
+    ├── observability/grafana-db/
     ├── observability/loki_data/
     └── network/vaultwarden-db/
 ```
 
-GlusterFS-backed data exists on both worker volumes, but `/mnt/app_data/local/...` exists only on the worker that owns the pinned service. OCI block-volume backups still cover both layouts, but PostgreSQL dumps remain the safer recovery path for Vaultwarden.
+GlusterFS-backed data exists on both worker volumes, but `/mnt/app_data/local/...` exists only on the worker that owns the pinned service. OCI block-volume backups still cover both layouts, but PostgreSQL dumps remain the safer recovery path for Vaultwarden, Authelia, and Grafana.
 
 ### Restoring from Block Volume Backup
 
@@ -187,6 +189,25 @@ docker exec -i $(docker ps -q --filter "name=auth_authelia-db") \
   psql -U authelia -d authelia < authelia_backup_YYYYMMDD.sql
 ```
 
+### Grafana (PostgreSQL)
+
+Grafana stores dashboards, users, and migration state in PostgreSQL (`observability_grafana-db`) pinned to `app-worker-2`, with `PGDATA` on `/mnt/app_data/local/observability/grafana-db`.
+
+**Export (pg_dump):**
+```bash
+docker ps --filter "name=observability_grafana-db" --format "{{.ID}}"
+
+docker exec $(docker ps -q --filter "name=observability_grafana-db") \
+  pg_dump -U grafana grafana > grafana_backup_$(date +%Y%m%d).sql
+```
+
+**Restore:**
+```bash
+# DESTRUCTIVE: restore into the grafana database.
+docker exec -i $(docker ps -q --filter "name=observability_grafana-db") \
+  psql -U grafana -d grafana < grafana_backup_YYYYMMDD.sql
+```
+
 ### Pi-hole Configuration
 
 Pi-hole configs are stored on GlusterFS and synced between instances via Orbital Sync every 30 minutes.
@@ -206,7 +227,8 @@ Pi-hole configs are stored on GlusterFS and synced between instances via Orbital
 ### Grafana Dashboards
 
 ```bash
-# Grafana data is in /mnt/swarm-shared/observability/grafana_data
+# Grafana app data is in /mnt/app_data/local/observability/grafana_data
+# Grafana database data is in /mnt/app_data/local/observability/grafana-db
 # For dashboard-only backup, use the Grafana API:
 curl -H "Authorization: Bearer <api-key>" \
   https://grafana.example.com/api/dashboards/home > dashboard_backup.json
@@ -228,6 +250,7 @@ Authelia's config directory is bind-mounted from GlusterFS (`/mnt/swarm-shared/a
 | GlusterFS | Real-time replication | Continuous | N/A (not a backup) | Yes |
 | Vaultwarden DB | PostgreSQL dump | Manual | — | No |
 | Authelia DB | PostgreSQL dump | Manual | — | No |
+| Grafana DB | PostgreSQL dump | Manual | — | No |
 | Pi-hole config | Teleporter export | Manual | — | No |
 | Grafana dashboards | API export | Manual | — | No |
 
