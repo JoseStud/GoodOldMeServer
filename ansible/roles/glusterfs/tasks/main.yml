@@ -182,14 +182,20 @@
     - /mnt/swarm-shared/cloud/filebrowser/database
   when: inventory_hostname == groups['oci_nodes'][0]
 
-- name: Create node-local state directories for pinned write-heavy services
+- name: Create node-local state directory for Vaultwarden DB
   ansible.builtin.file:
-    path: "{{ item }}"
+    path: /mnt/app_data/local/network/vaultwarden-db
     state: directory
     owner: "{{ service_user }}"
     group: "{{ service_group }}"
     mode: '0755'
-  loop:
-    - /mnt/app_data/local/network/vaultwarden-db
-    - /mnt/app_data/local/observability/loki_data
+  when: inventory_hostname in groups['oci_nodes']
+
+- name: Create node-local state directory for Loki data
+  ansible.builtin.file:
+    path: /mnt/app_data/local/observability/loki_data
+    state: directory
+    owner: '10001'
+    group: '10001'
+    mode: '0755'
   when: inventory_hostname in groups['oci_nodes']
