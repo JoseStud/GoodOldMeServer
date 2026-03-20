@@ -23,7 +23,7 @@ Most user-facing and stateful workloads are constrained to `node.labels.location
 | **management** | homarr, portainer-server, portainer-agent | `location == cloud` (homarr), `node.role == manager` (server), global (agent) | — (bootstrapped by Ansible Phase 6) |
 | **network** | vaultwarden, vaultwarden-db, pihole-1, pihole-2, orbital-sync | `location == cloud`; `vaultwarden-db`: `node.hostname == app-worker-2` | gateway, auth |
 | **observability** | prometheus, loki, promtail, node-exporter, grafana, alertmanager | `location == cloud` (stateful), global (promtail, node-exporter); `loki`: `node.hostname == app-worker-1` | gateway, auth |
-| **ai-interface** | open-webui, openclaw-gateway, openclaw-cli | `location == cloud` | gateway, auth |
+| **ai-interface** | open-webui, openclaw | `location == cloud` | gateway, auth |
 | **uptime** | uptime-kuma | `location == cloud` | gateway, auth |
 | **cloud** | filebrowser | `location == cloud` | gateway, auth |
 
@@ -145,8 +145,7 @@ Most data volumes are bind-mounted to GlusterFS for persistence and replication.
 
 - **Open WebUI** — LLM chat interface connecting to a remote Ollama instance. Uses a dedicated PostgreSQL backend (`open-webui-db`) to avoid SQLite migration corruption on shared storage.
 - **Open-WebUI-DB** — PostgreSQL 16 (Alpine) backend for Open WebUI metadata/state. Pinned to OCI Worker 2 and stored on node-local block volume path `/mnt/app_data/local/ai-interface/open-webui-db`.
-- **OpenClaw Gateway** — AI gateway proxy
-- **OpenClaw CLI** — CLI tool (no web UI, no Traefik routing)
+- **OpenClaw** — Unified service image (`ghcr.io/openclaw/openclaw:latest`) that keeps the gateway route behind Traefik and also provides CLI behavior using the shared persisted config path
 
 ### Uptime
 
