@@ -18,8 +18,12 @@
 - name: Install Infisical APT repository signing key
   ansible.builtin.get_url:
     url: https://artifacts-cli.infisical.com/infisical.gpg
-    dest: /usr/share/keyrings/infisical-cli-archive-keyring.gpg
+    dest: /tmp/infisical-cli.asc
     mode: '0644'
+
+- name: Dearmor Infisical APT repository signing key
+  ansible.builtin.command:
+    cmd: gpg --dearmor --yes --output /usr/share/keyrings/infisical-cli-archive-keyring.gpg /tmp/infisical-cli.asc
 
 - name: Configure Infisical CLI APT repository
   ansible.builtin.apt_repository:
