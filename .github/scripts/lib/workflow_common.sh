@@ -445,7 +445,15 @@ generate_ephemeral_ssh_certificate() {
   require_command ssh-keygen
 
   mkdir -p ~/.ssh
-  ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ""
+  if [[ -f ~/.ssh/id_ed25519 && -f ~/.ssh/id_ed25519.pub ]]; then
+    echo "Reusing existing ephemeral SSH keypair at ~/.ssh/id_ed25519"
+  else
+    rm -f ~/.ssh/id_ed25519 ~/.ssh/id_ed25519.pub
+    ssh-keygen -q -t ed25519 -f ~/.ssh/id_ed25519 -N ""
+  fi
+
+  # Ensure we never accidentally use an old certificate from a prior step.
+  rm -f ~/.ssh/id_ed25519-cert.pub
 
   local ca_key_file
   ca_key_file="$(mktemp)"

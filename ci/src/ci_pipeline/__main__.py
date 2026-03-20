@@ -197,6 +197,12 @@ async def run_pipeline() -> None:
                 proxy=proxy,
             )
 
+        await preflight.network_policy_revoke_ssh(
+            client,
+            source_dir=source_dir,
+            proxy=proxy,
+        )
+
     print("pipeline: complete")
 
 

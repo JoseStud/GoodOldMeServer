@@ -217,3 +217,73 @@ async def network_policy_sync(
 
     print(f"network-policy-sync: policy={len(policy_json)} bytes")
     return policy_json, allowed_cidrs
+
+
+async def network_policy_revoke_ssh(
+    client: dagger.Client,
+    *,
+    source_dir: dagger.Directory,
+    proxy: TailscaleProxy | None = None,
+) -> str:
+    """Disable OCI SSH access in network access policy.
+
+    Runs .github/scripts/stages/network_policy_revoke_ssh.sh inside a
+    network container and returns the resulting policy JSON.
+    """
+    ctr = container_from_profile(client, "network")
+    ctr = (
+        ctr
+        .with_mounted_directory("/work", source_dir)
+        .with_workdir("/work")
+        .with_env_variable(
+            "SHADOW_MODE", os.environ.get("SHADOW_MODE", "false")
+        )
+    )
+
+    for var in (
+        "TFC_ORGANIZATION",
+        "TFC_WORKSPACE_INFRA",
+        "INFISICAL_PROJECT_ID",
+        "INFISICAL_MACHINE_IDENTITY_ID",
+    ):
+        val = os.environ.get(var, "")
+        if val:
+            ctr = ctr.with_env_variable(var, val)
+
+    for var in (
+        "TFC_TOKEN",
+        "INFISICAL_TOKEN",
+        "INFISICAL_AGENT_CLIENT_ID",
+        "INFISICAL_AGENT_CLIENT_SECRET",
+    ):
+        val = os.environ.get(var, "")
+        if val:
+            ctr = ctr.with_secret_variable(var, client.set_secret(var, val))
+
+    for var in (
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
+        "ACTIONS_ID_TOKEN_REQUEST_URL",
+    ):
+        val = os.environ.get(var, "")
+        if val:
+            ctr = ctr.with_secret_variable(var, client.set_secret(var, val))
+
+    if proxy:
+        ctr = proxy.bind(ctr)
+
+    github_output = "/tmp/github_output"
+    ctr = ctr.with_env_variable("GITHUB_OUTPUT", github_output)
+    ctr = ctr.with_exec([
+        "bash", "-c",
+        f"touch {github_output} && bash .github/scripts/stages/network_policy_revoke_ssh.sh",
+    ])
+
+    output_content = await ctr.file(github_output).contents()
+
+    policy_json = ""
+    for line in output_content.strip().splitlines():
+        if line.startswith("network_access_policy_json="):
+            policy_json = line.split("=", 1)[1]
+
+    print("network-policy-revoke-ssh: applied")
+    return policy_json

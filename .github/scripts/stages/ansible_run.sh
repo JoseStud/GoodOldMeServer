@@ -57,13 +57,28 @@ patch_tailscale_hostnames() {
 
   echo "Resolving Tailscale hostnames: ${hostnames[*]}"
 
-  local hostname ts_ip host_elapsed
+  local hostname ts_ip host_elapsed lookup_name
+  local -a lookup_candidates
   for hostname in "${hostnames[@]}"; do
     ts_ip=""
     host_elapsed=0
 
+    lookup_candidates=("$hostname")
+    # OCI migration fallback: inventory now uses oci-node-N. If a node is still
+    # registered in Tailscale with its legacy hostname (app-worker-N), probe it
+    # before failing.
+    if [[ "$hostname" =~ ^oci-node-([0-9]+)$ ]]; then
+      lookup_candidates+=("app-worker-${BASH_REMATCH[1]}")
+    fi
+
     while [[ -z "$ts_ip" && $host_elapsed -lt $TAILSCALE_PEER_WAIT_SECONDS ]]; do
-      ts_ip="$(tailscale ip -4 "$hostname" 2>/dev/null || true)"
+      for lookup_name in "${lookup_candidates[@]}"; do
+        ts_ip="$(tailscale ip -4 "$lookup_name" 2>/dev/null || true)"
+        if [[ -n "$ts_ip" ]]; then
+          break
+        fi
+      done
+
       if [[ -z "$ts_ip" ]]; then
         echo "Waiting for Tailscale peer '$hostname'... (${host_elapsed}s / ${TAILSCALE_PEER_WAIT_SECONDS}s)"
         sleep "$TAILSCALE_PEER_POLL_INTERVAL"

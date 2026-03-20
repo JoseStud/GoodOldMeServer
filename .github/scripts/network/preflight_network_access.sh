@@ -53,6 +53,11 @@ fi
 required_oci_ssh="false"
 declare -a hosts=()
 
+is_ipv4_literal() {
+  local value="$1"
+  [[ "${value}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]
+}
+
 if [[ "${should_check_ssh}" == "true" ]]; then
   if ! command -v nc >/dev/null 2>&1; then
     echo "nc (netcat) is required but was not found in PATH."
@@ -76,7 +81,10 @@ if [[ "${should_check_ssh}" == "true" ]]; then
   fi
 
   for host in "${hosts[@]}"; do
-    required_oci_ssh="true"
+    if is_ipv4_literal "${host}"; then
+      required_oci_ssh="true"
+      break
+    fi
   done
 fi
 
