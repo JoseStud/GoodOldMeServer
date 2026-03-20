@@ -47,7 +47,7 @@ Top-level GHA jobs:
 Within `dagger-pipeline`, phases execute in this order:
 
 1. **Preflight** (parallel): stacks-sha-trust + secret-validation; inventory-handover (if needed)
-2. **Network policy sync + Cloudflare DNS sync** (parallel): depends on preflight completing. DNS sync reconciles round-robin A records for all Portainer-managed stacks via `ci_pipeline/phases/dns.py`.
+2. **Network policy sync + Cloudflare DNS sync** (parallel): depends on preflight completing. DNS sync parses Traefik `Host(...)` rules from Portainer-managed compose files and reconciles round-robin A records once per unique hostname via `ci_pipeline/phases/dns.py`.
 3. **Ansible** (host subprocess): bootstrap and/or host-sync, using Tailscale SSH; depends on inventory-handover + network-policy-sync
 4. **Portainer**: post-bootstrap-secret-check, config-sync (host subprocess), portainer-api-preflight, portainer-apply, health-gated-redeploy; depends on network-policy-sync
 

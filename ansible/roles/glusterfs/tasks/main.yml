@@ -199,3 +199,12 @@
     group: '10001'
     mode: '0755'
   when: inventory_hostname in groups['oci_nodes']
+
+- name: Create node-local state directory for Open WebUI DB
+  ansible.builtin.file:
+    path: /mnt/app_data/local/ai-interface/open-webui-db
+    state: directory
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
+    mode: '0755'
+  when: inventory_hostname in groups['oci_nodes']
