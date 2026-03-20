@@ -31,8 +31,25 @@ Downstream GHA jobs and Dagger pipeline phases consume typed booleans/strings vi
 
 - `stacks_sha` is resolved from `HEAD:stacks`
 - Baseline path: `run_infra_apply=true`, `run_ansible_bootstrap=true`, `run_portainer_apply=true`
+- If every changed file is non-runtime metadata (`.ansible-lint`, `docs/**`, `.github/**`, or `ci/**`), this is a no-op lane:
+- `run_infra_apply=false`
+- `run_ansible_bootstrap=false`
+- `run_portainer_apply=false`
+- `run_host_sync=false`
+- `run_config_sync=false`
+- `run_health_redeploy=false`
+- `has_work=false`
+- `reason=infra-repo-metadata-only`
 - If every changed file is under `ansible/**` or equals `.ansible-lint`, then `run_infra_apply=false`
 - `reason=infra-repo-push`
+
+Classification order for `push` is strict:
+
+1. metadata-only no-op
+2. ansible-only lane (with optional `ansible_tags`)
+3. full infra + ansible + portainer fallback
+
+Note: metadata-only classification is intentionally bounded to declared metadata paths. Arbitrary Markdown files outside those paths are not automatically treated as metadata-only.
 
 ### `workflow_dispatch`
 

@@ -32,6 +32,19 @@ ROLE_PHASE_MAP: dict[str, str] = {
 
 ANSIBLE_ONLY_PREFIXES = ("ansible/",)
 ANSIBLE_ONLY_EXACT = (".ansible-lint",)
+# NOTE: metadata-only classification is evaluated before ansible-only.
+# .ansible-lint remains here so mixed changes like:
+#   .ansible-lint + ansible/roles/*
+# still classify as ansible-only (infra skipped) rather than full-run.
+
+METADATA_ONLY_PREFIXES = (
+    "docs/",
+    ".github/",
+    "ci/",
+)
+METADATA_ONLY_EXACT = (
+    ".ansible-lint",
+)
 
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _NULL_SHA = "0" * 40
@@ -200,6 +213,26 @@ def is_ansible_only(changed_files: list[str]) -> bool:
     return True
 
 
+def is_metadata_only(changed_files: list[str]) -> bool:
+    """True if every changed file is in declared metadata paths.
+
+    Deliberately bounded to explicit metadata prefixes/exact paths.
+    We do not treat arbitrary '*.md' files outside those prefixes as
+    metadata-only.
+    """
+    if not changed_files:
+        return False
+
+    for f in changed_files:
+        if f in METADATA_ONLY_EXACT:
+            continue
+        if any(f.startswith(p) for p in METADATA_ONLY_PREFIXES):
+            continue
+        return False
+
+    return True
+
+
 def compute_ansible_tags(changed_files: list[str]) -> str:
     """Derive comma-separated phase tags from changed role paths.
 
@@ -291,6 +324,20 @@ def compute_context(
                 and push_sha
             ):
                 changed_files = git.diff_name_only(push_before, push_sha)
+
+            metadata_only = is_metadata_only(changed_files)
+
+            if metadata_only:
+                return ExecutionContext(
+                    run_infra_apply=False,
+                    run_ansible_bootstrap=False,
+                    run_portainer_apply=False,
+                    run_host_sync=False,
+                    run_config_sync=False,
+                    run_health_redeploy=False,
+                    stacks_sha=stacks_sha,
+                    reason="infra-repo-metadata-only",
+                )
 
             ansible_only = is_ansible_only(changed_files)
 

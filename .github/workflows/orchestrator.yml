@@ -24,12 +24,11 @@ permissions:
   contents: read
 
 # Concurrency note: repository_dispatch events have no github.ref_name, so
-# they fall back to 'main' — sharing the same group as push-to-main.  With
-# cancel-in-progress: false, a dispatch arriving during a long push-triggered
-# run (e.g. TFC apply) will queue rather than cancel it.
+# they fall back to 'main' and share the same lane as push-to-main.
+# cancel-in-progress is enabled so the latest intent supersedes older runs.
 concurrency:
   group: infra-orchestrator-${{ github.ref_name || github.event.repository.default_branch || 'main' }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   compute-context:

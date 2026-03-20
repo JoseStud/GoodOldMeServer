@@ -11,6 +11,7 @@ from ci_pipeline.context import (
     ExecutionContext,
     compute_ansible_tags,
     compute_context,
+    is_metadata_only,
     is_ansible_only,
     validate_dispatch_payload,
 )
@@ -45,6 +46,29 @@ class TestIsAnsibleOnly:
 
     def test_stacks_file_breaks_ansible_only(self):
         assert is_ansible_only(["stacks"]) is False
+
+
+class TestIsMetadataOnly:
+    def test_empty_files_returns_false(self):
+        assert is_metadata_only([]) is False
+
+    def test_only_metadata_files(self):
+        assert is_metadata_only([
+            ".ansible-lint",
+            "docs/ci-plan-contract.md",
+            ".github/workflows/orchestrator.yml",
+        ]) is True
+
+    def test_markdown_outside_metadata_prefixes_is_not_metadata_only(self):
+        assert is_metadata_only([
+            "terraform/infra/NOTES.md",
+        ]) is False
+
+    def test_runtime_file_breaks_metadata_only(self):
+        assert is_metadata_only([
+            "docs/ci-plan-contract.md",
+            "terraform/infra/main.tf",
+        ]) is False
 
 
 # ── compute_ansible_tags ─────────────────────────────────────────────────
@@ -257,6 +281,46 @@ class TestComputeContextPush:
         assert ctx.run_portainer_apply is True
         assert ctx.ansible_tags == "phase7_runtime_sync"
 
+    def test_push_metadata_only_noop(self, fake_git: FakeGit):
+        """Push touching only metadata produces a no-op context."""
+        fake_git.changed_files = [
+            "docs/ci-plan-contract.md",
+            ".ansible-lint",
+            ".github/workflows/orchestrator.yml",
+        ]
+        ctx = compute_context(
+            event_name="push",
+            push_before=DUMMY_SHA,
+            push_sha=DUMMY_SHA_B,
+            git=fake_git,
+        )
+        assert ctx.run_infra_apply is False
+        assert ctx.run_ansible_bootstrap is False
+        assert ctx.run_portainer_apply is False
+        assert ctx.run_host_sync is False
+        assert ctx.run_config_sync is False
+        assert ctx.run_health_redeploy is False
+        assert ctx.has_work is False
+        assert ctx.reason == "infra-repo-metadata-only"
+
+    def test_push_mixed_metadata_and_runtime_changes(self, fake_git: FakeGit):
+        """Mixed metadata + runtime keeps existing full-run fallback."""
+        fake_git.changed_files = [
+            "docs/ci-plan-contract.md",
+            "terraform/infra/main.tf",
+        ]
+        ctx = compute_context(
+            event_name="push",
+            push_before=DUMMY_SHA,
+            push_sha=DUMMY_SHA_B,
+            git=fake_git,
+        )
+        assert ctx.run_infra_apply is True
+        assert ctx.run_ansible_bootstrap is True
+        assert ctx.run_portainer_apply is True
+        assert ctx.has_work is True
+        assert ctx.reason == "infra-repo-push"
+
     def test_push_ansible_only_playbook_full_bootstrap(self, fake_git: FakeGit):
         """Push touching ansible playbook (not roles) = full bootstrap."""
         fake_git.changed_files = [
@@ -271,6 +335,23 @@ class TestComputeContextPush:
         assert ctx.run_infra_apply is False
         assert ctx.run_ansible_bootstrap is True
         assert ctx.ansible_tags == ""
+
+    def test_push_ansible_only_regression_non_metadata_path(self, fake_git: FakeGit):
+        """Ansible-only behavior remains unchanged for runtime ansible files."""
+        fake_git.changed_files = [
+            "ansible/roles/docker/tasks/main.yml",
+        ]
+        ctx = compute_context(
+            event_name="push",
+            push_before=DUMMY_SHA,
+            push_sha=DUMMY_SHA_B,
+            git=fake_git,
+        )
+        assert ctx.run_infra_apply is False
+        assert ctx.run_ansible_bootstrap is True
+        assert ctx.run_portainer_apply is True
+        assert ctx.has_work is True
+        assert ctx.ansible_tags == "phase2_docker"
 
     def test_push_no_diff_available(self, fake_git: FakeGit):
         """Push with null before SHA (initial push) triggers full pipeline."""
