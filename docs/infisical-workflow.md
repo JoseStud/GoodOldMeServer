@@ -127,7 +127,7 @@ The management stack (Portainer + Homarr) is deployed by Ansible, not Terraform,
 | Variable | How to Get | Used By |
 |----------|-----------|---------|
 | `ACME_EMAIL` | Any valid email — Let's Encrypt sends expiry warnings here | Traefik cert resolver (`certificatesresolvers.letsencrypt.acme.email`) |
-| `DOCKER_SOCKET_PROXY_URL` | Usually `tcp://socket-proxy:2375` (default in compose) — override only if using a remote socket proxy | Traefik `--providers.docker.endpoint` |
+| `DOCKER_SOCKET_PROXY_URL` | Usually `tcp://tasks.socket-proxy:2375` (default in compose) — use `tasks.` DNS for stable Swarm task resolution; override only if using a remote socket proxy | Traefik `--providers.swarm.endpoint` |
 
 ### `/stacks/identity` — Authelia
 

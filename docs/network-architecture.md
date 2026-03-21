@@ -255,8 +255,8 @@ Pi-hole instances use **host-mode** port 53 (UDP/TCP) to bypass Docker Swarm's i
 
 | Feature | Configuration |
 |---------|--------------|
-| **Docker provider** | Connects to `docker-socket-proxy` at `tcp://socket-proxy:2375` instead of mounting Docker socket directly |
-| **Swarm mode** | `--providers.docker.swarmMode=true` — reads labels from service definitions |
+| **Swarm provider endpoint** | Connects to `docker-socket-proxy` at `tcp://tasks.socket-proxy:2375` instead of mounting Docker socket directly |
+| **Swarm mode** | `--providers.swarm=true` — reads labels from Swarm service definitions |
 | **Default exposure** | `exposedbydefault=false` — services must opt in with `traefik.enable=true` |
 | **Entrypoints** | `web` (:80) and `websecure` (:443) |
 | **Port mode** | Both entrypoints use `mode: host` — no Swarm ingress mesh for HTTP traffic |

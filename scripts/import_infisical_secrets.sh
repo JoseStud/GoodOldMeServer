@@ -40,7 +40,7 @@ set_secret "/security" SSH_HOST_CA_PUBKEY="your_ssh_host_ca_pubkey"
 
 echo "Creating secrets for folder: /stacks/gateway"
 set_secret "/stacks/gateway" ACME_EMAIL="admin@example.com"
-set_secret "/stacks/gateway" DOCKER_SOCKET_PROXY_URL="tcp://socket-proxy:2375"
+set_secret "/stacks/gateway" DOCKER_SOCKET_PROXY_URL="tcp://tasks.socket-proxy:2375"
 
 echo "Creating secrets for folder: /stacks/identity"
 set_secret "/stacks/identity" AUTHELIA_JWT_SECRET="your_authelia_jwt_secret"
