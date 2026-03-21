@@ -226,3 +226,12 @@
     group: "{{ service_group }}"
     mode: '0755'
   when: inventory_hostname in groups['oci_nodes']
+
+- name: Create node-local state directory for Uptime Kuma DB
+  ansible.builtin.file:
+    path: /mnt/app_data/local/uptime/uptime-kuma-db
+    state: directory
+    owner: "{{ service_user }}"
+    group: "{{ service_group }}"
+    mode: '0755'
+  when: inventory_hostname in groups['oci_nodes']

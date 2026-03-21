@@ -50,6 +50,34 @@
       - "--exclude=.git"
       - "--exclude=.github"
 
+- name: Find Infisical agent templates on host
+  ansible.builtin.find:
+    paths: "{{ runtime_sync_stacks_dest }}"
+    patterns: '*.tmpl'
+    recurse: true
+  register: _infisical_tmpl_files
+
+- name: Inject Infisical project ID into agent templates
+  ansible.builtin.replace:
+    path: "{{ item.path }}"
+    regexp: '__INFISICAL_PROJECT_ID__'
+    replace: "{{ runtime_sync_infisical_project_id }}"
+  loop: "{{ _infisical_tmpl_files.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+  no_log: true
+  notify: Restart infisical agent
+
+- name: Inject Infisical environment into agent templates
+  ansible.builtin.replace:
+    path: "{{ item.path }}"
+    regexp: '__INFISICAL_ENV__'
+    replace: "{{ runtime_sync_infisical_env }}"
+  loop: "{{ _infisical_tmpl_files.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+  notify: Restart infisical agent
+
 - name: Render runtime sync environment file
   ansible.builtin.template:
     src: runtime-sync.env.j2

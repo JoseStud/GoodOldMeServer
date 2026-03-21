@@ -136,11 +136,11 @@ extract_managed_hosts() {
     require_command yq
 
     mapfile -t stack_entries < <(
-        yq -r '.stacks | to_entries[] | select(.value.portainer_managed == true) | [.key, .value.compose_path] | @tsv' "${STACKS_MANIFEST}"
+        yq -r '.stacks | to_entries[] | [.key, .value.compose_path] | @tsv' "${STACKS_MANIFEST}"
     )
 
     if [[ ${#stack_entries[@]} -eq 0 ]]; then
-        echo "Error: No portainer-managed stacks found in ${STACKS_MANIFEST}." >&2
+        echo "Error: No stacks found in ${STACKS_MANIFEST}." >&2
         return 1
     fi
 
@@ -161,7 +161,7 @@ extract_managed_hosts() {
     done
 
     if [[ ${#UNIQUE_HOSTS[@]} -eq 0 ]]; then
-        echo "Error: No Traefik Host(...) hostnames were found in portainer-managed stacks." >&2
+        echo "Error: No Traefik Host(...) hostnames were found in stacks." >&2
         return 1
     fi
 }

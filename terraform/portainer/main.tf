@@ -124,6 +124,12 @@ data "infisical_secrets" "ai_interface" {
   folder_path  = "/stacks/ai-interface"
 }
 
+data "infisical_secrets" "uptime" {
+  env_slug     = "prod"
+  workspace_id = var.infisical_project_id
+  folder_path  = "/stacks/uptime"
+}
+
 locals {
   has_stacks_sha = var.stacks_sha != null
   github_repo_path = startswith(var.repository_url, "https://github.com/") ? trimprefix(var.repository_url, "https://github.com/") : (
@@ -156,6 +162,7 @@ locals {
   network_secrets        = { for key, secret in data.infisical_secrets.network.secrets : key => secret.value }
   observability_secrets  = { for key, secret in data.infisical_secrets.observability.secrets : key => secret.value }
   ai_interface_secrets   = { for key, secret in data.infisical_secrets.ai_interface.secrets : key => secret.value }
+  uptime_secrets         = { for key, secret in data.infisical_secrets.uptime.secrets : key => secret.value }
 
   portainer_stack_envs = {
     gateway = {
@@ -203,8 +210,9 @@ locals {
       OPENWEBUI_DB_PASS = local.ai_interface_secrets["OPENWEBUI_DB_PASS"]
     }
     uptime = {
-      BASE_DOMAIN = local.infrastructure_secrets["BASE_DOMAIN"]
-      TZ          = local.infrastructure_secrets["TZ"]
+      BASE_DOMAIN        = local.infrastructure_secrets["BASE_DOMAIN"]
+      TZ                 = local.infrastructure_secrets["TZ"]
+      UPTIME_KUMA_DB_PASS = local.uptime_secrets["UPTIME_KUMA_DB_PASS"]
     }
     cloud = {
       BASE_DOMAIN = local.infrastructure_secrets["BASE_DOMAIN"]

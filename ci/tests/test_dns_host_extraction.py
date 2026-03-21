@@ -138,6 +138,7 @@ services:
         "gateway",
         "gateway-health",
         "grafana",
+        "portainer",
         "status",
     ]
 
