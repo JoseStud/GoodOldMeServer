@@ -13,6 +13,7 @@ from ci_pipeline.context import (
     compute_context,
     is_metadata_only,
     is_ansible_only,
+    is_stacks_sha_only_push,
     validate_dispatch_payload,
 )
 
@@ -67,6 +68,23 @@ class TestIsMetadataOnly:
     def test_runtime_file_breaks_metadata_only(self):
         assert is_metadata_only([
             "docs/ci-plan-contract.md",
+            "terraform/infra/main.tf",
+        ]) is False
+
+
+class TestIsStacksShaOnlyPush:
+    def test_stacks_only_true(self):
+        assert is_stacks_sha_only_push(["stacks"]) is True
+
+    def test_stacks_plus_gitmodules_true(self):
+        assert is_stacks_sha_only_push(["stacks", ".gitmodules"]) is True
+
+    def test_gitmodules_only_false(self):
+        assert is_stacks_sha_only_push([".gitmodules"]) is False
+
+    def test_stacks_plus_runtime_file_false(self):
+        assert is_stacks_sha_only_push([
+            "stacks",
             "terraform/infra/main.tf",
         ]) is False
 
@@ -352,6 +370,26 @@ class TestComputeContextPush:
         assert ctx.run_portainer_apply is True
         assert ctx.has_work is True
         assert ctx.ansible_tags == "phase2_docker"
+
+    def test_push_stacks_sha_bump_uses_tailscale_reconcile(self, fake_git: FakeGit):
+        """Push touching only stacks gitlink uses full-reconcile without infra."""
+        fake_git.changed_files = [
+            "stacks",
+        ]
+        ctx = compute_context(
+            event_name="push",
+            push_before=DUMMY_SHA,
+            push_sha=DUMMY_SHA_B,
+            git=fake_git,
+        )
+        assert ctx.run_infra_apply is False
+        assert ctx.run_ansible_bootstrap is False
+        assert ctx.run_portainer_apply is True
+        assert ctx.run_host_sync is True
+        assert ctx.run_config_sync is True
+        assert ctx.run_health_redeploy is True
+        assert ctx.has_work is True
+        assert ctx.reason == "infra-repo-stacks-sha-bump"
 
     def test_push_no_diff_available(self, fake_git: FakeGit):
         """Push with null before SHA (initial push) triggers full pipeline."""

@@ -50,6 +50,7 @@ async def run_pipeline() -> None:
     reason = os.environ.get("REASON", "")
 
     needs_inventory = run_ansible_bootstrap or run_host_sync or run_config_sync
+    manage_network_policy = run_infra_apply or run_ansible_bootstrap
 
     print(f"pipeline: reason={reason} stacks_sha={stacks_sha[:12]}...")
 
@@ -108,20 +109,33 @@ async def run_pipeline() -> None:
         # DNS sync runs parallel to network policy sync; Cloudflare API is
         # public internet so proxy=None is passed explicitly.
 
-        network_access_policy_json = ""
-        (policy_json, _), _ = await asyncio.gather(
-            preflight.network_policy_sync(
-                client,
-                source_dir=source_dir,
-                proxy=proxy,
-            ),
-            dns.cloudflare_dns_sync(
+        network_access_policy_json = (
+            '{"oci_ssh":{"enabled":false,"source_ranges":[]}}'
+        )
+        if manage_network_policy:
+            (policy_json, _), _ = await asyncio.gather(
+                preflight.network_policy_sync(
+                    client,
+                    source_dir=source_dir,
+                    proxy=proxy,
+                ),
+                dns.cloudflare_dns_sync(
+                    client,
+                    source_dir=source_dir,
+                    proxy=None,
+                ),
+            )
+            network_access_policy_json = policy_json
+        else:
+            await dns.cloudflare_dns_sync(
                 client,
                 source_dir=source_dir,
                 proxy=None,
-            ),
-        )
-        network_access_policy_json = policy_json
+            )
+            print(
+                "network-policy-sync: skipped "
+                "(tailscale-first run, no infra/bootstrap SSH policy mutation)"
+            )
 
         # ── Layer 3: Ansible (host subprocess) ────────────────────
         # Runs directly on the GHA runner via Tailscale, not in Dagger.
@@ -197,11 +211,14 @@ async def run_pipeline() -> None:
                 proxy=proxy,
             )
 
-        await preflight.network_policy_revoke_ssh(
-            client,
-            source_dir=source_dir,
-            proxy=proxy,
-        )
+        if manage_network_policy:
+            await preflight.network_policy_revoke_ssh(
+                client,
+                source_dir=source_dir,
+                proxy=proxy,
+            )
+        else:
+            print("network-policy-revoke-ssh: skipped (no SSH policy sync was applied)")
 
     print("pipeline: complete")
 

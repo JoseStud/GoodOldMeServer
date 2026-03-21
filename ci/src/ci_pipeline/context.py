@@ -46,6 +46,11 @@ METADATA_ONLY_EXACT = (
     ".ansible-lint",
 )
 
+STACKS_SHA_ONLY_EXACT = (
+    "stacks",
+    ".gitmodules",
+)
+
 _SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _NULL_SHA = "0" * 40
 
@@ -233,6 +238,21 @@ def is_metadata_only(changed_files: list[str]) -> bool:
     return True
 
 
+def is_stacks_sha_only_push(changed_files: list[str]) -> bool:
+    """True when a push only updates the stacks gitlink (+optional .gitmodules).
+
+    This is a stacks SHA bump intent and should follow the tailscale-first
+    full-reconcile path (host/config/health/portainer) without infra apply.
+    """
+    if not changed_files:
+        return False
+
+    if "stacks" not in changed_files:
+        return False
+
+    return all(f in STACKS_SHA_ONLY_EXACT for f in changed_files)
+
+
 def compute_ansible_tags(changed_files: list[str]) -> str:
     """Derive comma-separated phase tags from changed role paths.
 
@@ -337,6 +357,18 @@ def compute_context(
                     run_health_redeploy=False,
                     stacks_sha=stacks_sha,
                     reason="infra-repo-metadata-only",
+                )
+
+            if is_stacks_sha_only_push(changed_files):
+                return ExecutionContext(
+                    run_infra_apply=False,
+                    run_ansible_bootstrap=False,
+                    run_portainer_apply=True,
+                    run_host_sync=True,
+                    run_config_sync=True,
+                    run_health_redeploy=True,
+                    stacks_sha=stacks_sha,
+                    reason="infra-repo-stacks-sha-bump",
                 )
 
             ansible_only = is_ansible_only(changed_files)
