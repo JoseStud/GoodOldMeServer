@@ -432,12 +432,34 @@ validate_infisical_secret() {
 
 checkout_stacks_sha() {
   local stacks_sha="${1:-}"
+  local stacks_dir="${STACKS_DIR:-stacks}"
+  local stacks_repo_owner="${STACKS_REPO_OWNER:-JoseStud}"
+  local stacks_repo_name="${STACKS_REPO_NAME:-stacks}"
+  local stacks_repo_url="${STACKS_REPO_URL:-https://github.com/${stacks_repo_owner}/${stacks_repo_name}}"
+
   if [[ -z "${stacks_sha}" ]]; then
     return
   fi
 
-  git -C stacks fetch --depth=1 origin "${stacks_sha}"
-  git -C stacks checkout --detach "${stacks_sha}"
+  require_command git
+
+  if git -C "${stacks_dir}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git -C "${stacks_dir}" fetch --depth=1 origin "${stacks_sha}"
+    git -C "${stacks_dir}" checkout --detach --force "${stacks_sha}"
+    return
+  fi
+
+  echo "Stacks repository metadata is unavailable in ${stacks_dir}; bootstrapping a temporary git checkout for ${stacks_sha}."
+  rm -rf "${stacks_dir}/.git"
+  mkdir -p "${stacks_dir}"
+  git -C "${stacks_dir}" init -q
+  if git -C "${stacks_dir}" remote get-url origin >/dev/null 2>&1; then
+    git -C "${stacks_dir}" remote set-url origin "${stacks_repo_url}"
+  else
+    git -C "${stacks_dir}" remote add origin "${stacks_repo_url}"
+  fi
+  git -C "${stacks_dir}" fetch --depth=1 origin "${stacks_sha}"
+  git -C "${stacks_dir}" checkout --detach --force FETCH_HEAD
 }
 
 generate_ephemeral_ssh_certificate() {
