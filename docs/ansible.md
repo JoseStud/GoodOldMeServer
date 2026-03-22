@@ -154,7 +154,7 @@ Expected runtimes below are guidance ranges for healthy nodes and network condit
 |------|-------------|-----------|
 | `system_user` | Creates `media-srv` user and group with UID/GID `1500`, no home directory. All containers run file operations as this user for consistent ownership across GlusterFS. | All nodes |
 | `storage` | Partitions `{{ block_device }}`, formats `{{ block_device_partition }}` as ext4, mounts at `{{ mount_point }}`, and sets ownership to `{{ service_user }}:{{ service_group }}` with mode `0755`. Defaults are `/dev/sdb`, `/dev/sdb1` (or `p1` for NVMe), `/mnt/app_data`. | OCI nodes only (`oci_nodes` group) |
-| `infisical_cli` | Installs the Infisical CLI via the official APT repository (`artifacts-cli.infisical.com/setup.deb.sh`). Avoids GitHub API calls for version resolution, which fail on IPv6-only hosts like the GCP witness. | All nodes |
+| `infisical_cli` | Installs the Infisical CLI via the official APT repository. Adds the GPG signing key from `artifacts-cli.infisical.com/infisical.gpg`, configures the APT source, and installs the `infisical` package directly. Avoids GitHub API calls for version resolution, which fail on IPv6-only hosts like the GCP witness. | All nodes |
 
 ### Phase 2: Docker Engine
 
@@ -215,10 +215,12 @@ On a healthy run, the GCP witness is usually already connected because Terraform
 
 ```
 /mnt/app_data/local/
+├── ai-interface/open-webui-db/
+├── network/vaultwarden-db/
 ├── observability/grafana_data/
 ├── observability/grafana-db/
 ├── observability/loki_data/
-└── network/vaultwarden-db/
+└── uptime/uptime-kuma-db/
 ```
 
 GlusterFS shared directories are owned by `media-srv:media-srv` (UID/GID 1500) with mode `0755`; node-local pinned-service directories use service-specific ownership where required.
@@ -285,16 +287,17 @@ GlusterFS shared directories are owned by `media-srv:media-srv` (UID/GID 1500) w
 
 | Role | What It Does |
 |------|-------------|
-| `runtime_sync` | Mirrors the trusted controller `stacks/` checkout to `/opt/stacks`, renders `/etc/infisical/agent.yaml`, installs the local Portainer webhook helper, and manages `infisical-agent.service` |
+| `runtime_sync` | Mirrors the trusted controller `stacks/` checkout to `/opt/stacks`, renders `/etc/infisical/agent.yaml`, installs the local Portainer webhook helper and runtime sync helpers (`auth-users-database-sync`, `observability-alertmanager-sync`), creates node-local state directories for auth and management databases, and manages `infisical-agent.service` |
 
 **Detailed flow:**
-1. Install `infisical-core`, `rsync`, and `curl`
-2. Mirror the verified controller checkout to `/opt/stacks` with deletion enabled while preserving rendered `.env` files
-3. Render `/etc/infisical/runtime-sync.env` with the Universal Auth client id/client secret and project metadata
-4. Render `/etc/infisical/agent.yaml` from `stacks/infisical-agent.yaml`
-5. Install `/usr/local/bin/portainer-stack-webhook`
-6. Install and enable `infisical-agent.service`
-7. Start or restart the agent when package/config/helper changes land
+1. Install `rsync` and `curl`
+2. Create runtime directories: `/opt/stacks`, `/etc/infisical`, `/var/lib/infisical/cache`, `/mnt/app_data/local/auth/authelia-db`, `/mnt/app_data/local/management/homarr-db`
+3. Mirror the verified controller checkout to `/opt/stacks` with deletion enabled while preserving rendered `.env` files
+4. Render `/etc/infisical/runtime-sync.env` with the Universal Auth client id/client secret and project metadata
+5. Render `/etc/infisical/agent.yaml` from `stacks/infisical-agent.yaml`
+6. Install `/usr/local/bin/portainer-stack-webhook`, `/usr/local/bin/auth-users-database-sync`, and `/usr/local/bin/observability-alertmanager-sync`
+7. Install and enable `infisical-agent.service`
+8. Start or restart the agent when package/config/helper changes land
 
 > Ownership note: `/opt/stacks`, `/etc/infisical/agent.yaml`, `infisical-agent.service`, and the local webhook helper are automation-managed runtime assets. The normal path is `phase7_runtime_sync`, not manual cloning or hand-copying onto the host.
 

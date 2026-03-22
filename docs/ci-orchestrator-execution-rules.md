@@ -24,9 +24,10 @@ All validation workflows run on `pull_request` and path-filtered `push`, includi
 - `stacks_sha` is resolved from `HEAD:stacks`
 - Default path: infra + ansible + portainer
 - If every changed file is non-runtime metadata (`.ansible-lint`, Markdown files, `docs/**`, `.github/**`, `ci/**`), all execution toggles are false and `has_work=false` (`reason=infra-repo-metadata-only`)
+- If every changed file is `stacks` or `.gitmodules` only (stacks-sha-only push), skip infra apply and ansible bootstrap; enable `run_portainer_apply`, `run_host_sync`, `run_config_sync`, `run_health_redeploy` (`reason=infra-repo-stacks-sha-bump`)
 - If every changed file is under `ansible/**` or equals `.ansible-lint`, skip infra apply
 - Optional ansible phase tags are derived from changed role paths
-- Classification order is metadata-only first, then ansible-only, then full-run fallback
+- Classification order is metadata-only first, then stacks-sha-only, then ansible-only, then full-run fallback
 
 ### `workflow_dispatch`
 

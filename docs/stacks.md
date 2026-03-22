@@ -20,11 +20,11 @@ Most user-facing and stateful workloads are constrained to `node.labels.location
 |-------|----------|------------|------------|
 | **gateway** | traefik, socket-proxy | `traefik`: `location == cloud` (replicas: 2); `socket-proxy`: `node.role == manager` | — |
 | **auth** | authelia, authelia-db | `location == cloud` | gateway |
-| **management** | homarr, portainer-server, portainer-agent | `location == cloud` (homarr), `node.role == manager` (server), global (agent) | — (bootstrapped by Ansible Phase 6) |
+| **management** | homarr, homarr-db, portainer-server, portainer-agent | `location == cloud` (homarr); `homarr-db`: `node.hostname == app-worker-1`; `node.role == manager` (server); global (agent) | — (bootstrapped by Ansible Phase 6) |
 | **network** | vaultwarden, vaultwarden-db, pihole-1, pihole-2, orbital-sync | `location == cloud`; `vaultwarden-db`: `node.hostname == app-worker-2` | gateway, auth |
 | **observability** | prometheus, loki, promtail, node-exporter, grafana, grafana-db, alertmanager | `location == cloud` (stateful), global (promtail, node-exporter); `loki`: `node.hostname == app-worker-1`; `grafana-db`: `node.hostname == app-worker-2` | gateway, auth |
-| **ai-interface** | open-webui, openclaw | `location == cloud` | gateway, auth |
-| **uptime** | uptime-kuma | `location == cloud` | gateway, auth |
+| **ai-interface** | open-webui, open-webui-db, openclaw | `location == cloud`; `open-webui-db`: `node.hostname == app-worker-2` | gateway, auth |
+| **uptime** | uptime-kuma, uptime-kuma-db | `location == cloud`; `uptime-kuma-db`: `node.hostname == app-worker-1` | gateway, auth |
 | **cloud** | filebrowser | `location == cloud` | gateway, auth |
 
 ## Deployment Order
@@ -63,7 +63,7 @@ All stacks follow these conventions:
 - **Auth**: `authelia@docker` middleware on routes requiring SSO
 - **Domains**: All hostnames use `${BASE_DOMAIN}` variable (injected by Infisical Agent)
 - **Update policy**: `order: start-first` (zero-downtime rolling updates)
-- **Image versioning**: Critical infrastructure and data services (Prometheus, Loki, Grafana, Vaultwarden, Authelia, socket-proxy, Alertmanager) are pinned to specific versions. Utility/dashboard services (Homarr, Pi-hole, Orbital Sync, OpenClaw) may use `:latest`
+- **Image versioning**: All services are pinned to specific versions
 - **Resources**: Memory limits on every service to prevent OOM
 - **Logging**: json-file driver with 10 MB rotation, 3 files max
 - **Storage**: Most persistent data on GlusterFS at `/mnt/swarm-shared/<stack>/`; write-heavy pinned services can use node-local block-volume paths under `/mnt/app_data/local/<stack>/`
@@ -82,7 +82,7 @@ All stacks follow these conventions:
 ### Auth
 
 - **Authelia** — SSO/2FA provider. Configuration bind-mounted from `/mnt/swarm-shared/auth/authelia/config`
-- **Authelia-DB** — PostgreSQL 16 (Alpine) backend for Authelia's storage. Data stored in a bind-mounted Docker volume at `/mnt/swarm-shared/auth/authelia-db`. Connected to Authelia via the `authelia_internal` overlay network (not exposed to `traefik_proxy`)
+- **Authelia-DB** — PostgreSQL 18.3 (Alpine) backend for Authelia's storage. Data stored on a node-local bind-mounted volume at `/mnt/app_data/local/auth/authelia-db` rather than GlusterFS. Connected to Authelia via the `authelia_internal` overlay network (not exposed to `traefik_proxy`)
 - ForwardAuth middleware registered as `authelia@docker` — other stacks reference this for protected routes
 - Default access policy: `two_factor` for all protected services
 - OIDC provider configured for Grafana SSO (`client_id: grafana`)
@@ -110,7 +110,7 @@ All stacks follow these conventions:
 
 ### Management
 
-- **Homarr** — Dashboard / homepage
+- **Homarr** — Dashboard / homepage with PostgreSQL 18.3 (Alpine) backend (`homarr-db`). Database stored on a node-local bind-mounted volume at `/mnt/app_data/local/management/homarr-db`
 - **Portainer** — Docker Swarm management UI (server + agent in global mode)
 
 ### Network
@@ -126,10 +126,10 @@ All stacks follow these conventions:
 - **Promtail** — Log shipper (global — runs on every node, Docker socket discovery)
 - **Node Exporter** — Host metrics (global)
 - **Grafana** — Dashboards and visualization (Authelia OIDC SSO, login form disabled). Uses PostgreSQL for internal state/migrations.
-- **Grafana-DB** — PostgreSQL 16 (Alpine) backend for Grafana metadata. Pinned to OCI Worker 2 and stored on node-local block volume path `/mnt/app_data/local/observability/grafana-db`.
+- **Grafana-DB** — PostgreSQL 18.3 (Alpine) backend for Grafana metadata. Pinned to OCI Worker 2 and stored on node-local block volume path `/mnt/app_data/local/observability/grafana-db`.
 - **Alertmanager** — Alert routing and notifications via webhook (Slack/Discord). Receives alerts from Prometheus based on defined rules (instance down, high memory/disk/CPU, Traefik error rates)
 
-Most data volumes are bind-mounted to GlusterFS for persistence and replication. `vaultwarden-db`, `grafana-db`, Loki, and Pi-hole state are the deliberate exceptions: their data lives on local OCI block-volume paths so PostgreSQL `fsync`, Loki WAL/TSDB writes, and Pi-hole SQLite/FTL gravity metadata are not impacted by GlusterFS synchronous replication semantics.
+Most data volumes are bind-mounted to GlusterFS for persistence and replication. `vaultwarden-db`, `authelia-db`, `grafana-db`, `open-webui-db`, `uptime-kuma-db`, `homarr-db`, Loki, and Pi-hole state are the deliberate exceptions: their data lives on local OCI block-volume paths so PostgreSQL `fsync`, Loki WAL/TSDB writes, and Pi-hole SQLite/FTL gravity metadata are not impacted by GlusterFS synchronous replication semantics.
 
 **Config files** (in `stacks/observability/config/`):
 
@@ -145,12 +145,12 @@ Most data volumes are bind-mounted to GlusterFS for persistence and replication.
 ### Media / AI Interface
 
 - **Open WebUI** — LLM chat interface connecting to a remote Ollama instance. Uses a dedicated PostgreSQL backend (`open-webui-db`) to avoid SQLite migration corruption on shared storage.
-- **Open-WebUI-DB** — PostgreSQL 16 (Alpine) backend for Open WebUI metadata/state. Pinned to OCI Worker 2 and stored on node-local block volume path `/mnt/app_data/local/ai-interface/open-webui-db`.
-- **OpenClaw** — Unified service image (`ghcr.io/openclaw/openclaw:latest`) that keeps the gateway route behind Traefik and also provides CLI behavior using the shared persisted config path
+- **Open-WebUI-DB** — PostgreSQL 18.3 (Alpine) backend for Open WebUI metadata/state. Pinned to OCI Worker 2 and stored on node-local block volume path `/mnt/app_data/local/ai-interface/open-webui-db`.
+- **OpenClaw** — Unified service image (`ghcr.io/openclaw/openclaw`, version-pinned) that keeps the gateway route behind Traefik and also provides CLI behavior using the shared persisted config path
 
 ### Uptime
 
-- **Uptime Kuma** — Status monitoring for all services
+- **Uptime Kuma** — Status monitoring for all services. Uses a MariaDB 10.11 backend (`uptime-kuma-db`) pinned to OCI Worker 1 with data on the node-local block volume at `/mnt/app_data/local/uptime/uptime-kuma-db`
 
 ### Cloud
 
@@ -171,12 +171,12 @@ Per-stack secrets are in their own Infisical paths:
 | gateway | `stacks/gateway/.env.tmpl` | `/stacks/gateway` | `CLOUDFLARE_API_TOKEN` (from `/infrastructure`), `ACME_EMAIL`, `DOCKER_SOCKET_PROXY_URL` |
 | auth | `stacks/auth/.env.tmpl` | `/stacks/identity` | `AUTHELIA_JWT_SECRET`, `AUTHELIA_SESSION_SECRET`, `POSTGRES_PASSWORD`, `AUTHELIA_STORAGE_ENCRYPTION_KEY`, `AUTHELIA_NOTIFIER_SMTP_USERNAME`, `AUTHELIA_NOTIFIER_SMTP_PASSWORD`, `AUTHELIA_NOTIFIER_SMTP_SENDER`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_JWKS_0_KEY`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_CLIENTS_0_CLIENT_SECRET` |
 | auth | `stacks/auth/config/users_database.yml.tmpl` | `/stacks/identity` | `AUTHELIA_USERS_DATABASE_YAML` |
-| management | `stacks/management/.env.tmpl` | `/stacks/management` | `HOMARR_SECRET_KEY`, `PORTAINER_ADMIN_PASSWORD_HASH` |
+| management | `stacks/management/.env.tmpl` | `/stacks/management` | `HOMARR_SECRET_KEY`, `HOMARR_DB_PASS`, `PORTAINER_ADMIN_PASSWORD_HASH` |
 | network | `stacks/network/.env.tmpl` | `/stacks/network` | `VW_DB_PASS`, `VW_ADMIN_TOKEN`, `PIHOLE_PASSWORD` |
 | observability | `stacks/observability/.env.tmpl` | `/stacks/observability` | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET`, `GF_DB_PASS`, `ALERTMANAGER_WEBHOOK_URL` |
 | observability | `stacks/observability/config/alertmanager.yml.tmpl` | `/stacks/observability` | `ALERTMANAGER_WEBHOOK_URL` |
 | ai-interface | `stacks/media/ai-interface/.env.tmpl` | `/stacks/ai-interface` | `ARCH_PC_IP`, `OPENWEBUI_DB_PASS` |
-| uptime | `stacks/uptime/.env.tmpl` | — | *(globals only)* |
+| uptime | `stacks/uptime/.env.tmpl` | `/stacks/uptime` | `UPTIME_KUMA_DB_PASS` |
 | cloud | `stacks/cloud/.env.tmpl` | — | *(globals only)* |
 
 See [Infisical Workflow](infisical-workflow.md) for the full variable reference, variable ownership/mutability, and generation commands.

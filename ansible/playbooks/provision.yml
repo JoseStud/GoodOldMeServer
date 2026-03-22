@@ -3,6 +3,7 @@
   hosts: oci_nodes
   become: true
   gather_facts: false
+  strategy: free
 
   tasks:
     - name: Wait for ssh connection to become available
@@ -51,6 +52,7 @@
   hosts: gcp_witness
   become: true
   gather_facts: false
+  strategy: free
 
   tasks:
     - name: Wait for Tailscale SSH connection to become available

@@ -69,13 +69,17 @@ The block volumes contain `/mnt/app_data`, which holds the GlusterFS brick plus 
 │   ├── uptime-kuma/data/
 │   └── cloud/filebrowser/database/
 └── local/
+    ├── ai-interface/open-webui-db/
+    ├── auth/authelia-db/
+    ├── management/homarr-db/
+    ├── network/vaultwarden-db/
     ├── observability/grafana_data/
     ├── observability/grafana-db/
     ├── observability/loki_data/
-    └── network/vaultwarden-db/
+    └── uptime/uptime-kuma-db/
 ```
 
-GlusterFS-backed data exists on both worker volumes, but `/mnt/app_data/local/...` exists only on the worker that owns the pinned service. OCI block-volume backups still cover both layouts, but PostgreSQL dumps remain the safer recovery path for Vaultwarden, Authelia, and Grafana.
+GlusterFS-backed data exists on both worker volumes, but `/mnt/app_data/local/...` exists only on the worker that owns the pinned service. OCI block-volume backups still cover both layouts, but PostgreSQL/MariaDB dumps remain the safer recovery path for Vaultwarden, Authelia, Grafana, Open WebUI, Homarr, and Uptime Kuma.
 
 ### Restoring from Block Volume Backup
 
@@ -170,7 +174,7 @@ docker exec -i $(docker ps -q --filter "name=network_vaultwarden-db") \
 
 ### Authelia (PostgreSQL)
 
-Authelia uses PostgreSQL 16 for session and authentication data. Follows the same pattern as Vaultwarden.
+Authelia uses PostgreSQL 18.3 for session and authentication data. Follows the same pattern as Vaultwarden.
 
 **Export (pg_dump):**
 ```bash
@@ -206,6 +210,54 @@ docker exec $(docker ps -q --filter "name=observability_grafana-db") \
 # DESTRUCTIVE: restore into the grafana database.
 docker exec -i $(docker ps -q --filter "name=observability_grafana-db") \
   psql -U grafana -d grafana < grafana_backup_YYYYMMDD.sql
+```
+
+### Open WebUI (PostgreSQL)
+
+Open WebUI stores LLM chat history and user preferences in PostgreSQL (`ai-interface_open-webui-db`) pinned to `app-worker-2`, with data on `/mnt/app_data/local/ai-interface/open-webui-db`.
+
+**Export (pg_dump):**
+```bash
+docker exec $(docker ps -q --filter "name=ai-interface_open-webui-db") \
+  pg_dump -U openwebui openwebui > openwebui_backup_$(date +%Y%m%d).sql
+```
+
+**Restore:**
+```bash
+docker exec -i $(docker ps -q --filter "name=ai-interface_open-webui-db") \
+  psql -U openwebui -d openwebui < openwebui_backup_YYYYMMDD.sql
+```
+
+### Homarr (PostgreSQL)
+
+Homarr stores dashboard configuration in PostgreSQL (`management_homarr-db`) pinned to `app-worker-1`, with data on `/mnt/app_data/local/management/homarr-db`.
+
+**Export (pg_dump):**
+```bash
+docker exec $(docker ps -q --filter "name=management_homarr-db") \
+  pg_dump -U homarr homarr > homarr_backup_$(date +%Y%m%d).sql
+```
+
+**Restore:**
+```bash
+docker exec -i $(docker ps -q --filter "name=management_homarr-db") \
+  psql -U homarr -d homarr < homarr_backup_YYYYMMDD.sql
+```
+
+### Uptime Kuma (MariaDB)
+
+Uptime Kuma stores monitor configuration and history in MariaDB (`uptime_uptime-kuma-db`) pinned to `app-worker-1`, with data on `/mnt/app_data/local/uptime/uptime-kuma-db`.
+
+**Export (mysqldump):**
+```bash
+docker exec $(docker ps -q --filter "name=uptime_uptime-kuma-db") \
+  mysqldump -u kuma -p"$MARIADB_PASSWORD" kuma > uptimekuma_backup_$(date +%Y%m%d).sql
+```
+
+**Restore:**
+```bash
+docker exec -i $(docker ps -q --filter "name=uptime_uptime-kuma-db") \
+  mysql -u kuma -p"$MARIADB_PASSWORD" kuma < uptimekuma_backup_YYYYMMDD.sql
 ```
 
 ### Pi-hole Configuration
@@ -251,6 +303,9 @@ Authelia's config directory is bind-mounted from GlusterFS (`/mnt/swarm-shared/a
 | Vaultwarden DB | PostgreSQL dump | Manual | — | No |
 | Authelia DB | PostgreSQL dump | Manual | — | No |
 | Grafana DB | PostgreSQL dump | Manual | — | No |
+| Open WebUI DB | PostgreSQL dump | Manual | — | No |
+| Homarr DB | PostgreSQL dump | Manual | — | No |
+| Uptime Kuma DB | MariaDB dump | Manual | — | No |
 | Pi-hole config | Teleporter export | Manual | — | No |
 | Grafana dashboards | API export | Manual | — | No |
 

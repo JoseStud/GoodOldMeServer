@@ -77,7 +77,7 @@ BASE_DOMAIN=example.com HOMARR_SECRET_KEY="your-key" TZ=Etc/UTC \
 **Verify:**
 ```bash
 docker stack services management
-# Expected: portainer-server (1/1), portainer-agent (mode: global), homarr (1/1)
+# Expected: portainer-server (1/1), portainer-agent (mode: global), homarr (1/1), homarr-db (1/1)
 
 # Test Portainer API is responding
 curl -s http://localhost:9000/api/system/status | jq .

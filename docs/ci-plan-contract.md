@@ -40,14 +40,24 @@ Downstream GHA jobs and Dagger pipeline phases consume typed booleans/strings vi
 - `run_health_redeploy=false`
 - `has_work=false`
 - `reason=infra-repo-metadata-only`
+- If every changed file is `stacks` or `.gitmodules` only (stacks-sha-only):
+- `run_infra_apply=false`
+- `run_ansible_bootstrap=false`
+- `run_portainer_apply=true`
+- `run_host_sync=true`
+- `run_config_sync=true`
+- `run_health_redeploy=true`
+- `has_work=true`
+- `reason=infra-repo-stacks-sha-bump`
 - If every changed file is under `ansible/**` or equals `.ansible-lint`, then `run_infra_apply=false`
 - `reason=infra-repo-push`
 
 Classification order for `push` is strict:
 
 1. metadata-only no-op
-2. ansible-only lane (with optional `ansible_tags`)
-3. full infra + ansible + portainer fallback
+2. stacks-sha-only lane
+3. ansible-only lane (with optional `ansible_tags`)
+4. full infra + ansible + portainer fallback
 
 Note: metadata-only classification is intentionally bounded to declared metadata paths. Arbitrary Markdown files outside those paths are not automatically treated as metadata-only.
 

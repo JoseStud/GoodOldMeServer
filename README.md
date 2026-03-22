@@ -17,7 +17,7 @@ Personal homelab/cloud server infrastructure using a four-layer architecture:
 - GCP free-tier account (e2-micro instance)
 - SSH CA key pair for certificate-based authentication
 - Terraform Cloud workspace variable for network policy:
-  - `TF_VAR_network_access_policy` (JSON object with OCI SSH IPv4 and GCP SSH IPv6 allowlists)
+  - `TF_VAR_network_access_policy` — JSON object with `oci_ssh.enabled` (bool) and `oci_ssh.source_ranges` (IPv4 CIDRs). Auto-managed by CI scripts; only needed for public-IP SSH during initial bootstrap before Tailscale is established. Once the Tailscale mesh is up, the pipeline prefers Tailscale SSH and the `enabled` flag can be set to `false`.
 
 ## Quick Start
 

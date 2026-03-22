@@ -143,6 +143,10 @@ Docker overlay networks span all Swarm nodes and provide encrypted service-to-se
 | `vaultwarden_internal` | Network stack | Stack | No | Vaultwarden ↔ PostgreSQL |
 | `authelia_internal` | Auth stack | Stack | No | Authelia ↔ PostgreSQL (authelia-db) |
 | `pihole_internal` | Network stack | Stack | No | Orbital Sync ↔ Pi-hole instances |
+| `management_internal` | Management stack | Stack | No | Homarr ↔ PostgreSQL (homarr-db) |
+| `openwebui_internal` | AI Interface stack | Stack | No | Open WebUI ↔ PostgreSQL (open-webui-db) |
+| `uptime_internal` | Uptime stack | Stack | No | Uptime Kuma ↔ MariaDB (uptime-kuma-db) |
+| `observability_internal` | Observability stack | Stack | No | Prometheus, Loki, Grafana ↔ PostgreSQL, Alertmanager |
 
 ## GlusterFS Replication
 

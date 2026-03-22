@@ -153,7 +153,17 @@ checkout_stacks_sha "${STACKS_SHA:-}"
 setup_infisical
 generate_ephemeral_ssh_certificate
 
-ansible-galaxy collection install --clear-response-cache -r ansible/requirements.yml
+# Install Galaxy collections only if requirements changed since last install.
+REQUIREMENTS_HASH="$(sha256sum ansible/requirements.yml | cut -d' ' -f1)"
+GALAXY_MARKER="${HOME}/.ansible/collections/.requirements_hash"
+
+if [[ -f "${GALAXY_MARKER}" && "$(cat "${GALAXY_MARKER}")" == "${REQUIREMENTS_HASH}" ]]; then
+  echo "ansible-galaxy: collections up to date (requirements.yml unchanged)"
+else
+  ansible-galaxy collection install -r ansible/requirements.yml
+  mkdir -p "$(dirname "${GALAXY_MARKER}")"
+  echo "${REQUIREMENTS_HASH}" > "${GALAXY_MARKER}"
+fi
 
 exit_if_shadow_mode "SHADOW_MODE=true: skipping Ansible mutation run."
 

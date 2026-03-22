@@ -54,7 +54,18 @@ EOF
 env "${terraform_args[@]}" terraform -chdir=terraform/portainer-root init -input=false -reconfigure \
   -backend-config="${backend_config_file}"
 
-env "${terraform_args[@]}" terraform -chdir=terraform/portainer-root plan -input=false -out=portainer.tfplan
+plan_exit=0
+env "${terraform_args[@]}" terraform -chdir=terraform/portainer-root plan -input=false -out=portainer.tfplan -detailed-exitcode || plan_exit=$?
+
+if [[ "${plan_exit}" -eq 1 ]]; then
+  echo "Terraform plan failed." >&2
+  exit 1
+fi
+
+if [[ "${plan_exit}" -eq 0 ]]; then
+  echo "Terraform plan shows no changes — skipping apply."
+  exit 0
+fi
 
 if [[ "${SHADOW_MODE}" == "true" ]]; then
   echo "SHADOW_MODE=true: skipping Terraform apply for portainer workspace."

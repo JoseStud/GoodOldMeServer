@@ -11,6 +11,10 @@
   become: false
   no_log: true
 
+- name: Gather package facts for runtime sync
+  ansible.builtin.package_facts:
+    manager: apt
+
 - name: Install runtime sync packages
   ansible.builtin.apt:
     name:
@@ -18,6 +22,7 @@
       - rsync
     state: present
     update_cache: true
+  when: "'curl' not in ansible_facts.packages or 'rsync' not in ansible_facts.packages"
 
 - name: Ensure runtime sync directories exist
   ansible.builtin.file:
@@ -51,23 +56,27 @@
       - "--exclude=.env"
       - "--exclude=.git"
       - "--exclude=.github"
+  register: _stacks_sync
 
 - name: Find Infisical agent templates on host
   ansible.builtin.find:
     paths: "{{ runtime_sync_stacks_dest }}"
     patterns: '*.tmpl'
     recurse: true
+    hidden: true
   register: _infisical_tmpl_files
+  when: _stacks_sync.changed
 
 - name: Inject Infisical project ID into agent templates
   ansible.builtin.replace:
     path: "{{ item.path }}"
     regexp: '__INFISICAL_PROJECT_ID__'
     replace: "{{ runtime_sync_infisical_project_id }}"
-  loop: "{{ _infisical_tmpl_files.files }}"
+  loop: "{{ _infisical_tmpl_files.files | default([]) }}"
   loop_control:
     label: "{{ item.path }}"
   no_log: true
+  when: _stacks_sync.changed
   notify: Restart infisical agent
 
 - name: Inject Infisical environment into agent templates
@@ -75,9 +84,10 @@
     path: "{{ item.path }}"
     regexp: '__INFISICAL_ENV__'
     replace: "{{ runtime_sync_infisical_env }}"
-  loop: "{{ _infisical_tmpl_files.files }}"
+  loop: "{{ _infisical_tmpl_files.files | default([]) }}"
   loop_control:
     label: "{{ item.path }}"
+  when: _stacks_sync.changed
   notify: Restart infisical agent
 
 - name: Render runtime sync environment file

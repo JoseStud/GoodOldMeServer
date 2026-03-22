@@ -30,10 +30,11 @@ flowchart LR
 | `/security` | Terraform (cloud-init), GitHub Actions (SSH) | `SSH_CA_PUBLIC_KEY`, `SSH_CA_PRIVATE_KEY`, `SSH_HOST_CA_PUBKEY` |
 | `/stacks/gateway` | Traefik | `ACME_EMAIL`, `DOCKER_SOCKET_PROXY_URL` |
 | `/stacks/identity` | Authelia SSO | `AUTHELIA_JWT_SECRET`, `AUTHELIA_SESSION_SECRET`, `POSTGRES_PASSWORD`, `AUTHELIA_STORAGE_ENCRYPTION_KEY`, `AUTHELIA_USERS_DATABASE_YAML`, `AUTHELIA_NOTIFIER_SMTP_USERNAME`, `AUTHELIA_NOTIFIER_SMTP_PASSWORD`, `AUTHELIA_NOTIFIER_SMTP_SENDER`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_HMAC_SECRET`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_JWKS_0_KEY`, `AUTHELIA_IDENTITY_PROVIDERS_OIDC_CLIENTS_0_CLIENT_SECRET` |
-| `/stacks/management` | Homarr + Portainer | `HOMARR_SECRET_KEY`, `PORTAINER_ADMIN_PASSWORD`, `PORTAINER_ADMIN_PASSWORD_HASH` |
+| `/stacks/management` | Homarr + Portainer | `HOMARR_SECRET_KEY`, `HOMARR_DB_PASS`, `PORTAINER_ADMIN_PASSWORD`, `PORTAINER_ADMIN_PASSWORD_HASH` |
 | `/stacks/network` | Vaultwarden, Pi-hole | `VW_DB_PASS`, `VW_ADMIN_TOKEN`, `PIHOLE_PASSWORD` |
 | `/stacks/observability` | Grafana | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET`, `GF_DB_PASS`, `ALERTMANAGER_WEBHOOK_URL` |
-| `/stacks/ai-interface` | Open WebUI | `ARCH_PC_IP` |
+| `/stacks/ai-interface` | Open WebUI | `ARCH_PC_IP`, `OPENWEBUI_DB_PASS` |
+| `/stacks/uptime` | Uptime Kuma | `UPTIME_KUMA_DB_PASS` |
 | `/cloud-provider/gcp` | Terraform (GCP provider) | `GCP_PROJECT_ID` |
 | `/cloud-provider/oci` | Terraform (OCI provider) | `OCI_COMPARTMENT_OCID`, `OCI_IMAGE_OCID` *(read via Infisical data source)*; `OCI_TENANCY_OCID`, `OCI_USER_OCID`, `OCI_FINGERPRINT`, `OCI_PRIVATE_KEY` *(must be set as TFC workspace variables — cannot use data source in provider config)* |
 
@@ -71,6 +72,7 @@ Use this as the source of truth for whether a value is operator-managed or autom
 | `/stacks/network` | `VW_DB_PASS`, `VW_ADMIN_TOKEN`, `PIHOLE_PASSWORD` | Required | Operator | Required for network stack stateful services |
 | `/stacks/observability` | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET`, `GF_DB_PASS`, `ALERTMANAGER_WEBHOOK_URL` | Required | Operator | Required for observability deploy and alert routing |
 | `/stacks/ai-interface` | `ARCH_PC_IP` | Required | Operator | Required for Open WebUI upstream reachability |
+| `/stacks/uptime` | `UPTIME_KUMA_DB_PASS` | Required | Operator | Required for uptime stack MariaDB backend |
 | GitHub `vars.*`/`secrets.*` bootstrap set | `INFISICAL_MACHINE_IDENTITY_ID`, `INFISICAL_PROJECT_ID`, `TFC_*`, `TFC_TOKEN`, `INFISICAL_TOKEN` | Required | Platform | Required for pipeline execution; `INFISICAL_TOKEN` is needed anywhere `terraform/portainer-root` runs, including the orchestrator `portainer-apply` stage. `CLOUD_STATIC_RUNNER_LABEL` removed — no workflow uses a cloud static runner. |
 
 ### Steady-State / Optional
@@ -150,6 +152,7 @@ The management stack (Portainer + Homarr) is deployed by Ansible, not Terraform,
 | Variable | How to Get | Used By |
 |----------|-----------|--------|
 | `HOMARR_SECRET_KEY` | Generate: `openssl rand -hex 32` | Homarr `SECRET_ENCRYPTION_KEY` |
+| `HOMARR_DB_PASS` | Generate: `openssl rand -base64 32` | Homarr PostgreSQL backend (`DATABASE_PASSWORD`) |
 | `PORTAINER_ADMIN_PASSWORD` | Choose a strong password or generate: `openssl rand -base64 24` | Ansible `portainer_bootstrap` role — hashed to bcrypt at deploy time and passed to Portainer via `--admin-password`; plaintext used for bootstrap/post-bootstrap Portainer auth and by the Terraform Portainer provider as `api_password` |
 | `PORTAINER_ADMIN_PASSWORD_HASH` | **Auto-generated and rewritten by Ansible on every bootstrap run** (`password_hash('bcrypt')`) and written to Infisical `/stacks/management` for Infisical Agent renders — do not set manually | Portainer `--admin-password` CLI flag (set in `docker-compose.yml`) |
 | ~~`PORTAINER_AUTOMATION_ALLOWED_CIDRS`~~ | Removed — portainer-api Traefik route deleted; CI uses Tailscale IP. | N/A |
@@ -177,6 +180,12 @@ The management stack (Portainer + Homarr) is deployed by Ansible, not Terraform,
 |----------|-----------|---------|
 | `ARCH_PC_IP` | Tailscale IP or LAN IP of your machine running Ollama | Open WebUI `OLLAMA_BASE_URL` |
 | `OPENWEBUI_DB_PASS` | Generate: `openssl rand -base64 32` | Open WebUI PostgreSQL backend (`DATABASE_URL`) |
+
+### `/stacks/uptime` — Uptime Kuma
+
+| Variable | How to Get | Used By |
+|----------|-----------|---------|
+| `UPTIME_KUMA_DB_PASS` | Generate: `openssl rand -base64 32` | Uptime Kuma MariaDB backend (`UPTIME_KUMA_DB_PASSWORD`) |
 
 ### `/cloud-provider/oci` — OCI Terraform
 
@@ -268,7 +277,8 @@ Exports:
 
 Reads:
 
-- `/management` (`PORTAINER_API_URL`, `PORTAINER_API_KEY`, optional `PORTAINER_LICENSE_KEY`)
+- `/management` (`PORTAINER_API_URL`, optional `PORTAINER_LICENSE_KEY`)
+- `/stacks/management` (`PORTAINER_ADMIN_PASSWORD`)
 
 Creates (through `terraform/portainer` module):
 
@@ -389,7 +399,7 @@ Stacks that only need globals (uptime, cloud) have a single `/infrastructure` bl
 | observability | `stacks/observability/.env.tmpl` | `/infrastructure` + `/stacks/observability` |
 | observability | `stacks/observability/config/alertmanager.yml.tmpl` | `/stacks/observability` |
 | ai-interface | `stacks/media/ai-interface/.env.tmpl` | `/infrastructure` + `/stacks/ai-interface` |
-| uptime | `stacks/uptime/.env.tmpl` | `/infrastructure` |
+| uptime | `stacks/uptime/.env.tmpl` | `/infrastructure` + `/stacks/uptime` |
 | cloud | `stacks/cloud/.env.tmpl` | `/infrastructure` |
 
 ### Agent Configuration
