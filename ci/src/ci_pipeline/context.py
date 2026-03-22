@@ -6,7 +6,6 @@ compute-context job.  Produces identical outputs to $GITHUB_OUTPUT.
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import subprocess
@@ -117,90 +116,6 @@ class ExecutionContext:
 
 
 # ---------------------------------------------------------------------------
-# Dispatch payload validation (ported from orchestrator.yml:85-128)
-# ---------------------------------------------------------------------------
-
-
-class DispatchValidationError(Exception):
-    pass
-
-
-def validate_dispatch_payload(
-    payload_json: str,
-    *,
-    stacks_sha: str,
-    source_sha: str,
-    reason: str,
-    source_repo: str,
-    source_run_id: str,
-) -> None:
-    """Validate a repository_dispatch v5 payload. Raises DispatchValidationError."""
-
-    if not payload_json or payload_json == "null":
-        raise DispatchValidationError(
-            "repository_dispatch payload must be a JSON object."
-        )
-
-    try:
-        payload = json.loads(payload_json)
-    except json.JSONDecodeError:
-        raise DispatchValidationError(
-            "repository_dispatch payload must be a JSON object."
-        )
-
-    if not isinstance(payload, dict):
-        raise DispatchValidationError(
-            "repository_dispatch payload must be a JSON object."
-        )
-
-    expected = [
-        "reason",
-        "schema_version",
-        "source_repo",
-        "source_run_id",
-        "source_sha",
-        "stacks_sha",
-    ]
-    if sorted(payload.keys()) != expected:
-        raise DispatchValidationError(
-            "repository_dispatch payload must contain only: "
-            "schema_version, stacks_sha, source_sha, source_repo, "
-            "source_run_id, reason."
-        )
-
-    schema_version = payload.get("schema_version")
-    if schema_version != "v5":
-        raise DispatchValidationError(
-            f"Unsupported dispatch schema_version '{schema_version}'. "
-            "Expected 'v5'."
-        )
-
-    if not _SHA_RE.fullmatch(stacks_sha):
-        raise DispatchValidationError(
-            f"Invalid stacks_sha: '{stacks_sha}' "
-            "(must be 40-char lowercase hex)."
-        )
-    if not _SHA_RE.fullmatch(source_sha):
-        raise DispatchValidationError(
-            f"Invalid source_sha: '{source_sha}' "
-            "(must be 40-char lowercase hex)."
-        )
-    if reason != "full-reconcile":
-        raise DispatchValidationError(
-            f"Invalid reason '{reason}'. Expected 'full-reconcile'."
-        )
-    if not re.fullmatch(r"[A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-]+", source_repo):
-        raise DispatchValidationError(
-            f"Invalid source_repo '{source_repo}'. Expected 'owner/repo'."
-        )
-    if not source_run_id.isdigit():
-        raise DispatchValidationError(
-            f"Invalid source_run_id '{source_run_id}'. "
-            "Expected numeric run id."
-        )
-
-
-# ---------------------------------------------------------------------------
 # Ansible tag computation
 # ---------------------------------------------------------------------------
 
@@ -292,12 +207,6 @@ def compute_context(
     workflow_ansible_only: bool = False,
     push_before: str = "",
     push_sha: str = "",
-    payload_json: str = "",
-    payload_stacks_sha: str = "",
-    payload_reason: str = "",
-    payload_source_repo: str = "",
-    payload_source_run_id: str = "",
-    payload_source_sha: str = "",
     git: GitInterface | None = None,
 ) -> ExecutionContext:
     """Compute execution context from event data.
@@ -307,24 +216,6 @@ def compute_context(
     """
     if git is None:
         git = RealGit()
-
-    if event_name == "repository_dispatch":
-        validate_dispatch_payload(
-            payload_json,
-            stacks_sha=payload_stacks_sha,
-            source_sha=payload_source_sha,
-            reason=payload_reason,
-            source_repo=payload_source_repo,
-            source_run_id=payload_source_run_id,
-        )
-        return ExecutionContext(
-            run_portainer_apply=True,
-            run_host_sync=True,
-            run_config_sync=True,
-            run_health_redeploy=True,
-            stacks_sha=payload_stacks_sha,
-            reason=payload_reason,
-        )
 
     if event_name in ("push", "workflow_dispatch"):
         stacks_sha = git.rev_parse("HEAD:stacks")
@@ -417,12 +308,6 @@ def _read_env_context() -> dict:
         == "true",
         "push_before": os.environ.get("PUSH_BEFORE", ""),
         "push_sha": os.environ.get("PUSH_SHA", ""),
-        "payload_json": os.environ.get("PAYLOAD_JSON", ""),
-        "payload_stacks_sha": os.environ.get("PAYLOAD_STACKS_SHA", ""),
-        "payload_reason": os.environ.get("PAYLOAD_REASON", ""),
-        "payload_source_repo": os.environ.get("PAYLOAD_SOURCE_REPO", ""),
-        "payload_source_run_id": os.environ.get("PAYLOAD_SOURCE_RUN_ID", ""),
-        "payload_source_sha": os.environ.get("PAYLOAD_SOURCE_SHA", ""),
     }
 
 
@@ -462,9 +347,6 @@ def main() -> None:
 
     try:
         ctx = compute_context(**env)
-    except DispatchValidationError as exc:
-        print(str(exc), file=sys.stderr)
-        sys.exit(1)
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
         sys.exit(1)

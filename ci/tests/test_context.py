@@ -2,19 +2,15 @@
 
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from ci_pipeline.context import (
-    DispatchValidationError,
     ExecutionContext,
     compute_ansible_tags,
     compute_context,
     is_metadata_only,
     is_ansible_only,
     is_stacks_sha_only_push,
-    validate_dispatch_payload,
 )
 
 from .conftest import DUMMY_SHA, DUMMY_SHA_B, FakeGit
@@ -139,121 +135,6 @@ class TestComputeAnsibleTags:
         assert len(phases) == 7
         assert phases[0] == "phase1_base"
         assert phases[-1] == "phase7_runtime_sync"
-
-
-# ── validate_dispatch_payload ────────────────────────────────────────────
-
-
-def _valid_payload() -> dict:
-    return {
-        "schema_version": "v5",
-        "stacks_sha": DUMMY_SHA,
-        "source_sha": DUMMY_SHA_B,
-        "reason": "full-reconcile",
-        "source_repo": "JoseStud/stacks",
-        "source_run_id": "12345",
-    }
-
-
-class TestValidateDispatchPayload:
-    def test_valid_payload_passes(self):
-        payload = _valid_payload()
-        validate_dispatch_payload(
-            json.dumps(payload),
-            stacks_sha=payload["stacks_sha"],
-            source_sha=payload["source_sha"],
-            reason=payload["reason"],
-            source_repo=payload["source_repo"],
-            source_run_id=payload["source_run_id"],
-        )
-
-    def test_empty_payload_raises(self):
-        with pytest.raises(DispatchValidationError, match="JSON object"):
-            validate_dispatch_payload(
-                "", stacks_sha="", source_sha="", reason="",
-                source_repo="", source_run_id="",
-            )
-
-    def test_null_payload_raises(self):
-        with pytest.raises(DispatchValidationError, match="JSON object"):
-            validate_dispatch_payload(
-                "null", stacks_sha="", source_sha="", reason="",
-                source_repo="", source_run_id="",
-            )
-
-    def test_wrong_schema_version_raises(self):
-        payload = _valid_payload()
-        payload["schema_version"] = "v4"
-        with pytest.raises(DispatchValidationError, match="v4"):
-            validate_dispatch_payload(
-                json.dumps(payload),
-                stacks_sha=payload["stacks_sha"],
-                source_sha=payload["source_sha"],
-                reason=payload["reason"],
-                source_repo=payload["source_repo"],
-                source_run_id=payload["source_run_id"],
-            )
-
-    def test_extra_key_raises(self):
-        payload = _valid_payload()
-        payload["extra_field"] = "oops"
-        with pytest.raises(DispatchValidationError, match="must contain only"):
-            validate_dispatch_payload(
-                json.dumps(payload),
-                stacks_sha=payload["stacks_sha"],
-                source_sha=payload["source_sha"],
-                reason=payload["reason"],
-                source_repo=payload["source_repo"],
-                source_run_id=payload["source_run_id"],
-            )
-
-    def test_invalid_stacks_sha_raises(self):
-        payload = _valid_payload()
-        with pytest.raises(DispatchValidationError, match="stacks_sha"):
-            validate_dispatch_payload(
-                json.dumps(payload),
-                stacks_sha="not-a-sha",
-                source_sha=payload["source_sha"],
-                reason=payload["reason"],
-                source_repo=payload["source_repo"],
-                source_run_id=payload["source_run_id"],
-            )
-
-    def test_wrong_reason_raises(self):
-        payload = _valid_payload()
-        with pytest.raises(DispatchValidationError, match="reason"):
-            validate_dispatch_payload(
-                json.dumps(payload),
-                stacks_sha=payload["stacks_sha"],
-                source_sha=payload["source_sha"],
-                reason="partial-reconcile",
-                source_repo=payload["source_repo"],
-                source_run_id=payload["source_run_id"],
-            )
-
-    def test_invalid_source_repo_raises(self):
-        payload = _valid_payload()
-        with pytest.raises(DispatchValidationError, match="source_repo"):
-            validate_dispatch_payload(
-                json.dumps(payload),
-                stacks_sha=payload["stacks_sha"],
-                source_sha=payload["source_sha"],
-                reason=payload["reason"],
-                source_repo="no-slash",
-                source_run_id=payload["source_run_id"],
-            )
-
-    def test_non_numeric_run_id_raises(self):
-        payload = _valid_payload()
-        with pytest.raises(DispatchValidationError, match="source_run_id"):
-            validate_dispatch_payload(
-                json.dumps(payload),
-                stacks_sha=payload["stacks_sha"],
-                source_sha=payload["source_sha"],
-                reason=payload["reason"],
-                source_repo=payload["source_repo"],
-                source_run_id="abc",
-            )
 
 
 # ── compute_context ──────────────────────────────────────────────────────
@@ -412,38 +293,6 @@ class TestComputeContextPush:
             git=fake_git,
         )
         assert ctx.run_infra_apply is True
-
-
-class TestComputeContextDispatch:
-    def test_repository_dispatch(self, fake_git: FakeGit):
-        payload = _valid_payload()
-        ctx = compute_context(
-            event_name="repository_dispatch",
-            payload_json=json.dumps(payload),
-            payload_stacks_sha=payload["stacks_sha"],
-            payload_reason=payload["reason"],
-            payload_source_repo=payload["source_repo"],
-            payload_source_run_id=payload["source_run_id"],
-            payload_source_sha=payload["source_sha"],
-            git=fake_git,
-        )
-        assert ctx.run_infra_apply is False
-        assert ctx.run_ansible_bootstrap is False
-        assert ctx.run_portainer_apply is True
-        assert ctx.run_host_sync is True
-        assert ctx.run_config_sync is True
-        assert ctx.run_health_redeploy is True
-        assert ctx.stacks_sha == DUMMY_SHA
-        assert ctx.reason == "full-reconcile"
-        assert ctx.has_work is True
-
-    def test_invalid_dispatch_raises(self, fake_git: FakeGit):
-        with pytest.raises(DispatchValidationError):
-            compute_context(
-                event_name="repository_dispatch",
-                payload_json="{}",
-                git=fake_git,
-            )
 
 
 class TestComputeContextWorkflowDispatch:

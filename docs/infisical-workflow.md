@@ -231,7 +231,6 @@ The `dagger-pipeline` job injects both `INFISICAL_MACHINE_IDENTITY_ID` and `INFI
 |----------|-----------|---------|
 | `INFISICAL_TOKEN` (infra repo) | Infisical service token with project read/write scope for automation paths | Required by any local/runner-side `terraform/portainer-root` apply, including the `orchestrator.yml` `dagger-pipeline` portainer-apply stage (`ci_pipeline/phases/portainer.py`) |
 | `STACKS_REPO_READ_TOKEN` (infra repo) | Fine-grained GitHub token on the stacks repo with `contents:read`, `checks:read`, and `statuses:read` | Trusted stacks SHA verification in `.github/scripts/stacks/verify_trusted_stacks_sha.sh` before preflight/network-policy/runtime-sync/Portainer stages consume `meta.stacks_sha` |
-| `INFRA_REPO_DISPATCH_TOKEN` (stacks repo) | Fine-grained GitHub token with `contents:write` + repository dispatch access on this infra repo | `stacks/.github/workflows/stacks-dispatch-redeploy.yml` dispatches `stacks-redeploy-intent-v5` to this repo |
 | `INFISICAL_AGENT_CLIENT_ID` (infra repo) | Universal Auth client id for the host-side Infisical Agent | Ansible `phase7_runtime_sync` and local Portainer webhook helper |
 | `INFISICAL_AGENT_CLIENT_SECRET` (infra repo) | Universal Auth client secret for the host-side Infisical Agent | Ansible `phase7_runtime_sync` and local Portainer webhook helper |
 | `TFC_TOKEN` (infra repo) | Terraform Cloud Team/API token with workspace run access | Orchestrator CI stages (Dagger pipeline phases + GHA jobs) for Terraform Cloud run/apply + state output inventory handover |
@@ -311,17 +310,7 @@ The management stack is **not** in this list.
 
 ## Private Webhook Automation
 
-Webhook triggers run from stacks-repo workflows:
-
-- `stacks/.github/workflows/stacks-ci.yml` (compose + manifest validation)
-- `stacks/.github/workflows/stacks-dispatch-redeploy.yml` (payload planning + infra dispatch)
-
-Flow:
-
-1. Push to `main` in stacks repo
-2. `stacks-ci.yml` completes successfully with repo-level validation
-3. The dispatch workflow emits exactly one `stacks-redeploy-intent-v5` event with the minimal `v5` payload
-4. Infra `orchestrator.yml` runs the fixed full-reconcile path via `dagger-pipeline`: preflight (stacks-sha-trust, secret-validation, network-policy-sync) → inventory-handover → ansible host subprocess (`phase7_runtime_sync`) → portainer phase (`sync-configs` config-sync, manifest-selected Portainer apply, health-gated webhook redeploy).
+Stacks validation runs in the stacks repo via `stacks/.github/workflows/stacks-ci.yml` (compose + manifest validation). Deployments are triggered by updating the stacks submodule pointer in the infra repo and pushing to `main`, which runs the orchestrator's full pipeline: preflight (stacks-sha-trust, secret-validation, network-policy-sync) → inventory-handover → ansible host subprocess (`phase7_runtime_sync`) → portainer phase (`sync-configs` config-sync, manifest-selected Portainer apply, health-gated webhook redeploy).
 
 ### Workflow timeout variables
 
@@ -329,18 +318,6 @@ Several optional workflow tunables are referenced by orchestrator stages and red
 
 - `REDEPLOY_TIMEOUT_SECONDS` — Integer seconds the Portainer redeploy health-gate will wait before timing out when performing health-gated redeploys (used by Portainer redeploy wrappers and health checks).
 - `ANSIBLE_TIMEOUT` — Integer seconds used by Ansible-run wrapper steps to bound long-running bootstrap runs; set this when runs require longer execution time on cloud-runner jobs.
-
-### `stacks-redeploy-intent-v5` Dispatch Contract
-
-- Event type: `stacks-redeploy-intent-v5`
-- Required `client_payload.schema_version`: `v5`
-- Required `client_payload.stacks_sha`: commit SHA from stacks repo
-- Required `client_payload.source_sha`: commit SHA from stacks repo workflow source
-- Required `client_payload.reason`: `full-reconcile`
-- Required `client_payload.source_repo`: source repository (`owner/repo`)
-- Required `client_payload.source_run_id`: source workflow run id
-
-Manual stacks reconciliation is no longer supported from `orchestrator.yml`; manual workflow use remains for infra/bootstrap/Portainer operations only.
 
 ## Infisical Agent (Docker Swarm)
 

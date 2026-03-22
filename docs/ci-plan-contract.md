@@ -58,29 +58,6 @@ Note: metadata-only classification is intentionally bounded to declared metadata
 - If input `ansible_only=true`, then `run_infra_apply=false`
 - `reason=manual-dispatch`
 
-### `repository_dispatch` (`stacks-redeploy-intent-v5`)
-
-- `run_portainer_apply=true`
-- `run_host_sync=true`
-- `run_config_sync=true`
-- `run_health_redeploy=true`
-- `run_infra_apply=false`
-- `run_ansible_bootstrap=false`
-- `stacks_sha` comes from dispatch payload
-- `reason` comes from dispatch payload
-
-## Dispatch Payload Validation
-
-`repository_dispatch` payload validation happens inline in `compute-context` and enforces:
-
-- Payload is a JSON object
-- Keys are exactly: `schema_version`, `stacks_sha`, `source_sha`, `source_repo`, `source_run_id`, `reason`
-- `schema_version == v5`
-- `stacks_sha` and `source_sha` are 40-char lowercase hex
-- `source_repo` matches `owner/repo`
-- `source_run_id` is numeric
-- `reason == full-reconcile`
-
 ## Ansible Tag Computation
 
 For ansible-only pushes, `ansible_tags` is computed only when all changed files are under `ansible/roles/**`.

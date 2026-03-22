@@ -33,11 +33,6 @@ All validation workflows run on `pull_request` and path-filtered `push`, includi
 - Runs infra + ansible + portainer
 - If `ansible_only=true`, infra apply is skipped
 
-### `repository_dispatch` (`stacks-redeploy-intent-v5`)
-
-- Runs portainer + host sync + config sync + health-gated redeploy
-- Dispatch payload is validated inline (`schema_version=v5`, strict key set, SHA/reason/source field checks)
-
 ## Runtime Job Chain
 
 Top-level GHA jobs:

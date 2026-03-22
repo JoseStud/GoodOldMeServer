@@ -40,34 +40,15 @@ These values are managed by automation after bootstrap and are not operator-owne
 | `INFISICAL_TOKEN` | Required | Security | Needed anywhere `terraform/portainer-root` runs, including the orchestrator `portainer-apply` stage. | [ ] |
 | `INFISICAL_AGENT_CLIENT_ID` | Required | Security | Universal Auth client id used by the Ansible-managed host runtime sync and local webhook helper. | [ ] |
 | `INFISICAL_AGENT_CLIENT_SECRET` | Required | Security | Universal Auth client secret used by the Ansible-managed host runtime sync and local webhook helper. | [ ] |
-| `STACKS_REPO_READ_TOKEN` | Required | Security | Token used for trust verification of `stacks_sha` dispatch payloads. Grant `contents:read`, `checks:read`, and `statuses:read` on the stacks repo. | [ ] |
+| `STACKS_REPO_READ_TOKEN` | Required | Security | Token used for trust verification of `stacks_sha` from the submodule pointer. Grant `contents:read`, `checks:read`, and `statuses:read` on the stacks repo. | [ ] |
 
-## 3) Stacks Repo (Dispatch-Only Full Reconcile)
-
-Required for `stacks/.github/workflows/stacks-dispatch-redeploy.yml` dispatching into this infra repo.
+## 3) Stacks Repo
 
 | Item | Requirement | Owner | Notes | Checkbox |
 |------|-------------|-------|-------|----------|
-| `vars.INFRA_REPO` | Optional | Platform | Optional when default `JoseStud/GoodOldMeServer` is correct. | [ ] |
-| `secrets.INFRA_REPO_DISPATCH_TOKEN` | Required | Security | Fine-grained token used for repository dispatch to infra repo. | [ ] |
 | `stacks/.github/workflows/stacks-ci.yml` active | Required | Platform | Stack compose validation and manifest sanity run in stacks repo. | [ ] |
-| Dispatch payload schema `v5` implemented | Required | Platform | Must include only `schema_version`, `stacks_sha`, `source_sha`, `source_repo`, `source_run_id`, and `reason=full-reconcile`. No selective stack/path fields remain. | [ ] |
 
-Expected dispatch payload example:
-
-```json
-{
-  "event_type": "stacks-redeploy-intent-v5",
-  "client_payload": {
-    "schema_version": "v5",
-    "stacks_sha": "0123456789abcdef0123456789abcdef01234567",
-    "source_sha": "0123456789abcdef0123456789abcdef01234567",
-    "reason": "full-reconcile",
-    "source_repo": "owner/stacks",
-    "source_run_id": 123456789
-  }
-}
-```
+Stacks deployments are triggered by updating the submodule pointer in the infra repo and pushing to `main`. No auto-dispatch or `INFRA_REPO_DISPATCH_TOKEN` is needed.
 
 ## 4) Terraform Cloud Workspace Variables
 

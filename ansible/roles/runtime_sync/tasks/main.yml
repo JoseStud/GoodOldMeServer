@@ -35,6 +35,8 @@
       mode: "0700"
     - path: /mnt/app_data/local/auth/authelia-db
       mode: "0777"
+    - path: /mnt/app_data/local/management/homarr-db
+      mode: "0777"
 
 - name: Mirror trusted stacks checkout to host runtime path
   ansible.posix.synchronize:

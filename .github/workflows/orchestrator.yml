@@ -9,8 +9,6 @@ on:
       - ".gitmodules"
       - "ansible/**"
       - ".ansible-lint"
-  repository_dispatch:
-    types: [stacks-redeploy-intent-v5]
   workflow_dispatch:
     inputs:
       ansible_only:
@@ -23,8 +21,6 @@ permissions:
   id-token: write
   contents: read
 
-# Concurrency note: repository_dispatch events have no github.ref_name, so
-# they fall back to 'main' and share the same lane as push-to-main.
 # cancel-in-progress is enabled so the latest intent supersedes older runs.
 concurrency:
   group: infra-orchestrator-${{ github.ref_name || github.event.repository.default_branch || 'main' }}
@@ -57,12 +53,6 @@ jobs:
           WORKFLOW_ANSIBLE_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.ansible_only }}
           PUSH_BEFORE: ${{ github.event.before || '' }}
           PUSH_SHA: ${{ github.sha }}
-          PAYLOAD_JSON: ${{ toJson(github.event.client_payload) }}
-          PAYLOAD_STACKS_SHA: ${{ github.event.client_payload.stacks_sha }}
-          PAYLOAD_REASON: ${{ github.event.client_payload.reason }}
-          PAYLOAD_SOURCE_REPO: ${{ github.event.client_payload.source_repo }}
-          PAYLOAD_SOURCE_RUN_ID: ${{ github.event.client_payload.source_run_id }}
-          PAYLOAD_SOURCE_SHA: ${{ github.event.client_payload.source_sha }}
         run: python3 -m ci_pipeline.context
         working-directory: ci/src
 

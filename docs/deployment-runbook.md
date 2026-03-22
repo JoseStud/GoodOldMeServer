@@ -340,9 +340,9 @@ Every stack is linked to the `JoseStud/stacks` Git repository in Portainer with 
 
 **Automatic (private automation):**
 
-1. Push to `main` in the stacks repo triggers `stacks/.github/workflows/stacks-ci.yml` and `stacks/.github/workflows/stacks-dispatch-redeploy.yml`.
-2. After `stacks-ci.yml` succeeds on `main`, the dispatch workflow emits one `stacks-redeploy-intent-v5` event with the minimal full-reconcile payload.
-3. Infra `orchestrator.yml` treats every valid stacks dispatch as a full reconcile: it waits for trusted `stacks_sha` checks before preflight mutations, validates secrets, runs `phase7_runtime_sync`, runs `sync-configs`, runs `terraform/portainer-root apply` with the trusted `stacks_sha` selecting the fetched `stacks.yaml`, then redeploys every Portainer-managed stack from Portainer's configured `repository_reference`.
+1. Push stacks changes to the stacks repo `main` (triggers `stacks-ci.yml` for validation).
+2. Update the stacks submodule pointer in the infra repo and push to `main`.
+3. Infra `orchestrator.yml` detects the stacks gitlink change and runs a full reconcile: it waits for trusted `stacks_sha` checks before preflight mutations, validates secrets, runs `phase7_runtime_sync`, runs `sync-configs`, runs `terraform/portainer-root apply` with the trusted `stacks_sha` selecting the fetched `stacks.yaml`, then redeploys every Portainer-managed stack from Portainer's configured `repository_reference`.
 4. Health gates use manifest dependencies and manifest order: Gateway is checked first (`gateway-health.<BASE_DOMAIN>/healthz`), then Auth, then the remaining Portainer-managed stacks. The Ansible-managed `management` stack stays outside this webhook flow.
 
 Trusted `stacks_sha` means:
