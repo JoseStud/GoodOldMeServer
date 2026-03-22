@@ -40,7 +40,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
 
       - name: Terraform fmt check
         run: terraform fmt -check -recursive terraform
@@ -62,7 +62,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
 
       - name: Terraform init (readonly lockfile)
         run: terraform -chdir=${{ matrix.root }} init -backend=false -lockfile=readonly -input=false
@@ -99,7 +99,7 @@ jobs:
           install_jq: "true"
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
 
       - name: Resolve workspace and validate required inputs
         id: preflight
