@@ -81,7 +81,7 @@ jobs:
   # (accessed via the Dagger pipeline's SOCKS5 proxy), making a cloud runner
   # with deterministic public-IP egress unnecessary.
   tfc-speculative-plan:
-    if: github.actor != 'dependabot[bot]'
+    if: github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     needs: terraform-validate
     runs-on: ubuntu-latest
     environment: Jux
