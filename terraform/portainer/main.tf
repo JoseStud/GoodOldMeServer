@@ -210,8 +210,8 @@ locals {
       OPENWEBUI_DB_PASS = local.ai_interface_secrets["OPENWEBUI_DB_PASS"]
     }
     uptime = {
-      BASE_DOMAIN        = local.infrastructure_secrets["BASE_DOMAIN"]
-      TZ                 = local.infrastructure_secrets["TZ"]
+      BASE_DOMAIN         = local.infrastructure_secrets["BASE_DOMAIN"]
+      TZ                  = local.infrastructure_secrets["TZ"]
       UPTIME_KUMA_DB_PASS = local.uptime_secrets["UPTIME_KUMA_DB_PASS"]
     }
     cloud = {
