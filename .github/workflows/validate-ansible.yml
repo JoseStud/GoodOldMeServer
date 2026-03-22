@@ -46,7 +46,7 @@ jobs:
           python-version: "3.x"
 
       - name: Cache Ansible Galaxy collections
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.ansible/collections
           key: ansible-galaxy-${{ hashFiles('ansible/requirements.yml') }}
