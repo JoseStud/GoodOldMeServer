@@ -182,6 +182,16 @@
     - /mnt/swarm-shared/cloud/filebrowser/database
   when: inventory_hostname == groups['oci_nodes'][0]
 
+- name: Ensure Prometheus data directory ownership
+  ansible.builtin.file:
+    path: /mnt/swarm-shared/observability/prometheus_data
+    state: directory
+    owner: '65534'
+    group: '65534'
+    mode: '0755'
+    recurse: true
+  when: inventory_hostname == groups['oci_nodes'][0]
+
 - name: Create node-local state directory for Vaultwarden DB
   ansible.builtin.file:
     path: /mnt/app_data/local/network/vaultwarden-db
