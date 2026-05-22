@@ -48,6 +48,7 @@ Health-gated redeploy behavior is driven by `stacks/stacks.yaml` and `.github/sc
 | `network` | N/A | N/A | N/A | Waits for dependency checks on `gateway` and `auth` first | No stack health URL configured; post-trigger health wait returns immediately |
 | `observability` | N/A | N/A | N/A | Waits for dependency checks on `gateway` and `auth` first | No stack health URL configured; post-trigger health wait returns immediately |
 | `ai-interface` | N/A | N/A | N/A | Waits for dependency checks on `gateway` and `auth` first | No stack health URL configured; post-trigger health wait returns immediately |
+| `home-dashboard` | `https://tunet.${BASE_DOMAIN}/api/health` | `200` | `300s` | Waits for dependency checks on `gateway` and `auth` first | Waits for Tunet API health after webhook trigger |
 | `uptime` | N/A | N/A | N/A | Waits for dependency checks on `gateway` and `auth` first | No stack health URL configured; post-trigger health wait returns immediately |
 | `cloud` | N/A | N/A | N/A | Waits for dependency checks on `gateway` and `auth` first | No stack health URL configured; post-trigger health wait returns immediately |
 
@@ -176,6 +177,7 @@ Per-stack secrets are in their own Infisical paths:
 | observability | `stacks/observability/.env.tmpl` | `/stacks/observability` | `GF_OIDC_CLIENT_ID`, `GF_OIDC_CLIENT_SECRET`, `GF_DB_PASS`, `ALERTMANAGER_WEBHOOK_URL` |
 | observability | `stacks/observability/config/alertmanager.yml.tmpl` | `/stacks/observability` | `ALERTMANAGER_WEBHOOK_URL` |
 | ai-interface | `stacks/media/ai-interface/.env.tmpl` | `/stacks/ai-interface` | `ARCH_PC_IP`, `OPENWEBUI_DB_PASS` |
+| home-dashboard | `stacks/home-dashboard/.env.tmpl` | `/infrastructure` | `BASE_DOMAIN`, `TZ` |
 | uptime | `stacks/uptime/.env.tmpl` | `/stacks/uptime` | `UPTIME_KUMA_DB_PASS` |
 | cloud | `stacks/cloud/.env.tmpl` | — | *(globals only)* |
 

@@ -214,6 +214,11 @@ locals {
       TZ                  = local.infrastructure_secrets["TZ"]
       UPTIME_KUMA_DB_PASS = local.uptime_secrets["UPTIME_KUMA_DB_PASS"]
     }
+    "home-dashboard" = {
+      BASE_DOMAIN        = local.infrastructure_secrets["BASE_DOMAIN"]
+      TZ                 = local.infrastructure_secrets["TZ"]
+      HOME_ASSISTANT_URL = "http://192.168.1.6:8123"
+    }
     cloud = {
       BASE_DOMAIN = local.infrastructure_secrets["BASE_DOMAIN"]
       TZ          = local.infrastructure_secrets["TZ"]
