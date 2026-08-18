@@ -55,7 +55,13 @@ env "${terraform_args[@]}" terraform -chdir=terraform/portainer-root init -input
   -backend-config="${backend_config_file}"
 
 plan_exit=0
-env "${terraform_args[@]}" terraform -chdir=terraform/portainer-root plan -input=false -out=portainer.tfplan -detailed-exitcode || plan_exit=$?
+# -lock=false: this workspace runs in Terraform Cloud's local execution mode,
+# and the legacy `remote` backend's state-locking path against local-exec
+# workspaces returns "Error message: resource not found" on every lock
+# attempt (reproduced outside CI, independent of Terraform CLI version).
+# This pipeline is the only writer to this workspace's state, so disabling
+# locking here is safe.
+env "${terraform_args[@]}" terraform -chdir=terraform/portainer-root plan -input=false -lock=false -out=portainer.tfplan -detailed-exitcode || plan_exit=$?
 
 if [[ "${plan_exit}" -eq 1 ]]; then
   echo "Terraform plan failed." >&2
@@ -72,4 +78,4 @@ if [[ "${SHADOW_MODE}" == "true" ]]; then
   exit 0
 fi
 
-env "${terraform_args[@]}" terraform -chdir=terraform/portainer-root apply -input=false -auto-approve portainer.tfplan
+env "${terraform_args[@]}" terraform -chdir=terraform/portainer-root apply -input=false -lock=false -auto-approve portainer.tfplan
