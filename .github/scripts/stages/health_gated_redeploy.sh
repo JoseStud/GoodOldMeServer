@@ -11,6 +11,6 @@ setup_infisical
 
 exit_if_shadow_mode "SHADOW_MODE=true: skipping webhook trigger mutations."
 
-infisical run --projectId="${INFISICAL_PROJECT_ID}" --env=prod -- bash -lc '
+infisical run --projectId="${INFISICAL_PROJECT_ID}" --env=prod --path=/deployments -- bash -lc '
   .github/scripts/stacks/trigger_webhooks_with_gates.sh stacks/stacks.yaml
 '
