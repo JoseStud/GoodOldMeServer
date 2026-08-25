@@ -64,7 +64,7 @@ env "${terraform_args[@]}" terraform -chdir=terraform/portainer-root init -input
 # repeatedly (a no-op "resource already managed" error is ignored) — revert
 # this block once confirmed no longer needed.
 env "${terraform_args[@]}" terraform -chdir=terraform/portainer-root import \
-  'module.portainer.portainer_stack.swarm["home-dashboard"]' 33 || true
+  'module.portainer.portainer_stack.swarm["home-dashboard"]' "${portainer_endpoint_id}-33-swarm-repository" || true
 env "${terraform_args[@]}" terraform -chdir=terraform/portainer-root import \
   'module.portainer.infisical_secret.webhook_url["home-dashboard"]' 91278e2a-9b94-4f77-9ec6-4cde755ce522 || true
 
