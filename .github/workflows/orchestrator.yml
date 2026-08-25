@@ -16,6 +16,11 @@ on:
         type: boolean
         required: false
         default: false
+      force_health_redeploy:
+        description: "Also run the health-gated Portainer webhook redeploy stage"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   id-token: write
@@ -51,6 +56,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           WORKFLOW_ANSIBLE_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.ansible_only }}
+          WORKFLOW_FORCE_HEALTH_REDEPLOY: ${{ github.event_name == 'workflow_dispatch' && inputs.force_health_redeploy }}
           PUSH_BEFORE: ${{ github.event.before || '' }}
           PUSH_SHA: ${{ github.sha }}
         run: python3 -m ci_pipeline.context

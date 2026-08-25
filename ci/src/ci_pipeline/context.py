@@ -205,6 +205,7 @@ def compute_context(
     *,
     event_name: str,
     workflow_ansible_only: bool = False,
+    workflow_force_health_redeploy: bool = False,
     push_before: str = "",
     push_sha: str = "",
     git: GitInterface | None = None,
@@ -288,6 +289,7 @@ def compute_context(
                 run_infra_apply=not workflow_ansible_only,
                 run_ansible_bootstrap=True,
                 run_portainer_apply=True,
+                run_health_redeploy=workflow_force_health_redeploy,
                 stacks_sha=stacks_sha,
                 reason="manual-dispatch",
             )
@@ -305,6 +307,10 @@ def _read_env_context() -> dict:
     return {
         "event_name": os.environ.get("EVENT_NAME", ""),
         "workflow_ansible_only": os.environ.get("WORKFLOW_ANSIBLE_ONLY", "")
+        == "true",
+        "workflow_force_health_redeploy": os.environ.get(
+            "WORKFLOW_FORCE_HEALTH_REDEPLOY", ""
+        )
         == "true",
         "push_before": os.environ.get("PUSH_BEFORE", ""),
         "push_sha": os.environ.get("PUSH_SHA", ""),
