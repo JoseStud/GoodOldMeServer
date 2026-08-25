@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 
 import dagger
@@ -62,9 +63,25 @@ async def cloudflare_dns_sync(
             ctr = ctr.with_env_variable(var, val)
 
     tfc_token = os.environ.get("TFC_TOKEN", "")
+    # TEMPORARY DEBUG (2026-08-25): diagnosing a 401 from tfc_api_get inside
+    # this container that doesn't reproduce when the same token is used
+    # manually outside CI. Prints length + sha256 only, never the value.
+    print(
+        "DEBUG tfc_token (python os.environ): "
+        f"len={len(tfc_token)} "
+        f"sha256={hashlib.sha256(tfc_token.encode()).hexdigest()}"
+    )
     if tfc_token:
         ctr = ctr.with_secret_variable(
             "TFC_TOKEN", client.set_secret("tfc-token-dns", tfc_token)
+        )
+        ctr = ctr.with_exec(
+            [
+                "bash",
+                "-c",
+                'echo "DEBUG tfc_token (in-container) len=${#TFC_TOKEN}"; '
+                'printf %s "$TFC_TOKEN" | sha256sum',
+            ]
         )
 
     output = await (
