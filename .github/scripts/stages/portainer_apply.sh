@@ -54,14 +54,22 @@ EOF
 env "${terraform_args[@]}" terraform -chdir=terraform/portainer-root init -input=false -reconfigure \
   -backend-config="${backend_config_file}"
 
+# TEMPORARY ONE-TIME IMPORT (2026-08-25): a run from 2026-03-23 got stuck
+# "pending confirmation" for ~5 months, holding a lock that blocked all state
+# writes; by the time it was discarded, a prior partial apply had already
+# created the real "home-dashboard" Portainer stack (id 33, the Tunet app)
+# without ever recording it in state. Every apply since has tried to
+# recreate it and failed. This import teaches Terraform about the
+# already-existing stack so it stops trying to recreate it. Safe to run
+# repeatedly (a no-op "resource already managed" error is ignored) — revert
+# this block once confirmed no longer needed.
+env "${terraform_args[@]}" terraform -chdir=terraform/portainer-root import \
+  'module.portainer.portainer_stack.swarm["home-dashboard"]' 33 || true
+env "${terraform_args[@]}" terraform -chdir=terraform/portainer-root import \
+  'module.portainer.infisical_secret.webhook_url["home-dashboard"]' 91278e2a-9b94-4f77-9ec6-4cde755ce522 || true
+
 plan_exit=0
-# -lock=false: this workspace runs in Terraform Cloud's local execution mode,
-# and the legacy `remote` backend's state-locking path against local-exec
-# workspaces returns "Error message: resource not found" on every lock
-# attempt (reproduced outside CI, independent of Terraform CLI version).
-# This pipeline is the only writer to this workspace's state, so disabling
-# locking here is safe.
-env "${terraform_args[@]}" terraform -chdir=terraform/portainer-root plan -input=false -lock=false -out=portainer.tfplan -detailed-exitcode || plan_exit=$?
+env "${terraform_args[@]}" terraform -chdir=terraform/portainer-root plan -input=false -out=portainer.tfplan -detailed-exitcode || plan_exit=$?
 
 if [[ "${plan_exit}" -eq 1 ]]; then
   echo "Terraform plan failed." >&2
@@ -78,4 +86,4 @@ if [[ "${SHADOW_MODE}" == "true" ]]; then
   exit 0
 fi
 
-env "${terraform_args[@]}" terraform -chdir=terraform/portainer-root apply -input=false -lock=false -auto-approve portainer.tfplan
+env "${terraform_args[@]}" terraform -chdir=terraform/portainer-root apply -input=false -auto-approve portainer.tfplan
