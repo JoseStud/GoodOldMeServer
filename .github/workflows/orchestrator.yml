@@ -21,6 +21,11 @@ on:
         type: boolean
         required: false
         default: false
+      skip_ansible_bootstrap:
+        description: "Skip the Ansible bootstrap stage (avoids touching all nodes, incl. the GCP witness, for narrow retries like a Portainer-only redeploy)"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   id-token: write
@@ -57,6 +62,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           WORKFLOW_ANSIBLE_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.ansible_only }}
           WORKFLOW_FORCE_HEALTH_REDEPLOY: ${{ github.event_name == 'workflow_dispatch' && inputs.force_health_redeploy }}
+          WORKFLOW_SKIP_ANSIBLE_BOOTSTRAP: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_ansible_bootstrap }}
           PUSH_BEFORE: ${{ github.event.before || '' }}
           PUSH_SHA: ${{ github.sha }}
         run: python3 -m ci_pipeline.context

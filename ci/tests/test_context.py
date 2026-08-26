@@ -336,6 +336,27 @@ class TestComputeContextWorkflowDispatch:
         assert ctx.run_health_redeploy is True
         assert ctx.reason == "manual-dispatch"
 
+    def test_workflow_dispatch_defaults_ansible_bootstrap_true(
+        self, fake_git: FakeGit
+    ):
+        ctx = compute_context(
+            event_name="workflow_dispatch",
+            git=fake_git,
+        )
+        assert ctx.run_ansible_bootstrap is True
+
+    def test_workflow_dispatch_skip_ansible_bootstrap(self, fake_git: FakeGit):
+        ctx = compute_context(
+            event_name="workflow_dispatch",
+            workflow_skip_ansible_bootstrap=True,
+            workflow_force_health_redeploy=True,
+            git=fake_git,
+        )
+        assert ctx.run_ansible_bootstrap is False
+        assert ctx.run_health_redeploy is True
+        assert ctx.run_portainer_apply is True
+        assert ctx.reason == "manual-dispatch"
+
 
 class TestComputeContextEdgeCases:
     def test_unsupported_event_raises(self, fake_git: FakeGit):
