@@ -52,3 +52,5 @@ For the canonical orchestration execution contract, see the [CI Plan Contract](d
 This project uses a centralized documentation structure to keep the code directories clean.
 
 👉 **[Read the Documentation](docs/index.md)**
+
+Behavioral specs live in [`openspec/`](openspec/) ([OpenSpec](https://github.com/Fission-AI/OpenSpec), `spec-driven` schema). `openspec/specs/` describes how each capability behaves today, including known defects, and `openspec/changes/` holds proposed changes. Run `openspec list --specs` and `openspec validate --all --strict` to browse and check them.
