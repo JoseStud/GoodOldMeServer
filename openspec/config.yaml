@@ -1,0 +1,21 @@
+schema: spec-driven
+
+# Constraints an agent cannot infer from the code alone.
+context: |
+  Single-operator homelab that is live: pushes to main run the orchestrator against real nodes, so every change must be safe to roll out unattended.
+  The GitHub repository is public, so Actions logs are public. Never print secrets, tokens, JWTs or verbose HTTP headers in CI or Ansible output.
+  Infisical (env "prod") is the only secret store. Secrets never go into git, tfvars files or workflow YAML.
+  Capacity is limited to OCI Always Free (Ampere A1) and the GCP e2-micro free tier. Call out anything that adds billable resources.
+  Stack compose files and runtime templates live in the separate JoseStud/stacks repository, consumed here as the `stacks` submodule. List required stacks-repo edits as cross-repo work.
+  Specs under openspec/specs describe as-built behavior, including known defects. Fixes for those defects are tracked as changes.
+
+rules:
+  proposal:
+    - State the blast radius - which nodes, stacks or services restart, and whether any stateful data (Portainer DB, GlusterFS bricks, block volumes, node-local DB directories) is touched
+    - State how to roll back
+  design:
+    - Say whether the orchestrator path, the local/break-glass path described in docs/, or both are affected
+  tasks:
+    - Include the repo's own checks where relevant - terraform fmt -check and validate, ansible-lint plus --syntax-check, pytest in ci/, shellcheck
+    - For pipeline changes, include a verification step using SHADOW_MODE or a workflow_dispatch run
+    - Include a task to update the matching docs/ pages
